@@ -1,7 +1,7 @@
 //! The saved login token, kept in the system keychain (Keychain on macOS, Credential Manager on
 //! Windows, Secret Service on Linux) rather than in the client's data file.
 
-const SERVICE: &str = "DissCord";
+const SERVICE: &str = "Vaxelium";
 
 /// Saves the token for an account, replacing any earlier one.
 pub fn store(name: &str, token: &str) -> Result<(), String> {
@@ -26,7 +26,7 @@ pub fn forget(name: &str) {
 mod tests {
     #[test]
     fn stores_loads_and_forgets() {
-        let name = "disscord-test-account";
+        let name = "vaxelium-test-account";
         super::forget(name);
         assert_eq!(super::load(name), None);
         super::store(name, "secret-token").expect("keychain available");

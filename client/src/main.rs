@@ -9,7 +9,7 @@ mod trust;
 mod ui;
 mod util;
 
-use app::{DissCordApp, SavedSession, SERVERS_KEY, SESSION_KEY};
+use app::{VaxeliumApp, SavedSession, SERVERS_KEY, SESSION_KEY};
 use eframe::egui;
 
 fn main() -> eframe::Result {
@@ -18,13 +18,13 @@ fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1200.0, 760.0])
             .with_min_inner_size([820.0, 480.0])
-            .with_title("DissCord")
+            .with_title("Vaxelium")
             // The app draws its own header bar with the window buttons (see ui::top_bar).
             .with_decorations(false),
         ..Default::default()
     };
     eframe::run_native(
-        "DissCord",
+        "Vaxelium",
         options,
         Box::new(|cc| {
             let theme = cc
@@ -62,7 +62,7 @@ fn main() -> eframe::Result {
             {
                 *trust::PINS.lock().unwrap() = pins;
             }
-            let mut app = DissCordApp {
+            let mut app = VaxeliumApp {
                 servers,
                 selected: None,
                 remember: true,
@@ -78,7 +78,7 @@ fn main() -> eframe::Result {
     )
 }
 
-impl eframe::App for DissCordApp {
+impl eframe::App for VaxeliumApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // Apply a theme change saved on the Account page.
         if theme::current() != self.theme {
