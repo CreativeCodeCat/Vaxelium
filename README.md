@@ -1,4 +1,4 @@
-# DissCord
+# Vaxelium
 
 A small Discord-style chat system written in Rust: an auth service, chat
 servers, and a desktop GUI client (egui/eframe).
@@ -27,10 +27,10 @@ Start three things, each in its own terminal.
    ```
 
 2. One or more chat servers. Usage is `server [ADDR] [DB_PATH] [AUTH_ADDR]`;
-   the defaults are `127.0.0.1:7878`, `disscord.db` and `127.0.0.1:7900`:
+   the defaults are `127.0.0.1:7878`, `vaxelium.db` and `127.0.0.1:7900`:
 
    ```sh
-   cargo run -p server -- 127.0.0.1:7878 disscord.db 127.0.0.1:7900
+   cargo run -p server -- 127.0.0.1:7878 vaxelium.db 127.0.0.1:7900
    cargo run -p server -- 127.0.0.1:7879 second.db 127.0.0.1:7900   # optional second server
    ```
 
@@ -41,7 +41,7 @@ Start three things, each in its own terminal.
    ```
 
 The client finds the auth service at `127.0.0.1:7900`. To use another one, set
-`DISSCORD_AUTH=host:port` before starting the client.
+`VAXELIUM_AUTH=host:port` before starting the client.
 
 Settings can also go in a `.env` file in the folder you start from. Copy `.env.example` to
 `.env` to see the options. A setting already set in the shell wins over `.env`.

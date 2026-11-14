@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 /// Key under which the remembered certificates are stored by eframe.
-pub const PINS_KEY: &str = "disscord_pins";
+pub const PINS_KEY: &str = "vaxelium_pins";
 
 /// Certificate fingerprints by address, for example "server:127.0.0.1:7878" or "auth:127.0.0.1:7900".
 pub static PINS: Mutex<BTreeMap<String, String>> = Mutex::new(BTreeMap::new());

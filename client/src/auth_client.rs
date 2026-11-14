@@ -1,5 +1,5 @@
 //! Blocking requests to the auth service (register, log in, log out), over TLS.
-//! Set the `DISSCORD_AUTH` environment variable to use a different auth service.
+//! Set the `VAXELIUM_AUTH` environment variable to use a different auth service.
 
 use std::io::{BufRead, BufReader, Write};
 use std::time::Duration;
@@ -9,7 +9,7 @@ use common::{AuthReply, AuthRequest, DEFAULT_AUTH_ADDR};
 use crate::trust;
 
 pub fn auth_addr() -> String {
-    std::env::var("DISSCORD_AUTH").unwrap_or_else(|_| DEFAULT_AUTH_ADDR.to_string())
+    std::env::var("VAXELIUM_AUTH").unwrap_or_else(|_| DEFAULT_AUTH_ADDR.to_string())
 }
 
 /// Sends one request and returns the reply.
@@ -40,7 +40,7 @@ fn connect_error_message(addr: &str, e: &std::io::Error) -> String {
     match e.kind() {
         std::io::ErrorKind::ConnectionRefused => format!(
             "Nothing is listening at {addr}. Start the auth service with `cargo run -p auth`, \
-             or set DISSCORD_AUTH to the address it is running on."
+             or set VAXELIUM_AUTH to the address it is running on."
         ),
         std::io::ErrorKind::TimedOut => format!(
             "The auth service at {addr} did not answer in time. Check that it is running and reachable."
