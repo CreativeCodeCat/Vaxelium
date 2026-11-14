@@ -1,7 +1,7 @@
 //! Popups drawn over the window: the context menus, the emoji picker, the dialogs, and the edges
 //! that resize the window.
 
-use iced::widget::{button, column, container, mouse_area, row, scrollable, space, text, text_input, Column};
+use iced::widget::{button, checkbox, column, container, mouse_area, row, scrollable, space, text, text_input, Column};
 use iced::{border, window, Background, Color, Element, Length, Padding, Theme};
 
 use super::chat::emoji;
@@ -42,6 +42,36 @@ pub fn menu_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
                     .padding(crate::util::pad(6.0, 10.0, 2.0, 10.0))
                     .into(),
             ),
+            MenuItem::Roles { .. } => {
+                // The row only opens the flyout beside the menu (see below).
+                let chevron = icons::CHEVRON_RIGHT;
+                items.push(
+                    mouse_area(button(
+                        row![
+                            text("Roles").size(14).color(pal.text).width(Length::Fill),
+                            icons::icon(chevron, 12.0, pal.text_muted),
+                        ]
+                        .align_y(iced::alignment::Vertical::Center),
+                    )
+                    .padding(crate::util::pad2(6.0, 10.0))
+                    .width(Length::Fill)
+                    .on_press(Message::RolesMenuOpen)
+                    .style(move |_: &Theme, status: button::Status| {
+                        let bg = match status {
+                            button::Status::Hovered => Some(Background::Color(pal.accent)),
+                            _ => None,
+                        };
+                        let text_color = match status {
+                            button::Status::Hovered => pal.text_strong,
+                            _ => pal.text,
+                        };
+                        button::Style { background: bg, text_color, border: border::rounded(4.0), ..button::Style::default() }
+                    })
+                    )
+                    .on_enter(Message::RolesMenuOpen)
+                    .into(),
+                );
+            }
             MenuItem::Action { label, icon, danger, msg } => {
                 let color = if *danger { pal.red } else { pal.text };
                 let mut r = row![].spacing(10).align_y(iced::alignment::Vertical::Center);
@@ -50,7 +80,7 @@ pub fn menu_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
                 }
                 r = r.push(text(label.clone()).size(14).color(color));
                 items.push(
-                    button(r)
+                    mouse_area(button(r)
                         .padding(crate::util::pad2(6.0, 10.0))
                         .width(Length::Fill)
                         .on_press(msg.clone())
@@ -66,7 +96,9 @@ pub fn menu_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
                             };
                             button::Style { background: bg, text_color, border: border::rounded(4.0), ..button::Style::default() }
                         })
-                        .into(),
+                    )
+                    .on_enter(Message::RolesMenuClose)
+                    .into(),
                 );
             }
         }
@@ -79,7 +111,72 @@ pub fn menu_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
             border: border::rounded(8.0).color(pal.hover_bg).width(1.0),
             ..container::Style::default()
         });
-    Some(anchored(body.into(), menu.at, Message::CloseMenu))
+    // The Roles flyout sits beside the menu, in the same overlay, so the menu's backdrop cannot take its clicks.
+    let member = menu.items.iter().find_map(|item| match item {
+        MenuItem::Roles { member } => Some(member.as_str()),
+        _ => None,
+    });
+    // Opens to the left of the menu, unless the menu is too close to the left edge to fit it.
+    const FLYOUT_WIDTH: f32 = 200.0;
+    let left_fits = menu.at.x >= FLYOUT_WIDTH + 6.0;
+    if menu.centered {
+        // Member menus sit over the member list, centred in it. The Roles flyout goes just to its left.
+        let panel = app.panel_width("members");
+        let flyout: Element<'_, Message> = match (app.roles_menu_open, member) {
+            (true, Some(member)) => roles_flyout(app, member, pal),
+            _ => space().width(Length::Fixed(0.0)).into(),
+        };
+        let centred = container(body).width(Length::Fixed(panel)).align_x(iced::alignment::Horizontal::Center);
+        let content: Element<'_, Message> = row![space().width(Length::Fill), flyout, centred].into();
+        return Some(anchored(content, iced::Point::new(0.0, menu.at.y), Message::CloseMenu));
+    }
+    let (content, anchor): (Element<'_, Message>, iced::Point) = match (app.roles_menu_open, member) {
+        // The row is anchored at the flyout's left edge, so the menu itself stays where it was opened.
+        (true, Some(member)) if left_fits => (
+            row![roles_flyout(app, member, pal), body].spacing(6).into(),
+            iced::Point::new(menu.at.x - FLYOUT_WIDTH - 6.0, menu.at.y),
+        ),
+        (true, Some(member)) => (row![body, roles_flyout(app, member, pal)].spacing(6).into(), menu.at),
+        _ => (body.into(), menu.at),
+    };
+    Some(anchored(content, anchor, Message::CloseMenu))
+}
+
+/// The checklist of roles for one member, shown beside their menu. Each checkbox reads the
+/// member's roles when it is drawn, so a change from anyone shows straight away.
+fn roles_flyout<'a>(app: &'a App, member: &str, pal: Pal) -> Element<'a, Message> {
+    let held = app.server.member_roles.get(member).cloned().unwrap_or_default();
+    let mut rows: Vec<Element<'a, Message>> = Vec::new();
+    for role in app.server.roles.iter().filter(|r| r.id != common::EVERYONE_ROLE && app.outranks_role(r.id)) {
+        let on = held.contains(&role.id);
+        let who = member.to_string();
+        let role_id = role.id;
+        let role_color = crate::util::hex_color(&role.color).unwrap_or(pal.text);
+        rows.push(
+            container(
+                checkbox(on)
+                    .label(role.name.clone())
+                    .style(move |theme: &Theme, status| {
+                        // The label takes the role's colour; the box keeps the standard look.
+                        let mut style = iced::widget::checkbox::primary(theme, status);
+                        style.text_color = Some(role_color);
+                        style
+                    })
+                    .on_toggle(move |v| Message::SetMemberRole(who.clone(), role_id, v)),
+            )
+            .padding(crate::util::pad2(6.0, 10.0))
+            .into(),
+        );
+    }
+    container(scrollable(Column::with_children(rows).spacing(2).padding(4)).height(Length::Shrink))
+        .max_height(320.0)
+        .width(Length::Fixed(200.0))
+        .style(move |_: &Theme| container::Style {
+            background: Some(Background::Color(pal.sidebar_bg)),
+            border: border::rounded(8.0).color(pal.hover_bg).width(1.0),
+            ..container::Style::default()
+        })
+        .into()
 }
 
 /// The emoji picker for one message, when it is open.

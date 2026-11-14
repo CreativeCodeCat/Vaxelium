@@ -578,10 +578,11 @@ const ROLE_COLORS: [&str; 20] = [
 ];
 
 /// The permissions a role can grant: the label, what it lets a member do, and its bit.
-const PERMISSIONS: [(&str, &str, u32); 3] = [
+const PERMISSIONS: [(&str, &str, u32); 4] = [
     ("Manage channels", "Allows members to create, rename, move and delete channels and categories.", common::perm::MANAGE_CHANNELS),
     ("Manage roles", "Allows members to create and edit roles below their own, and give them to members below them.", common::perm::MANAGE_ROLES),
     ("Manage messages", "Allows members to delete other members' messages.", common::perm::MANAGE_MESSAGES),
+    ("Bypass ignore", "Members with this cannot be ignored or blocked by anyone.", common::perm::BYPASS_IGNORE),
 ];
 
 /// The Roles section, laid out like Discord's: the roles on the left, and the chosen role's settings on the right.
