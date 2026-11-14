@@ -46,8 +46,8 @@ The client finds the auth service at `127.0.0.1:7900`. To use another one, set
 Settings can also go in a `.env` file in the folder you start from. Copy `.env.example` to
 `.env` to see the options. A setting already set in the shell wins over `.env`.
 
-Messages, channels and servers' data are stored in each chat server's SQLite
-database, so they survive restarts. Accounts are in the auth database.
+Messages and channels are stored in each chat server's SQLite database, so they
+survive restarts. Accounts are in the auth database.
 
 ## Getting started
 
@@ -137,7 +137,7 @@ client is in, plus `joined` (with up to 200 messages of history).
   unreachable, the client shows a red warning and chat servers still accept a
   session the auth service confirmed within the last 24 hours. Each server keeps
   these sessions in its database. Logging out tells the server you are connected
-  to at once. Other servers learn of it only once the auth service is back, so a
+  to immediately. Other servers learn of it only once the auth service is back, so a
   logged-out session can still work on them during an outage.
 - With "Keep me logged in on this computer" ticked, the session token (never the
   password) is saved in the system keychain, and you stay logged in after a
@@ -174,8 +174,9 @@ client is in, plus `joined` (with up to 200 messages of history).
   member's name and choose Message. They are listed on the Direct messages page
   (the button at the top of the server rail), grouped by server. The app keeps a
   background connection to each saved server for this, so a server that is
-  offline shows no direct messages until it is reachable again. Only the two members can read, reply in, or
-  react to a direct message, and the server owner cannot delete one. They are
+  offline shows no direct messages until it is reachable again. Only the two
+  members can read, reply in, or react to a direct message, and the server
+  owner cannot delete one. They are
   stored as plain text in the server's database, so whoever runs the server can
   read them. Direct messages between people on different servers are not
   supported.
