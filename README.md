@@ -1,7 +1,7 @@
 # Vaxelium
 
 A small Discord-style chat system written in Rust: an auth service, chat
-servers, and a desktop GUI client (egui/eframe).
+servers, and a desktop GUI client (Tauri, with an HTML/CSS/JavaScript page).
 
 ## Layout
 
@@ -9,7 +9,7 @@ servers, and a desktop GUI client (egui/eframe).
 common/   shared wire protocol (auth and chat messages, newline-delimited JSON)
 auth/     auth service: owns all accounts and login sessions (SQLite + Argon2)
 server/   chat server: channels, messages, presence (SQLite)
-client/   desktop GUI client (eframe / egui)
+client/   desktop GUI client (Tauri): Rust in src/, the page in ui/
 ```
 
 One account works on every chat server. The chat servers do not store
@@ -34,7 +34,7 @@ Start three things, each in its own terminal.
    cargo run -p server -- 127.0.0.1:7879 second.db 127.0.0.1:7900   # optional second server
    ```
 
-3. The GUI client:
+3. The GUI client. On Linux it needs WebKitGTK 4.1 (`webkit2gtk-4.1`) installed:
 
    ```sh
    cargo run -p client

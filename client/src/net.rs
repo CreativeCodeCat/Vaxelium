@@ -1,5 +1,5 @@
-//! Blocking networking for the GUI. One background thread per connection owns the TLS
-//! socket: it sends what the UI queues and reads server lines, then forwards them to the UI.
+//! Blocking networking for the client. One background thread per connection owns the TLS
+//! socket: it sends what the app queues and reads server lines, then passes them on.
 
 use std::io::{ErrorKind, Read, Write};
 use std::net::{Shutdown, TcpStream};
@@ -17,7 +17,6 @@ pub enum NetEvent {
 
 pub struct Connection {
     pub outgoing: Sender<ClientMsg>,
-    pub incoming: Receiver<NetEvent>,
     /// Second handle to the socket, used to close it when the connection is dropped.
     socket: TcpStream,
 }
@@ -41,13 +40,10 @@ impl Drop for Connection {
 /// How long the thread waits for data before it checks for messages to send.
 const POLL: Duration = Duration::from_millis(100);
 
-/// Connects over TLS, checks the server's certificate, sends the login, and starts the thread.
-/// `wake` is called whenever new data arrives so the UI repaints promptly.
-pub fn connect(
-    addr: &str,
-    first: ClientMsg,
-    wake: impl Fn() + Send + 'static,
-) -> Result<Connection, String> {
+/// Connects over TLS, checks the server's certificate, sends the first message (the login), and
+/// starts the thread. Returns the connection and the stream of what the server sends. The stream
+/// ends with a `Disconnected` event.
+pub fn connect(addr: &str, first: ClientMsg) -> Result<(Connection, Receiver<NetEvent>), String> {
     let (mut stream, fingerprint) = common::tls::connect_blocking(addr, Duration::from_secs(4))
         .map_err(|e| format!("could not connect: {e}"))?;
     // Check the certificate before the login is sent.
@@ -63,27 +59,24 @@ pub fn connect(
     out_tx.send(first).map_err(|e| e.to_string())?;
 
     std::thread::spawn(move || {
-        let reason = pump(&mut stream, &out_rx, &in_tx, &wake);
-        if let Some(reason) = reason {
+        if let Some(reason) = pump(&mut stream, &out_rx, &in_tx) {
             let _ = in_tx.send(NetEvent::Disconnected(reason));
-            wake();
         }
     });
 
-    Ok(Connection { outgoing: out_tx, incoming: in_rx, socket })
+    Ok((Connection { outgoing: out_tx, socket }, in_rx))
 }
 
-/// Runs until the connection ends. Returns why, or None when the UI has already let go of it.
+/// Runs until the connection ends. Returns why, or None when the app has already let go of it.
 fn pump(
     stream: &mut common::tls::Stream,
     out_rx: &Receiver<ClientMsg>,
     in_tx: &Sender<NetEvent>,
-    wake: &impl Fn(),
 ) -> Option<String> {
     let mut pending: Vec<u8> = Vec::new();
     let mut chunk = [0u8; 4096];
     loop {
-        // Send everything the UI has queued.
+        // Send everything the app has queued.
         loop {
             match out_rx.try_recv() {
                 Ok(msg) => {
@@ -94,7 +87,7 @@ fn pump(
                     }
                 }
                 Err(TryRecvError::Empty) => break,
-                // The UI dropped the connection.
+                // The app dropped the connection.
                 Err(TryRecvError::Disconnected) => return None,
             }
         }
@@ -109,7 +102,6 @@ fn pump(
                         if in_tx.send(NetEvent::Server(msg)).is_err() {
                             return None;
                         }
-                        wake();
                     }
                 }
             }
