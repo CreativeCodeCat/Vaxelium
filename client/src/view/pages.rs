@@ -1,6 +1,6 @@
 //! The full pages: login, the server status page, discovery, and the settings pages.
 
-use iced::widget::{button, column, container, mouse_area, row, scrollable, space, text, text_input, Column};
+use iced::widget::{button, column, container, mouse_area, row, scrollable, space, text, text_editor, text_input, Column};
 use iced::{border, Background, Color, Element, Length, Padding, Theme};
 
 use super::{divider, letter_badge, link, muted_text, round, server_icon, solid};
@@ -28,6 +28,17 @@ fn card<'a>(content: Vec<Element<'a, Message>>, pal: Pal) -> Element<'a, Message
 
 fn field<'a>(label: &str, input: Element<'a, Message>) -> Element<'a, Message> {
     column![text(label.to_uppercase()).size(12).color(Color::from_rgb(0.6, 0.6, 0.6)), input].spacing(6).into()
+}
+
+/// The multi-line box uses the same colours as the single-line inputs.
+fn editor_style(pal: Pal) -> impl Fn(&Theme, text_editor::Status) -> text_editor::Style {
+    move |_: &Theme, _| text_editor::Style {
+        background: Background::Color(pal.input_bg),
+        border: border::rounded(6.0),
+        placeholder: pal.text_muted,
+        value: pal.text_strong,
+        selection: pal.accent,
+    }
 }
 
 fn input_style(pal: Pal) -> impl Fn(&Theme, text_input::Status) -> text_input::Style {
@@ -142,7 +153,7 @@ pub fn server_status(app: &App, pal: Pal) -> Element<'_, Message> {
 pub fn discover(app: &App, pal: Pal) -> Element<'_, Message> {
     let d = &app.discover;
     let mut items: Vec<Element<'_, Message>> = vec![
-        page_head("Discover", "Find servers", pal, Message::DiscoverClose),
+        page_head("Find servers", pal, Message::DiscoverClose),
         muted_text("Servers found through the servers you know. Pick one to add it.", 14.0, pal.text_muted),
     ];
     if let Some(error) = &d.error {
@@ -192,13 +203,9 @@ pub fn discover(app: &App, pal: Pal) -> Element<'_, Message> {
 }
 
 /// The heading row of a full page: a section name, the title and a close button.
-fn page_head<'a>(section: &str, title: &str, pal: Pal, close: Message) -> Element<'a, Message> {
+fn page_head<'a>(title: &str, pal: Pal, close: Message) -> Element<'a, Message> {
     row![
-        column![
-            text(section.to_uppercase()).size(12).color(pal.text_muted),
-            text(title.to_string()).size(22).color(pal.text_strong),
-        ]
-        .width(Length::Fill),
+        text(title.to_string()).size(22).color(pal.text_strong).width(Length::Fill),
         button(icons::icon(icons::CLOSE, 16.0, pal.text_muted))
             .padding(4)
             .on_press(close)
@@ -208,18 +215,31 @@ fn page_head<'a>(section: &str, title: &str, pal: Pal, close: Message) -> Elemen
     .into()
 }
 
-/// The left column of a settings page: its name and the section.
+/// The left column of a settings page: its name, and the section that is open.
 fn settings_nav<'a>(name: &str, section: &str, pal: Pal) -> Element<'a, Message> {
     container(column![
         text(name.to_uppercase()).size(12).color(pal.text_muted),
         container(text(section.to_string()).size(15).color(pal.text_strong))
-            .padding(crate::util::pad2(4.0, 10.0))
+            .padding(crate::util::pad2(6.0, 10.0))
             .width(Length::Fill)
             .style(move |_: &Theme| round(pal.selected_bg, 4.0)),
     ]
     .spacing(8))
     .padding(crate::util::pad2(24.0, 12.0))
+    .width(Length::Fixed(220.0))
+    .height(Length::Fill)
+    .style(move |_: &Theme| round(pal.sidebar_bg, 0.0))
     .into()
+}
+
+/// The settings content: a column with a sensible maximum width, so long rows do not stretch.
+fn settings_column<'a>(items: Vec<Element<'a, Message>>) -> Element<'a, Message> {
+    let inner = container(Column::with_children(items).spacing(6).width(Length::Fill))
+        .max_width(760.0)
+        .width(Length::Fill);
+    scrollable(container(inner).padding(crate::util::pad2(24.0, 40.0)).width(Length::Fill))
+        .height(Length::Fill)
+        .into()
 }
 
 fn setting_row<'a>(label: &str, desc: Option<&str>, value: Element<'a, Message>, action: Option<Element<'a, Message>>, pal: Pal) -> Element<'a, Message> {
@@ -231,7 +251,7 @@ fn setting_row<'a>(label: &str, desc: Option<&str>, value: Element<'a, Message>,
     if let Some(a) = action {
         r = r.push(a);
     }
-    container(r).padding(crate::util::pad2(12.0, 0.0)).width(Length::Fill).into()
+    container(r).padding(crate::util::pad2(8.0, 0.0)).width(Length::Fill).into()
 }
 
 fn small_button<'a>(label: &str, msg: Message, pal: Pal) -> Element<'a, Message> {
@@ -285,7 +305,7 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     });
 
     let mut main: Vec<Element<'_, Message>> = vec![
-        page_head("User settings", "Account", pal, Message::UserSettingsClose),
+        page_head("Account", pal, Message::UserSettingsClose),
         row![
             letter_badge(&user, 72.0, &pal),
             column![
@@ -311,7 +331,7 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     if let Some(error) = &acc.save_error {
         main.push(text(error.clone()).size(13).color(pal.red).into());
     }
-    let content = scrollable(Column::with_children(main).spacing(10).padding(crate::util::pad2(24.0, 40.0)).width(Length::Fill)).height(Length::Fill);
+    let content = settings_column(main);
     let dirty = acc.draft_name.is_some() || acc.draft_username.is_some() || acc.draft_email.is_some() || acc.draft_theme.is_some();
     let page = column![
         row![settings_nav("User settings", "Account", pal), content].height(Length::Fill),
@@ -418,7 +438,7 @@ pub fn server_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     let dirty = (!form.name.trim().is_empty() && form.name.trim() != name) || form.description.trim() != app.server.description;
     let icon: Element<'_, Message> = server_icon(app.server.icon.as_deref(), &name, 64.0, &pal, 8.0);
     let mut items: Vec<Element<'_, Message>> = vec![
-        page_head("Server settings", "Server Profile", pal, Message::ServerSettingsClose),
+        page_head("Server Profile", pal, Message::ServerSettingsClose),
         muted_text("Customise how your server appears to its members.", 14.0, pal.text_muted),
         text("SERVER ICON").size(12).color(pal.text_muted).into(),
         row![
@@ -438,7 +458,16 @@ pub fn server_settings(app: &App, pal: Pal) -> Element<'_, Message> {
         .align_y(iced::alignment::Vertical::Center)
         .into(),
         field("Name", text_input("My server", &form.name).id("server-name").on_input(Message::ServerName).on_submit(Message::ServerSave).padding(10).style(input_style(pal)).into()),
-        field("Description", text_input("Welcome to our community!", &form.description).on_input(Message::ServerDescription).padding(10).style(input_style(pal)).into()),
+        field(
+            "Description",
+            iced::widget::text_editor(&app.description_editor)
+                .placeholder("Welcome to our community!")
+                .on_action(Message::ServerDescriptionEdit)
+                .height(Length::Fixed(140.0))
+                .padding(10)
+                .style(editor_style(pal))
+                .into(),
+        ),
     ];
     if dirty {
         items.push(divider(pal.selected_bg));

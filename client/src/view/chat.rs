@@ -152,11 +152,44 @@ fn sidebar(app: &App, pal: Pal) -> Element<'_, Message> {
     .spacing(6)
     .padding(crate::util::pad2(0.0, 4.0));
     list.push(head.into());
-    for c in &app.server.channels {
+    // Channels in a category are listed under its heading; the rest under "Text channels".
+    let in_category = |c: &String| app.server.categories.iter().any(|cat| cat.channels.contains(c));
+    for c in app.server.channels.iter().filter(|c| !in_category(c)) {
         if app.channels_collapsed && *c != app.server.channel {
             continue;
         }
         list.push(channel_row(app, pal, c));
+    }
+    for category in &app.server.categories {
+        list.push(
+            mouse_area(
+                container(text(category.name.to_uppercase()).size(11).color(pal.text_muted))
+                    .padding(crate::util::pad(12.0, 4.0, 2.0, 4.0))
+                    .width(Length::Fill),
+            )
+            .on_right_press(Message::OpenMenu(crate::app::MenuKind::Category(category.name.clone())))
+            .into(),
+        );
+        for c in &category.channels {
+            if app.channels_collapsed && *c != app.server.channel {
+                continue;
+            }
+            list.push(channel_row(app, pal, c));
+        }
+    }
+    if app.category_open {
+        list.push(
+            container(
+                text_input("Create category", &app.new_category)
+                    .id(crate::app::NEW_CATEGORY_ID)
+                    .on_input(Message::NewCategory)
+                    .on_submit(Message::CreateCategory)
+                    .padding(7)
+                    .size(14),
+            )
+            .padding(crate::util::pad(12.0, 0.0, 0.0, 0.0))
+            .into(),
+        );
     }
     if app.create_open {
         list.push(

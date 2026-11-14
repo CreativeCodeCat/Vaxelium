@@ -21,6 +21,8 @@ pub const MESSAGES_ID: &str = "messages";
 pub const SEARCH_ID: &str = "search";
 pub const COMPOSER_ID: &str = "composer";
 pub const NEW_CHANNEL_ID: &str = "new-channel";
+pub const NEW_CATEGORY_ID: &str = "new-category";
+pub const RENAME_ID: &str = "rename-channel";
 pub const ADD_ADDR_ID: &str = "add-addr";
 pub const NEW_DM_ID: &str = "new-dm";
 pub const EDIT_ID: &str = "edit-box";
@@ -135,6 +137,7 @@ pub enum MenuKind {
     Message(i64),
     Server,
     Theme,
+    Category(String),
 }
 
 /// Everything the app shows and remembers.
@@ -163,6 +166,8 @@ pub struct App {
     pub discover: Discover,
     pub account: Account,
     pub server_form: ServerForm,
+    /// The editor state for the description box. `server_form.description` follows its text.
+    pub description_editor: iced::widget::text_editor::Content,
 
     pub main: MainConn,
     pub server: ServerView,
@@ -176,6 +181,11 @@ pub struct App {
     pub input: String,
     pub new_channel: String,
     pub create_open: bool,
+    /// The category name box in the channel list is showing.
+    pub category_open: bool,
+    /// The rename dialog: the channel's current name, and the name being typed.
+    pub rename_channel: Option<(String, String)>,
+    pub new_category: String,
     pub members_hidden: bool,
     pub channels_collapsed: bool,
     pub menu: Option<Menu>,
@@ -244,6 +254,15 @@ pub enum Message {
 
     ChannelOpen(String),
     CreateOpen,
+    CategoryOpen,
+    NewCategory(String),
+    CreateCategory,
+    DeleteCategory(String),
+    MoveChannel(String, Option<String>),
+    RenameStart(String),
+    RenameInput(String),
+    RenameSubmit,
+    RenameCancel,
     NewChannel(String),
     CreateChannel,
     ToggleChannels,
@@ -297,7 +316,8 @@ pub enum Message {
     ServerSettingsOpen,
     ServerSettingsClose,
     ServerName(String),
-    ServerDescription(String),
+    /// An edit in the multi-line description box.
+    ServerDescriptionEdit(iced::widget::text_editor::Action),
     ServerSave,
     ServerReset,
     IconPick,
@@ -361,6 +381,7 @@ impl App {
             discover: Discover::default(),
             account: Account::default(),
             server_form: ServerForm::default(),
+            description_editor: iced::widget::text_editor::Content::new(),
             main: MainConn::default(),
             server: ServerView::default(),
             messages: HashMap::new(),
@@ -373,6 +394,9 @@ impl App {
             input: String::new(),
             new_channel: String::new(),
             create_open: false,
+            category_open: false,
+            rename_channel: None,
+            new_category: String::new(),
             members_hidden: false,
             channels_collapsed: false,
             menu: None,
@@ -620,6 +644,8 @@ impl App {
                 self.save_prefs();
             }
             ServerMsg::Channels { channels } => self.server.channels = channels,
+            ServerMsg::Categories { categories } => self.server.categories = categories,
+            ServerMsg::ChannelRenamed { old, new } => self.channel_renamed(&old, &new),
             ServerMsg::DirectMessages { list } => self.server.dms = list,
             ServerMsg::Presence { users } => {
                 let owner = users.iter().find(|u| u.owner).cloned();
@@ -653,6 +679,38 @@ impl App {
                     if m.id == id {
                         m.reactions = reactions.clone();
                     }
+                }
+            }
+        }
+    }
+
+    /// Follows a rename: the list, the categories, the messages, and the channel that is open.
+    pub(crate) fn channel_renamed(&mut self, old: &str, new: &str) {
+        for c in self.server.channels.iter_mut().filter(|c| c.as_str() == old) {
+            *c = new.to_string();
+        }
+        for cat in self.server.categories.iter_mut() {
+            for c in cat.channels.iter_mut().filter(|c| c.as_str() == old) {
+                *c = new.to_string();
+            }
+        }
+        if let Some(list) = self.messages.remove(old) {
+            self.messages.insert(new.to_string(), list);
+        }
+        if self.unread.remove(old) {
+            self.unread.insert(new.to_string());
+        }
+        if let Some(mark) = self.read_marks.remove(old) {
+            self.read_marks.insert(new.to_string(), mark);
+        }
+        if self.server.channel == old {
+            self.server.channel = new.to_string();
+        }
+        if let Some(addr) = self.main.addr.clone() {
+            if let Some(last) = self.prefs.last_channels.get_mut(&addr) {
+                if last == old {
+                    *last = new.to_string();
+                    self.save_prefs();
                 }
             }
         }
@@ -832,9 +890,15 @@ impl App {
                     items.push(item("Mark as read", None, false, Message::MarkRead(name.clone())));
                 }
                 if !is_dm_channel(&name) {
+                    items.push(item("Rename channel", None, false, Message::RenameStart(name.clone())));
                     items.push(item("Copy channel name", None, false, Message::CopyText(format!("#{name}"))));
+                    items.extend(self.move_items(&name));
                 }
                 (format!("channel-{name}"), items, None)
+            }
+            MenuKind::Category(name) => {
+                let items = vec![item("Delete category", Some(crate::icons::TRASH), true, Message::DeleteCategory(name.clone()))];
+                (format!("category-{name}"), items, None)
             }
             MenuKind::User { name, can_message } => {
                 let mut items = vec![item("Mention", None, false, Message::Mention(name.clone()))];
@@ -877,12 +941,37 @@ impl App {
         self.picker = None;
     }
 
+    /// Items that move a channel to another category, or take it out of its category.
+    pub(crate) fn move_items(&self, channel: &str) -> Vec<MenuItem> {
+        let current = self.server.categories.iter().find(|c| c.channels.iter().any(|n| n == channel));
+        let mut items = Vec::new();
+        for category in &self.server.categories {
+            if current.is_some_and(|c| c.name == category.name) {
+                continue;
+            }
+            items.push(item(
+                &format!("Move to {}", category.name),
+                None,
+                false,
+                Message::MoveChannel(channel.to_string(), Some(category.name.clone())),
+            ));
+        }
+        if let Some(c) = current {
+            items.push(item(&format!("Remove from {}", c.name), None, false, Message::MoveChannel(channel.to_string(), None)));
+        }
+        if !items.is_empty() {
+            items.insert(0, MenuItem::Divider);
+        }
+        items
+    }
+
     pub(crate) fn server_menu_items(&self) -> Vec<MenuItem> {
         let mut items = Vec::new();
         if self.is_owner() {
             items.push(item("Server settings", None, false, Message::ServerSettingsOpen));
         }
         items.push(item("Create channel", None, false, Message::CreateOpen));
+        items.push(item("Create category", None, false, Message::CategoryOpen));
         items.push(MenuItem::Divider);
         let label = if self.members_hidden { "Show member list" } else { "Hide member list" };
         items.push(item(label, None, false, Message::ToggleMembers));

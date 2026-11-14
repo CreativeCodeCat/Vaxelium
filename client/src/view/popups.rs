@@ -196,6 +196,28 @@ pub fn dialog_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     if app.add_server.open {
         return Some(super::pages::join_server(app, pal));
     }
+    if let Some((old, new)) = &app.rename_channel {
+        let items: Vec<Element<'_, Message>> = vec![
+            text(format!("Rename #{old}")).size(20).color(pal.text_strong).into(),
+            text_input("new-channel-name", new)
+                .id(crate::app::RENAME_ID)
+                .on_input(Message::RenameInput)
+                .on_submit(Message::RenameSubmit)
+                .padding(10)
+                .size(14)
+                .into(),
+            text("Messages and the channel's place in its category move with it.").size(12).color(pal.text_muted).into(),
+            row![
+                space().width(Length::Fill),
+                link("Cancel", Message::RenameCancel, pal.text_muted),
+                solid("Save", Message::RenameSubmit, pal.accent, pal.on_color, Some(96.0)),
+            ]
+            .spacing(10)
+            .align_y(iced::alignment::Vertical::Center)
+            .into(),
+        ];
+        return Some(modal(items, pal, Message::RenameCancel));
+    }
     None
 }
 

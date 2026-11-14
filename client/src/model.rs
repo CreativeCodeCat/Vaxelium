@@ -35,6 +35,8 @@ pub struct ServerView {
     pub icon: Option<String>,
     pub public: bool,
     pub channels: Vec<String>,
+    /// The server's categories, in order, with the channels in each.
+    pub categories: Vec<common::CategoryInfo>,
     pub channel: String,
     pub dms: Vec<DirectMessage>,
     pub online: Vec<String>,

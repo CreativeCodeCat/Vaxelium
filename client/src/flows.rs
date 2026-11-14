@@ -190,3 +190,52 @@ fn clear_empties_the_search_and_closes_its_menu() {
     assert!(app.search.is_empty());
     assert!(!app.search_open);
 }
+
+#[test]
+fn categories_from_the_server_are_shown_and_offered_as_moves() {
+    use crate::app::{MenuItem, Message as M};
+    let mut app = app();
+    let _ = app.update(net(ServerMsg::Channels { channels: vec!["general".into(), "random".into(), "dev".into()] }));
+    let _ = app.update(net(ServerMsg::Categories {
+        categories: vec![common::CategoryInfo { name: "Text".into(), channels: vec!["general".into()] }],
+    }));
+    assert_eq!(app.server.categories[0].name, "Text");
+    // general is in Text, so it can only be moved out or into another category.
+    let items = app.move_items("general");
+    let labels: Vec<String> = items
+        .iter()
+        .filter_map(|i| match i {
+            MenuItem::Action { label, .. } => Some(label.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(labels, vec!["Remove from Text".to_string()]);
+    // random is in no category, so it can be moved into Text.
+    let items = app.move_items("random");
+    assert!(items.iter().any(|i| matches!(i, MenuItem::Action { msg: M::MoveChannel(c, Some(cat)), .. } if c == "random" && cat == "Text")));
+}
+
+#[test]
+fn a_rename_moves_the_open_channel_and_its_messages() {
+    let mut app = app();
+    let _ = app.update(net(ServerMsg::Channels { channels: vec!["general".into(), "dev".into()] }));
+    let _ = app.update(net(ServerMsg::Joined {
+        channel: "general".into(),
+        history: vec![chat(1, "general", "bob", "hello", 1_700_000_000)],
+    }));
+    let _ = app.update(net(ServerMsg::ChannelRenamed { old: "general".into(), new: "lobby".into() }));
+    assert_eq!(app.server.channel, "lobby");
+    assert_eq!(app.server.channels, vec!["lobby".to_string(), "dev".to_string()]);
+    assert_eq!(app.messages["lobby"].len(), 1);
+    assert!(!app.messages.contains_key("general"));
+}
+
+#[test]
+fn rename_dialog_opens_and_saves_only_a_real_change() {
+    let mut app = app();
+    let _ = app.update(Message::RenameStart("dev".into()));
+    assert_eq!(app.rename_channel, Some(("dev".into(), "dev".into())));
+    let _ = app.update(Message::RenameInput("   ".into()));
+    let _ = app.update(Message::RenameSubmit);
+    assert!(app.rename_channel.is_none(), "the dialog closes on save even with an empty name");
+}

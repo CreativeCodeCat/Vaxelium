@@ -216,3 +216,26 @@ fn search_with_text_screen() {
     let _ = app.update(Message::SearchChanged("hello".into()));
     save_at(&app, "search-text", 1100.0, 700.0);
 }
+
+#[test]
+fn server_profile_multiline_screen() {
+    let mut app = chat_app();
+    app.server.description = "First line of the description.\nSecond line, which is longer and keeps going.".into();
+    let _ = app.update(Message::ServerSettingsOpen);
+    save_at(&app, "server-profile", 1100.0, 700.0);
+}
+
+#[test]
+fn categories_screen() {
+    let mut app = chat_app();
+    app.server.channels = vec!["general".into(), "random".into(), "dev".into()];
+    app.server.categories = vec![common::CategoryInfo { name: "Text channels".into(), channels: vec!["dev".into(), "random".into()] }];
+    save_at(&app, "categories", 1100.0, 700.0);
+}
+
+#[test]
+fn rename_channel_screen() {
+    let mut app = chat_app();
+    let _ = app.update(Message::RenameStart("general".into()));
+    save_at(&app, "rename", 1100.0, 700.0);
+}

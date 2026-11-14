@@ -159,6 +159,46 @@ impl App {
                 return operation::focus(NEW_CHANNEL_ID);
             }
             Message::NewChannel(v) => self.new_channel = v,
+            Message::CategoryOpen => {
+                self.category_open = true;
+                self.menu = None;
+                return operation::focus(crate::app::NEW_CATEGORY_ID);
+            }
+            Message::NewCategory(v) => self.new_category = v,
+            Message::CreateCategory => {
+                let name = std::mem::take(&mut self.new_category).trim().to_string();
+                self.category_open = false;
+                if !name.is_empty() {
+                    let _ = self.backend.send_main(ClientMsg::CreateCategory { name });
+                }
+            }
+            Message::DeleteCategory(name) => {
+                self.menu = None;
+                let _ = self.backend.send_main(ClientMsg::DeleteCategory { name });
+            }
+            Message::RenameStart(name) => {
+                self.menu = None;
+                self.rename_channel = Some((name.clone(), name));
+                return operation::focus(crate::app::RENAME_ID);
+            }
+            Message::RenameInput(v) => {
+                if let Some((_, text)) = self.rename_channel.as_mut() {
+                    *text = v;
+                }
+            }
+            Message::RenameSubmit => {
+                if let Some((old, new)) = self.rename_channel.take() {
+                    let new = new.trim().to_string();
+                    if !new.is_empty() && new != old {
+                        let _ = self.backend.send_main(ClientMsg::RenameChannel { channel: old, new_name: new });
+                    }
+                }
+            }
+            Message::RenameCancel => self.rename_channel = None,
+            Message::MoveChannel(channel, category) => {
+                self.menu = None;
+                let _ = self.backend.send_main(ClientMsg::MoveChannel { channel, category });
+            }
             Message::CreateChannel => {
                 let name = std::mem::take(&mut self.new_channel);
                 self.create_open = false;
@@ -365,16 +405,15 @@ impl App {
 
             Message::ServerSettingsOpen => {
                 self.menu = None;
-                self.server_form = crate::app::ServerForm {
-                    name: self.selected_name().unwrap_or_default(),
-                    description: self.server.description.clone(),
-                    icon_error: None,
-                };
+                self.reset_server_form();
                 self.page = Page::Server;
             }
             Message::ServerSettingsClose => self.page = Page::None,
             Message::ServerName(v) => self.server_form.name = v,
-            Message::ServerDescription(v) => self.server_form.description = v,
+            Message::ServerDescriptionEdit(action) => {
+                self.description_editor.perform(action);
+                self.server_form.description = self.description_editor.text();
+            }
             Message::ServerSave => {
                 let name = self.server_form.name.trim().to_string();
                 if !name.is_empty() {
@@ -382,13 +421,7 @@ impl App {
                     let _ = self.backend.send_main(ClientMsg::UpdateServer { name, description });
                 }
             }
-            Message::ServerReset => {
-                self.server_form = crate::app::ServerForm {
-                    name: self.selected_name().unwrap_or_default(),
-                    description: self.server.description.clone(),
-                    icon_error: None,
-                };
-            }
+            Message::ServerReset => self.reset_server_form(),
             Message::IconPick => {
                 self.server_form.icon_error = None;
                 return Task::perform(offload(crate::icons::pick_server_icon), Message::IconPicked);
@@ -409,6 +442,16 @@ impl App {
         Task::none()
     }
 
+    /// Fills the server settings form from the open server, including the description editor.
+    fn reset_server_form(&mut self) {
+        self.server_form = crate::app::ServerForm {
+            name: self.selected_name().unwrap_or_default(),
+            description: self.server.description.clone(),
+            icon_error: None,
+        };
+        self.description_editor = iced::widget::text_editor::Content::with_text(&self.server.description);
+    }
+
     /// Keeps the session of a remembered login up to date on disk.
     pub(crate) fn remember_session_now(&mut self) {
         self.save_prefs_with_session();
@@ -425,6 +468,10 @@ impl App {
             self.editing = None;
         } else if self.pending_delete.is_some() {
             self.pending_delete = None;
+        } else if self.rename_channel.is_some() {
+            self.rename_channel = None;
+        } else if self.category_open {
+            self.category_open = false;
         } else if self.add_server.open {
             self.add_server.open = false;
         } else if self.account.editing.is_some() {
