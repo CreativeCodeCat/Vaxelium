@@ -839,8 +839,16 @@ impl App {
                 self.server.member_roles = users.iter().map(|u| (u.id.clone(), u.roles.clone())).collect();
                 self.server.owner = owner.as_ref().map(|o| o.name.clone());
                 self.server.owner_id = owner.map(|o| o.id);
+                if self.remember_protected() {
+                    self.save_prefs();
+                }
             }
-            ServerMsg::Roles { roles } => self.server.roles = roles,
+            ServerMsg::Roles { roles } => {
+                self.server.roles = roles;
+                if self.remember_protected() {
+                    self.save_prefs();
+                }
+            }
             ServerMsg::System { channel_id, text } => {
                 self.messages
                     .entry(channel_id)
@@ -1024,7 +1032,7 @@ impl App {
             self.add_server.error = Some("That server is already in your list.".into());
             return Task::none();
         }
-        self.prefs.servers.push(ServerPref { name: addr.clone(), addr, icon: None, id: None, ignored: Vec::new() });
+        self.prefs.servers.push(ServerPref { name: addr.clone(), addr, icon: None, id: None, ignored: Vec::new(), protected: Vec::new() });
         self.add_server = AddServer::default();
         self.save_prefs();
         let index = self.prefs.servers.len() - 1;
@@ -1040,7 +1048,7 @@ impl App {
         if self.prefs.servers.iter().any(|s| s.addr == addr) {
             return;
         }
-        self.prefs.servers.push(ServerPref { name: found.name, addr: found.addr, icon: found.icon, id: Some(found.server_id), ignored: Vec::new() });
+        self.prefs.servers.push(ServerPref { name: found.name, addr: found.addr, icon: found.icon, id: Some(found.server_id), ignored: Vec::new(), protected: Vec::new() });
         self.save_prefs();
         self.dm_tick();
     }

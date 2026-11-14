@@ -14,7 +14,7 @@ fn app() -> App {
     let (tx, _rx) = mpsc::channel();
     let backend = Backend::new(tx, std::env::temp_dir().join("vaxelium-flows"));
     let mut prefs = Prefs::default();
-    prefs.servers = vec![ServerPref { name: "Home".into(), addr: "127.0.0.1:7878".into(), icon: None, id: None, ignored: Vec::new() }];
+    prefs.servers = vec![ServerPref { name: "Home".into(), addr: "127.0.0.1:7878".into(), icon: None, id: None, ignored: Vec::new(), protected: Vec::new() }];
     let mut app = App::new(backend, prefs, Vec::new(), HashMap::new());
     app.user = Some("alice".into());
     app.selected = Some(0);
@@ -407,4 +407,41 @@ fn the_owner_and_bypass_holders_cannot_be_ignored_or_blocked() {
     // Carol can be.
     let _ = app.update(Message::BlockToggle("id-carol".into()));
     assert!(app.is_blocked("id-carol"));
+}
+
+#[test]
+fn bypass_protects_only_on_the_server_that_grants_it() {
+    let mut app = app();
+    app.prefs.servers.push(ServerPref {
+        name: "Other".into(),
+        addr: "other.example:7878".into(),
+        icon: None,
+        id: None,
+        ignored: Vec::new(),
+        protected: Vec::new(),
+    });
+    welcome(&mut app);
+    let addr = app.prefs.servers[0].addr.clone();
+    let _ = app.update(net(ServerMsg::Roles {
+        roles: vec![common::RoleInfo {
+            id: 7,
+            name: "Staff".into(),
+            color: String::new(),
+            permissions: common::perm::BYPASS_IGNORE,
+            position: 1,
+        }],
+    }));
+    let _ = app.update(net(ServerMsg::Presence {
+        users: vec![
+            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true, roles: vec![] },
+            UserStatus { name: "bob".into(), id: "id-bob".into(), online: true, owner: false, roles: vec![7] },
+        ],
+    }));
+    // The open server remembers bob as protected; the other server does not.
+    assert!(app.prefs.servers[0].protected.contains(&"id-bob".to_string()));
+    // A block made on this device (the block button refuses bob here, so set it directly).
+    app.prefs.blocked.push("id-bob".into());
+    // Bob has Bypass ignore on this server, so the block does not apply here; the other server still hides him.
+    assert!(!app.blocked_on(&addr, "id-bob"));
+    assert!(app.blocked_on("other.example:7878", "id-bob"));
 }
