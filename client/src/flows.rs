@@ -445,3 +445,28 @@ fn bypass_protects_only_on_the_server_that_grants_it() {
     assert!(!app.blocked_on(&addr, "id-bob"));
     assert!(app.blocked_on("other.example:7878", "id-bob"));
 }
+
+#[test]
+fn offline_banner_hides_when_the_auth_service_returns() {
+    let mut app = app();
+    app.auth_down = true;
+    app.auth_banner_closed = true;
+    let _ = app.update(Message::AuthProbed(false));
+    assert!(app.auth_down, "still offline: the banner stays");
+    let _ = app.update(Message::AuthProbed(true));
+    assert!(!app.auth_down, "back online: the banner hides");
+    assert!(!app.auth_banner_closed, "a later outage shows the banner again");
+}
+
+#[test]
+fn losing_the_auth_service_shows_the_banner() {
+    use crate::backend::CmdError;
+    let mut lost = app();
+    assert!(!lost.auth_down);
+    let _ = lost.update(Message::VerifyDone(Err(CmdError { message: "unreachable".into(), auth_down: true })));
+    assert!(lost.auth_down, "an unreachable auth service shows the banner");
+
+    let mut wrong = app();
+    let _ = wrong.update(Message::VerifyDone(Err(CmdError::new("Wrong code."))));
+    assert!(!wrong.auth_down, "an ordinary error does not show the banner");
+}

@@ -12,11 +12,16 @@ pub fn auth_addr() -> String {
     std::env::var("VAXELIUM_AUTH").unwrap_or_else(|_| DEFAULT_AUTH_ADDR.to_string())
 }
 
+/// Whether the auth service accepts a connection right now. Used to hide the offline banner again.
+pub fn reachable() -> bool {
+    common::tls::connect_blocking(&auth_addr(), Duration::from_secs(3)).is_ok()
+}
+
 /// Sends one request and returns the reply.
 pub fn request(req: &AuthRequest) -> Result<AuthReply, String> {
     let addr = auth_addr();
     let (mut stream, fingerprint) = common::tls::connect_blocking(&addr, Duration::from_secs(4))
-        .map_err(|e| connect_error_message(&addr, &e))?;
+        .map_err(|e| connect_error_message(&e))?;
     // Check the certificate before sending anything, such as a password.
     trust::check(&format!("auth:{addr}"), &fingerprint)?;
     stream
@@ -36,15 +41,14 @@ pub fn request(req: &AuthRequest) -> Result<AuthReply, String> {
 }
 
 /// Turns a connection error into a message that says what to do about it.
-fn connect_error_message(addr: &str, e: &std::io::Error) -> String {
+fn connect_error_message(e: &std::io::Error) -> String {
     match e.kind() {
-        std::io::ErrorKind::ConnectionRefused => format!(
-            "Nothing is listening at {addr}. Start the auth service with `cargo run -p auth`, \
-             or set VAXELIUM_AUTH to the address it is running on."
-        ),
-        std::io::ErrorKind::TimedOut => format!(
-            "The auth service at {addr} did not answer in time. Check that it is running and reachable."
-        ),
-        _ => format!("Could not reach the auth service at {addr}: {e}"),
+        std::io::ErrorKind::ConnectionRefused => {
+            "The account service is offline right now. Try again in a little while.".into()
+        }
+        std::io::ErrorKind::TimedOut => {
+            "The account service stopped responding. Check your connection and try again.".into()
+        }
+        _ => "Could not reach the account service. Check your connection and try again.".into(),
     }
 }

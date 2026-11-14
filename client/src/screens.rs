@@ -387,3 +387,22 @@ fn member_roles_flyout_left_screen() {
     let _ = app.update(Message::RolesMenuOpen);
     save_at(&app, "member-roles-left", 1100.0, 700.0);
 }
+
+#[test]
+fn verify_email_dialog_screen() {
+    let mut app = chat_app();
+    app.account.email = Some("alice@example.com".into());
+    app.account.verify_open = true;
+    app.account.verify_error = Some("that code is wrong".into());
+    save_at(&app, "verify-email", 1100.0, 700.0);
+}
+
+#[test]
+fn account_auth_unavailable_screen() {
+    let mut app = chat_app();
+    app.page = Page::User;
+    app.account.username = None;
+    app.account.email = None;
+    app.account.email_error = Some("The account service is offline right now. Try again in a little while.".into());
+    save_at(&app, "account-auth-unavailable", 1100.0, 700.0);
+}

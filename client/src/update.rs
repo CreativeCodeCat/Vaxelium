@@ -60,6 +60,14 @@ impl App {
                 }
             }
             Message::AuthBannerClose => self.auth_banner_closed = true,
+            Message::AuthProbe => return Task::perform(offload(crate::auth_client::reachable), Message::AuthProbed),
+            Message::AuthProbed(up) => {
+                if up {
+                    // The service is back: hide the banner, and let a later outage show it again.
+                    self.auth_down = false;
+                    self.auth_banner_closed = false;
+                }
+            }
             Message::Logout => return self.logout(),
             Message::LoggedOut => {}
 
@@ -388,9 +396,18 @@ impl App {
                     self.user = Some(p.name);
                     self.account.username = Some(p.username);
                     self.account.email = p.email;
+                    self.account.verified = p.verified;
+                    self.account.can_verify = p.can_verify;
                     self.account.email_error = None;
+                    self.auth_down = false;
+                    self.auth_banner_closed = false;
                 }
-                Err(e) => self.account.email_error = Some(e.message),
+                Err(e) => {
+                    self.account.email_error = Some(e.message);
+                    if e.auth_down {
+                        self.auth_down = true;
+                    }
+                }
             },
             Message::AccountEdit(field) => {
                 let acc = &mut self.account;
@@ -444,6 +461,56 @@ impl App {
             }
             Message::AccountSave => return self.save_account(),
             Message::AccountSaved(saved) => self.apply_account_saved(saved),
+            Message::VerifyOpen => {
+                self.account.verify_busy = true;
+                self.account.verify_error = None;
+                let backend = self.backend.clone();
+                return Task::perform(offload(move || backend.request_email_code()), Message::CodeRequested);
+            }
+            Message::CodeRequested(result) => {
+                self.account.verify_busy = false;
+                self.account.verify_open = true;
+                self.account.verify_code.clear();
+                if let Err(e) = &result {
+                    if e.auth_down {
+                        self.auth_down = true;
+                    }
+                }
+                self.account.verify_error = result.err().map(|e| e.message);
+            }
+            Message::VerifyCodeInput(code) => self.account.verify_code = code,
+            Message::VerifySubmit => {
+                if self.account.verify_busy {
+                    return Task::none();
+                }
+                self.account.verify_busy = true;
+                self.account.verify_error = None;
+                let code = self.account.verify_code.trim().to_string();
+                let backend = self.backend.clone();
+                return Task::perform(offload(move || backend.verify_email(code)), Message::VerifyDone);
+            }
+            Message::VerifyDone(result) => {
+                self.account.verify_busy = false;
+                match result {
+                    Ok(()) => {
+                        self.account.verified = true;
+                        self.account.verify_open = false;
+                        self.account.verify_code.clear();
+                        self.account.verify_error = None;
+                    }
+                    Err(e) => {
+                        self.account.verify_error = Some(e.message);
+                        if e.auth_down {
+                            self.auth_down = true;
+                        }
+                    }
+                }
+            }
+            Message::VerifyCancel => {
+                self.account.verify_open = false;
+                self.account.verify_code.clear();
+                self.account.verify_error = None;
+            }
             Message::ThemePick(id) => {
                 self.menu = None;
                 self.account.draft_theme = if id == self.prefs.theme { None } else { Some(id) };
@@ -658,7 +725,7 @@ impl App {
         let backend = self.backend.clone();
         Task::perform(
             offload(move || {
-                let mut out = AccountSaved { profile: None, email: None, name_saved: false, username_saved: false, email_saved: false, error: None };
+                let mut out = AccountSaved { profile: None, email: None, name_saved: false, username_saved: false, email_saved: false, error: None, auth_down: false };
                 let name_change = name.filter(|n| *n != current_name);
                 let username_change = username.filter(|u| *u != current_username);
                 if name_change.is_some() || username_change.is_some() {
@@ -671,6 +738,7 @@ impl App {
                         }
                         Err(e) => {
                             out.error = Some(e.message);
+                            out.auth_down = e.auth_down;
                             return out;
                         }
                     }
@@ -686,6 +754,7 @@ impl App {
                         }
                         Err(e) => {
                             out.error = Some(e.message);
+                            out.auth_down = e.auth_down;
                             return out;
                         }
                     }
@@ -716,8 +785,13 @@ impl App {
         }
         if let Some(addr) = saved.email {
             self.account.email = Some(addr);
+            // A new address has to be confirmed again.
+            self.account.verified = false;
         }
         self.account.save_error = saved.error;
+        if saved.auth_down {
+            self.auth_down = true;
+        }
     }
 
     /// Starts a search for a channel named in an in: filter, when the search asks for one.

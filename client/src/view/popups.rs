@@ -275,6 +275,37 @@ pub fn picker_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
 
 /// The dialogs: delete a message, and joining a server.
 pub fn dialog_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
+    if app.account.verify_open {
+        let acc = &app.account;
+        let address = app.account.email.clone().unwrap_or_else(|| "your address".into());
+        let mut items: Vec<Element<'_, Message>> = vec![
+            text("Confirm your email").size(20).color(pal.text_strong).into(),
+            text(format!("Enter the 6-digit code we emailed to {address}. It expires in 15 minutes."))
+                .size(14)
+                .color(pal.text)
+                .into(),
+            text_input("123456", &acc.verify_code)
+                .on_input(Message::VerifyCodeInput)
+                .on_submit(Message::VerifySubmit)
+                .padding(10)
+                .into(),
+        ];
+        if let Some(error) = &acc.verify_error {
+            items.push(text(error.clone()).size(13).color(pal.red).into());
+        }
+        items.push(
+            row![
+                link("Send a new code", Message::VerifyOpen, pal.link),
+                space().width(Length::Fill),
+                link("Cancel", Message::VerifyCancel, pal.text_muted),
+                solid("Confirm", Message::VerifySubmit, pal.accent, pal.on_color, None),
+            ]
+            .spacing(10)
+            .align_y(iced::alignment::Vertical::Center)
+            .into(),
+        );
+        return Some(modal(items, pal, Message::VerifyCancel));
+    }
     if app.pending_delete.is_some() {
         let items: Vec<Element<'_, Message>> = vec![
             text("Delete message?").size(20).color(pal.text_strong).into(),
