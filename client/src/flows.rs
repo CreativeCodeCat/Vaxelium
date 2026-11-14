@@ -14,7 +14,7 @@ fn app() -> App {
     let (tx, _rx) = mpsc::channel();
     let backend = Backend::new(tx, std::env::temp_dir().join("vaxelium-flows"));
     let mut prefs = Prefs::default();
-    prefs.servers = vec![ServerPref { name: "Home".into(), addr: "127.0.0.1:7878".into(), icon: None, id: None }];
+    prefs.servers = vec![ServerPref { name: "Home".into(), addr: "127.0.0.1:7878".into(), icon: None, id: None, ignored: Vec::new() }];
     let mut app = App::new(backend, prefs, Vec::new(), HashMap::new());
     app.user = Some("alice".into());
     app.selected = Some(0);
@@ -344,4 +344,67 @@ fn deleting_a_role_asks_first() {
     let _ = app.update(Message::RoleDeleteAsk(5, "Mods".into()));
     let _ = app.update(Message::RoleDeleteConfirm);
     assert!(app.pending_role_delete.is_none());
+}
+
+#[test]
+fn ignore_hides_on_this_server_and_block_hides_everywhere() {
+    let mut app = app();
+    welcome(&mut app);
+    let _ = app.update(net(ServerMsg::Joined {
+        channel: chan(1, "general"),
+        history: vec![chat(1, 1, "bob", "hi", 1), chat(2, 1, "carol", "hello", 2)],
+    }));
+    assert_eq!(app.current_entries().len(), 2);
+
+    // Ignoring bob hides his messages here, and only here.
+    let _ = app.update(Message::IgnoreToggle("id-bob".into()));
+    assert!(app.is_ignored_here("id-bob"));
+    assert_eq!(app.current_entries().len(), 1);
+    assert_eq!(app.prefs.servers[0].ignored, vec!["id-bob".to_string()]);
+
+    // Blocking carol hides her on every server. Unignoring bob shows him again.
+    let _ = app.update(Message::BlockToggle("id-carol".into()));
+    assert!(app.is_blocked("id-carol"));
+    assert_eq!(app.current_entries().len(), 0);
+    let _ = app.update(Message::IgnoreToggle("id-bob".into()));
+    assert!(!app.is_ignored_here("id-bob"));
+    assert_eq!(app.current_entries().len(), 1);
+
+    // Blocking again unblocks.
+    let _ = app.update(Message::BlockToggle("id-carol".into()));
+    assert!(!app.is_blocked("id-carol"));
+}
+
+#[test]
+fn the_owner_and_bypass_holders_cannot_be_ignored_or_blocked() {
+    let mut app = app();
+    welcome(&mut app);
+    let _ = app.update(net(ServerMsg::Roles {
+        roles: vec![common::RoleInfo {
+            id: 7,
+            name: "Staff".into(),
+            color: String::new(),
+            permissions: common::perm::BYPASS_IGNORE,
+            position: 1,
+        }],
+    }));
+    let _ = app.update(net(ServerMsg::Presence {
+        users: vec![
+            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true, roles: vec![] },
+            UserStatus { name: "bob".into(), id: "id-bob".into(), online: true, owner: false, roles: vec![7] },
+            UserStatus { name: "carol".into(), id: "id-carol".into(), online: true, owner: false, roles: vec![] },
+        ],
+    }));
+    // The owner and bob (who has Bypass ignore) cannot be ignored or blocked.
+    for id in ["id-alice", "id-bob"] {
+        let _ = app.update(Message::IgnoreToggle(id.into()));
+        let _ = app.update(Message::BlockToggle(id.into()));
+        assert!(!app.is_ignored_here(id));
+        assert!(!app.is_blocked(id));
+        assert!(app.prefs.blocked.is_empty());
+        assert!(app.prefs.servers[0].ignored.is_empty());
+    }
+    // Carol can be.
+    let _ = app.update(Message::BlockToggle("id-carol".into()));
+    assert!(app.is_blocked("id-carol"));
 }

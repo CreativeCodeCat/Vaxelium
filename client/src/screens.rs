@@ -22,7 +22,7 @@ fn app() -> App {
     let dir = std::env::temp_dir().join("vaxelium-screens");
     let backend = Backend::new(tx, dir);
     let mut prefs = Prefs::default();
-    prefs.servers = vec![ServerPref { name: "Home".into(), addr: "127.0.0.1:7878".into(), icon: None, id: None }];
+    prefs.servers = vec![ServerPref { name: "Home".into(), addr: "127.0.0.1:7878".into(), icon: None, id: None, ignored: Vec::new() }];
     App::new(backend, prefs, Vec::new(), HashMap::new())
 }
 
@@ -367,4 +367,23 @@ fn roles_unsaved_bar_screen() {
     let _ = app.update(Message::RoleEdit(Some(2)));
     let _ = app.update(Message::RoleDraftName("Mod Team".into()));
     save_at(&app, "roles-unsaved", 1100.0, 700.0);
+}
+
+#[test]
+fn member_roles_checklist_screen() {
+    let mut app = chat_app();
+    with_roles(&mut app);
+    let _ = app.update(Message::OpenMenu(MenuKind::User { name: "bob".into(), can_message: true }));
+    let _ = app.update(Message::RolesMenuOpen);
+    save_at(&app, "member-roles-menu", 1100.0, 700.0);
+}
+
+#[test]
+fn member_roles_flyout_left_screen() {
+    let mut app = chat_app();
+    with_roles(&mut app);
+    app.cursor = iced::Point::new(900.0, 300.0);
+    let _ = app.update(Message::OpenMenu(MenuKind::User { name: "bob".into(), can_message: true }));
+    let _ = app.update(Message::RolesMenuOpen);
+    save_at(&app, "member-roles-left", 1100.0, 700.0);
 }

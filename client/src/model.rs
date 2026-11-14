@@ -277,7 +277,8 @@ impl App {
                 }
             }
         }
-        let mut rows: Vec<PersonRow> = rows.into_values().collect();
+        // Blocked people are not listed.
+        let mut rows: Vec<PersonRow> = rows.into_values().filter(|r| !self.is_blocked(&r.id)).collect();
         rows.sort_by(|a, b| b.last.cmp(&a.last).then_with(|| a.name.cmp(&b.name)));
         rows
     }
@@ -312,9 +313,52 @@ impl App {
     /// The entries shown for the open view: channel messages, or the direct message timeline.
     pub fn current_entries(&self) -> Vec<Entry> {
         if self.current_person().is_some() {
-            return self.dm_timeline();
+            return self
+                .dm_timeline()
+                .into_iter()
+                .filter(|e| !matches!(e, Entry::Chat(m) if self.is_blocked(&m.author_id)))
+                .collect();
         }
-        self.messages.get(&self.server.channel_id).cloned().unwrap_or_default()
+        self.messages
+            .get(&self.server.channel_id)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|e| match e {
+                Entry::Chat(m) => !self.is_blocked(&m.author_id) && !self.is_ignored_here(&m.author_id),
+                Entry::System { .. } => true,
+            })
+            .collect()
+    }
+
+    /// The permissions a member has on the open server, by account id: everyone's, plus their roles'.
+    /// The owner has every permission.
+    pub fn permissions_of(&self, member_id: &str) -> u32 {
+        if self.server.owner_id.as_deref() == Some(member_id) {
+            return perm::ALL;
+        }
+        let held = self.server.member_roles.get(member_id);
+        let everyone = self.server.roles.iter().find(|r| r.id == common::EVERYONE_ROLE).map_or(0, |r| r.permissions);
+        self.server
+            .roles
+            .iter()
+            .filter(|r| r.id != common::EVERYONE_ROLE && held.is_some_and(|h| h.contains(&r.id)))
+            .fold(everyone, |bits, r| bits | r.permissions)
+    }
+
+    /// True when nobody may ignore or block this account: the owner, and anyone with Bypass ignore.
+    pub fn is_protected(&self, account_id: &str) -> bool {
+        self.permissions_of(account_id) & perm::BYPASS_IGNORE != 0
+    }
+
+    /// True when this account is blocked on every server. A protected account is never blocked.
+    pub fn is_blocked(&self, account_id: &str) -> bool {
+        !self.is_protected(account_id) && self.prefs.blocked.iter().any(|id| id == account_id)
+    }
+
+    /// True when this account is ignored on the open server. A protected account is never ignored.
+    pub fn is_ignored_here(&self, account_id: &str) -> bool {
+        !self.is_protected(account_id) && self.selected_server().is_some_and(|s| s.ignored.iter().any(|id| id == account_id))
     }
 
     /// Which server a direct message id belongs to, and its real id there.

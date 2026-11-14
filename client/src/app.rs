@@ -26,6 +26,8 @@ pub const RENAME_ID: &str = "rename-channel";
 pub const ADD_ADDR_ID: &str = "add-addr";
 pub const NEW_DM_ID: &str = "new-dm";
 pub const EDIT_ID: &str = "edit-box";
+/// The width of a member's right-click menu. It is always this wide.
+pub const MEMBER_MENU_WIDTH: f32 = 220.0;
 pub const PANEL_MIN: f32 = 250.0;
 pub const PANEL_MAX: f32 = 420.0;
 
@@ -127,6 +129,8 @@ pub struct Menu {
     pub at: Point,
     pub items: Vec<MenuItem>,
     pub width: Option<f32>,
+    /// Shown centred over the member list, at the height of the click (member menus).
+    pub centered: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -134,6 +138,8 @@ pub enum MenuItem {
     Action { label: String, icon: Option<&'static str>, danger: bool, msg: Message },
     Heading(String),
     Divider,
+    /// The Roles entry of a member's menu. Opens a checklist of roles for that member (by account id).
+    Roles { member: String },
 }
 
 /// The emoji picker for one message.
@@ -252,6 +258,8 @@ pub struct App {
     pub pending_channel_delete: Option<(i64, String)>,
     /// The role waiting for confirmation before it is deleted.
     pub pending_role_delete: Option<(i64, String)>,
+    /// The Roles checklist in a member's menu is open.
+    pub roles_menu_open: bool,
     pub new_category: String,
     pub members_hidden: bool,
     /// Categories whose channels are folded away, by category id.
@@ -351,6 +359,10 @@ pub enum Message {
     SearchMore,
     Mention(String),
     MessageUser(String),
+    /// Hide a member's messages on this server only, or show them again.
+    IgnoreToggle(String),
+    /// Hide a member's messages and direct messages on every server, or show them again.
+    BlockToggle(String),
 
     InputChanged(String),
     Send,
@@ -398,6 +410,10 @@ pub enum Message {
     RoleTab(RoleTab),
     RoleDraftColor(String),
     RoleDraftPerm(u32, bool),
+    /// The pointer is on the Roles entry of a member's menu, or has pressed it: show the flyout.
+    RolesMenuOpen,
+    /// The pointer is on another entry of the menu: hide the flyout.
+    RolesMenuClose,
     RoleSave,
     /// Put the role's saved values back into the editor.
     RoleReset,
@@ -497,6 +513,7 @@ impl App {
             dnd: None,
             pending_channel_delete: None,
             pending_role_delete: None,
+            roles_menu_open: false,
             new_category: String::new(),
             members_hidden: false,
             collapsed_categories: HashSet::new(),
@@ -1007,7 +1024,7 @@ impl App {
             self.add_server.error = Some("That server is already in your list.".into());
             return Task::none();
         }
-        self.prefs.servers.push(ServerPref { name: addr.clone(), addr, icon: None, id: None });
+        self.prefs.servers.push(ServerPref { name: addr.clone(), addr, icon: None, id: None, ignored: Vec::new() });
         self.add_server = AddServer::default();
         self.save_prefs();
         let index = self.prefs.servers.len() - 1;
@@ -1023,7 +1040,7 @@ impl App {
         if self.prefs.servers.iter().any(|s| s.addr == addr) {
             return;
         }
-        self.prefs.servers.push(ServerPref { name: found.name, addr: found.addr, icon: found.icon, id: Some(found.server_id) });
+        self.prefs.servers.push(ServerPref { name: found.name, addr: found.addr, icon: found.icon, id: Some(found.server_id), ignored: Vec::new() });
         self.save_prefs();
         self.dm_tick();
     }
@@ -1078,6 +1095,7 @@ impl App {
 
     pub(crate) fn open_menu(&mut self, kind: MenuKind) {
         let at = self.cursor;
+        let centered = matches!(kind, MenuKind::User { .. });
         let (_key, items, width) = match kind {
             MenuKind::Channel { id, name, unread } => {
                 let mut items = Vec::new();
@@ -1118,7 +1136,7 @@ impl App {
                         _ => None,
                     })
                 });
-                if let Some(id) = id {
+                if let Some(id) = id.clone() {
                     // Roles this member can be given or have taken away by the viewer.
                     let member_is_owner = self.server.owner_id.as_deref() == Some(id.as_str());
                     // Only the owner may change the owner's roles.
@@ -1127,29 +1145,22 @@ impl App {
                     } else {
                         self.top_role(&id).map_or(true, |top| self.outranks_role(top.id))
                     };
-                    if self.can(perm::MANAGE_ROLES) && member_can_change {
-                        let held = self.server.member_roles.get(&id).cloned().unwrap_or_default();
-                        // @everyone is never given out; every member has it already.
-                        let giveable: Vec<&common::RoleInfo> = self
-                            .server
-                            .roles
-                            .iter()
-                            .filter(|r| r.id != common::EVERYONE_ROLE && self.outranks_role(r.id))
-                            .collect();
-                        if !giveable.is_empty() {
-                            items.push(MenuItem::Divider);
-                            items.push(MenuItem::Heading("Roles".into()));
-                            for role in giveable {
-                                let has = held.contains(&role.id);
-                                let label = if has { format!("Remove {}", role.name) } else { format!("Add {}", role.name) };
-                                items.push(item(&label, None, false, Message::SetMemberRole(id.clone(), role.id, !has)));
-                            }
-                        }
+                    let can_give = self.server.roles.iter().any(|r| r.id != common::EVERYONE_ROLE && self.outranks_role(r.id));
+                    if self.can(perm::MANAGE_ROLES) && member_can_change && can_give {
+                        items.push(MenuItem::Divider);
+                        items.push(MenuItem::Roles { member: id.clone() });
                     }
                     items.push(MenuItem::Divider);
+                    if id != self.user_id && !self.is_protected(&id) {
+                        let ignored = self.is_ignored_here(&id);
+                        let blocked = self.is_blocked(&id);
+                        items.push(item(if ignored { "Unignore" } else { "Ignore" }, None, false, Message::IgnoreToggle(id.clone())));
+                        items.push(item(if blocked { "Unblock" } else { "Block" }, None, true, Message::BlockToggle(id.clone())));
+                        items.push(MenuItem::Divider);
+                    }
                     items.push(item("Copy ID", None, false, Message::CopyText(id)));
                 }
-                (format!("user-{name}"), items, None)
+                (format!("user-{name}"), items, Some(MEMBER_MENU_WIDTH))
             }
             MenuKind::Rail(i) => {
                 if self.selected == Some(i) && self.chat_ready() {
@@ -1180,7 +1191,8 @@ impl App {
             MenuKind::Server => (String::from("server"), self.server_menu_items(), Some(200.0)),
             MenuKind::Theme => (String::from("theme"), self.theme_menu_items(), Some(180.0)),
         };
-        self.menu = Some(Menu { at, items, width });
+        self.roles_menu_open = false;
+        self.menu = Some(Menu { at, items, width, centered });
         self.picker = None;
     }
 

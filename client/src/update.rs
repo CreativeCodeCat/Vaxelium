@@ -273,8 +273,41 @@ impl App {
             }
             Message::MessageUser(name) => {
                 self.menu = None;
+                let blocked = self.server.member_ids.get(&name).is_some_and(|id| self.is_blocked(id));
+                if blocked {
+                    self.status = format!("You have blocked {name}. Unblock them from the member list to message them.");
+                    return Task::none();
+                }
                 self.home = true;
                 let _ = self.backend.send_main(ClientMsg::OpenDm { name });
+            }
+            Message::IgnoreToggle(id) => {
+                self.menu = None;
+                if self.is_protected(&id) && !self.selected_server().is_some_and(|s| s.ignored.contains(&id)) {
+                    self.status = "This member cannot be ignored.".into();
+                    return Task::none();
+                }
+                if let Some(server) = self.selected.and_then(|i| self.prefs.servers.get_mut(i)) {
+                    if let Some(pos) = server.ignored.iter().position(|i| *i == id) {
+                        server.ignored.remove(pos);
+                    } else {
+                        server.ignored.push(id);
+                    }
+                }
+                self.save_prefs();
+            }
+            Message::BlockToggle(id) => {
+                self.menu = None;
+                if self.is_protected(&id) && !self.prefs.blocked.contains(&id) {
+                    self.status = "This member cannot be blocked.".into();
+                    return Task::none();
+                }
+                if let Some(pos) = self.prefs.blocked.iter().position(|b| *b == id) {
+                    self.prefs.blocked.remove(pos);
+                } else {
+                    self.prefs.blocked.push(id);
+                }
+                self.save_prefs();
             }
 
             // ----- composer and messages -----
@@ -520,8 +553,10 @@ impl App {
                 self.role_error = None;
                 let _ = self.backend.send_main(ClientMsg::MoveRole { role, before });
             }
+            Message::RolesMenuOpen => self.roles_menu_open = true,
+            Message::RolesMenuClose => self.roles_menu_open = false,
+            // The menu stays open, so several roles can be changed in a row.
             Message::SetMemberRole(user, role, on) => {
-                self.menu = None;
                 let _ = self.backend.send_main(ClientMsg::SetMemberRole { user, role, on });
             }
             Message::ServerName(v) => self.server_form.name = v,

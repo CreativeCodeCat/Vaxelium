@@ -16,6 +16,9 @@ pub struct ServerPref {
     pub id: Option<String>,
     #[serde(default)]
     pub icon: Option<String>,
+    /// Account ids whose messages are hidden on this server only (see the member menu's Ignore).
+    #[serde(default)]
+    pub ignored: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -50,6 +53,9 @@ pub struct Prefs {
     pub session: Option<SessionPref>,
     pub layout: Layout,
     pub last_channels: HashMap<String, String>,
+    /// Account ids blocked on every server: their messages and direct messages are hidden.
+    #[serde(default)]
+    pub blocked: Vec<String>,
 }
 
 impl Default for Prefs {
@@ -61,6 +67,7 @@ impl Default for Prefs {
             session: None,
             layout: Layout::default(),
             last_channels: HashMap::new(),
+            blocked: Vec::new(),
         }
     }
 }
