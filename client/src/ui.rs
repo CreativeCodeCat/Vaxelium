@@ -1757,24 +1757,6 @@ fn channel_sidebar(app: &mut VaxeliumApp, ui: &mut Ui, actions: &mut Vec<MenuAct
                 }
             }
 
-            // Your direct messages, after the channels.
-            if !app.dms.is_empty() {
-                ui.add_space(12.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(8.0);
-                    ui.label(RichText::new("DIRECT MESSAGES").small().strong().color(pal().text_muted));
-                });
-                ui.add_space(4.0);
-                for dm in &app.dms {
-                    let selected = dm.channel == app.channel;
-                    let unread = app.unread.contains(&dm.channel);
-                    let label = format!("@ {}", dm.name);
-                    if channel_row(ui, &dm.channel, &label, selected, unread, actions) && !selected {
-                        to_join = Some(dm.channel.clone());
-                    }
-                }
-            }
-
             // Hidden unless "+" opened it.
             if app.create_box_open {
                 ui.add_space(12.0);
