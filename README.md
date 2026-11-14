@@ -170,13 +170,18 @@ client is in, plus `joined` (with up to 200 messages of history).
 - Reactions accept any emoji of up to 16 characters. The picker offers the
   standard emoji. Emoji with skin tones can be set to one of the five tones with
   the row at the top of the picker. The choice is saved between runs.
-- Direct messages are between two members of the same server. Right-click a
-  member's name and choose Message. They are listed on the Direct messages page
-  (the button at the top of the server rail), grouped by server. The app keeps a
-  background connection to each saved server for this, so a server that is
-  offline shows no direct messages until it is reachable again. Only the two
-  members can read, reply in, or react to a direct message, and the server
-  owner cannot delete one. They are
-  stored as plain text in the server's database, so whoever runs the server can
-  read them. Direct messages between people on different servers are not
-  supported.
+- Direct messages are between two people. Right-click a member's name and
+  choose Message, or type a name in the box on the Direct messages page. They
+  are listed on that page (the button at the top of the server rail), one row
+  per person across every server. The app keeps a background connection to each
+  saved server for this, so a server that is offline shows no direct messages
+  until it is reachable again. Only the two people can read, reply in, or react
+  to a direct message, and the server owner cannot delete one.
+- Messages are stored as plain text in the servers' databases, so whoever runs a
+  server can read the direct messages it holds.
+- Direct messages between people on different servers: the sender's server
+  keeps the message and passes it to the server the other person was last seen
+  on, which keeps its own copy. The auth service records which servers each
+  person was last seen on, so they can be found. The other person has to have been
+  online on some server before, or the message is not sent. Editing, deleting and reacting are
+  not yet available on these conversations.

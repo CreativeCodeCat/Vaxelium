@@ -80,6 +80,8 @@ export const S = {
   picker: null,
   pickerQuery: '',
   pendingDm: null, // {addr, channel}
+  // The name typed into the direct message box, to start a conversation with anyone
+  dmNewName: '',
 
   // Other servers' direct messages: addr -> {id, serverName, dms, unread:Set, history}
   dmLinks: {},
