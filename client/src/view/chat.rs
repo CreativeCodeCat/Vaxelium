@@ -72,7 +72,8 @@ pub fn rail(app: &App, pal: Pal) -> Element<'_, Message> {
         pal,
         None,
     ));
-    container(Column::with_children(items).spacing(8).align_x(iced::alignment::Horizontal::Center))
+    // The column fills the rail, so its buttons are centred in it rather than kept at its left edge.
+    container(Column::with_children(items).spacing(8).align_x(iced::alignment::Horizontal::Center).width(Length::Fill))
         .width(Length::Fixed(72.0))
         .height(Length::Fill)
         .padding(crate::util::pad2(12.0, 0.0))
