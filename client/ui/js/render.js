@@ -426,6 +426,9 @@ function homeView() {
   return `
     <aside class="sidebar" data-panel="dms" style="width:${S.layout.dms}px">
       <div class="section-head" style="padding-top:12px"><span class="label" style="padding-left:4px">Direct messages</span></div>
+      <form class="new-dm" data-form="new-dm" autocomplete="off">
+        <input type="text" id="new-dm" data-model="dmNewName" placeholder="Message someone by name" value="${esc(S.dmNewName)}">
+      </form>
       <div class="channel-list">
         ${anyDms ? rows : `<p class="muted" style="padding:4px 8px">${esc(emptyText)}</p>`}
       </div>

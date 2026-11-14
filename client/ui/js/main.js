@@ -299,6 +299,7 @@ function handleMain(msg) {
       break;
     }
     case 'joined': {
+      if (isDmChannel(msg.channel)) listDirectMessagesEverywhere();
       const previous = S.server.channel;
       if (msg.channel !== previous && S.messages[previous]) {
         S.readMarks[previous] = S.messages[previous].length;
@@ -1017,6 +1018,18 @@ function onSubmit(event) {
     case 'add-server':
       addServerSubmit();
       break;
+    case 'new-dm': {
+      const name = S.dmNewName.trim();
+      S.dmNewName = '';
+      if (!name) break;
+      if (!chatReady()) {
+        S.status = 'Error: connect to a server first, then message someone by name.';
+        break;
+      }
+      S.home = true;
+      sendMain({ type: 'open_dm', name });
+      break;
+    }
     case 'account-edit':
       accountEditSubmit(form.dataset.field);
       break;
