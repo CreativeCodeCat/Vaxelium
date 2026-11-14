@@ -16,6 +16,8 @@ const TIMEOUT: Duration = Duration::from_secs(3);
 /// A server that answered a discovery request.
 #[derive(Clone, Debug)]
 pub struct FoundServer {
+    /// The server's own id, as it sent it.
+    pub server_id: String,
     pub addr: String,
     pub name: String,
     pub description: String,
@@ -51,10 +53,10 @@ pub fn start(via: String, events: Sender<Event>) {
         for addr in addrs {
             let events = events.clone();
             workers.push(std::thread::spawn(move || {
-                if let Ok(ServerMsg::Info { name, description, icon, online, public }) =
+                if let Ok(ServerMsg::Info { server_id, name, description, icon, online, public }) =
                     ask(&addr, &ClientMsg::Info)
                 {
-                    let found = FoundServer { addr, name, description, icon, online, public };
+                    let found = FoundServer { server_id, addr, name, description, icon, online, public };
                     let _ = events.send(Event::Discovered(found));
                 }
             }));

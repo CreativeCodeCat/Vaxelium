@@ -133,30 +133,91 @@ pub fn channel(app: &App, pal: Pal) -> Element<'_, Message> {
 
 fn sidebar(app: &App, pal: Pal) -> Element<'_, Message> {
     let mut list: Vec<Element<'_, Message>> = Vec::new();
-    let head = row![
-        button(icons::icon(
-            if app.channels_collapsed { icons::CHEVRON_RIGHT } else { icons::CHEVRON_DOWN },
-            14.0,
-            pal.text_muted
-        ))
-        .padding(2)
-        .on_press(Message::ToggleChannels)
-        .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() }),
-        mouse_area(text("Text channels").size(12).color(pal.text_muted)).on_press(Message::ToggleChannels),
-        space().width(Length::Fill),
-        button(icons::icon(icons::PLUS, 14.0, pal.text_muted))
-            .padding(2)
-            .on_press(Message::CreateOpen)
-            .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() }),
-    ]
-    .spacing(6)
-    .padding(crate::util::pad2(0.0, 4.0));
-    list.push(head.into());
-    for c in &app.server.channels {
-        if app.channels_collapsed && *c != app.server.channel {
-            continue;
-        }
+    // While a channel is dragged, the zone above the channels takes it out of its category.
+    let dragging_channel = matches!(app.dnd.as_ref().map(|d| (d.moved, d.item)), Some((true, crate::app::DragItem::Channel(_))));
+    let zone_over = app.dnd.as_ref().and_then(|d| d.over) == Some(crate::app::DropTarget::Uncategorized);
+    if dragging_channel {
+        let zone = container(text("Drop here to take out of its category").size(12).color(pal.text_muted))
+            .padding(crate::util::pad2(4.0, 6.0))
+            .width(Length::Fill)
+            .height(Length::Fixed(28.0))
+            .style(move |_: &Theme| round(if zone_over { pal.selected_bg } else { Color::TRANSPARENT }, 4.0));
+        list.push(
+            mouse_area(zone)
+                .on_enter(Message::DndOver(Some(crate::app::DropTarget::Uncategorized)))
+                .on_exit(Message::DndOver(None))
+                .into(),
+        );
+    }
+    // Channels not in any category come first, with no heading.
+    for c in app.server.uncategorized.iter().filter(|c| !c.name.starts_with("dm-")) {
         list.push(channel_row(app, pal, c));
+    }
+    // Each category has a heading that folds its channels. A folded category still shows the open channel.
+    for category in &app.server.categories {
+        let collapsed = app.collapsed_categories.contains(&category.id);
+        let chevron = if collapsed { icons::CHEVRON_RIGHT } else { icons::CHEVRON_DOWN };
+        let heading = row![
+            button(icons::icon(chevron, 14.0, pal.text_muted))
+                .padding(2)
+                .on_press(Message::ToggleCategory(category.id))
+                .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() }),
+            text(category.name.to_uppercase()).size(12).color(pal.text_muted),
+        ]
+        .spacing(6)
+        .align_y(iced::alignment::Vertical::Center);
+        // A category can be dragged to reorder, and a channel dropped on it joins it.
+        let hovered = app.dnd.as_ref().and_then(|d| d.over) == Some(crate::app::DropTarget::Category(category.id));
+        let target = crate::app::DropTarget::Category(category.id);
+        list.push(
+            mouse_area(
+                container(heading)
+                    .padding(crate::util::pad(12.0, 4.0, 2.0, 0.0))
+                    .width(Length::Fill)
+                    .style(move |_: &Theme| round(if hovered { pal.selected_bg } else { Color::TRANSPARENT }, 4.0)),
+            )
+            .on_press(Message::DndPress(crate::app::DragItem::Category(category.id)))
+            .on_enter(Message::DndOver(Some(target)))
+            .on_exit(Message::DndOver(None))
+            .on_right_press(Message::OpenMenu(crate::app::MenuKind::Category { id: category.id, name: category.name.clone() }))
+            .into(),
+        );
+        for c in &category.channels {
+            if collapsed && c.name != app.server.channel {
+                continue;
+            }
+            list.push(channel_row(app, pal, c));
+        }
+    }
+    // While a category is dragged, this zone after the last one moves it to the end.
+    let dragging_category = matches!(app.dnd.as_ref().map(|d| (d.moved, d.item)), Some((true, crate::app::DragItem::Category(_))));
+    if dragging_category {
+        let over_end = app.dnd.as_ref().and_then(|d| d.over) == Some(crate::app::DropTarget::End);
+        let zone = container(text("Drop here to move to the end").size(12).color(pal.text_muted))
+            .padding(crate::util::pad2(4.0, 6.0))
+            .width(Length::Fill)
+            .height(Length::Fixed(28.0))
+            .style(move |_: &Theme| round(if over_end { pal.selected_bg } else { Color::TRANSPARENT }, 4.0));
+        list.push(
+            mouse_area(zone)
+                .on_enter(Message::DndOver(Some(crate::app::DropTarget::End)))
+                .on_exit(Message::DndOver(None))
+                .into(),
+        );
+    }
+    if app.category_open {
+        list.push(
+            container(
+                text_input("Create category", &app.new_category)
+                    .id(crate::app::NEW_CATEGORY_ID)
+                    .on_input(Message::NewCategory)
+                    .on_submit(Message::CreateCategory)
+                    .padding(7)
+                    .size(14),
+            )
+            .padding(crate::util::pad(12.0, 0.0, 0.0, 0.0))
+            .into(),
+        );
     }
     if app.create_open {
         list.push(
@@ -199,9 +260,10 @@ fn sidebar(app: &App, pal: Pal) -> Element<'_, Message> {
     )
 }
 
-fn channel_row<'a>(app: &App, pal: Pal, name: &str) -> Element<'a, Message> {
-    let selected = name == app.server.channel;
-    let unread = app.unread.contains(name);
+fn channel_row<'a>(app: &App, pal: Pal, channel: &common::ChannelRef) -> Element<'a, Message> {
+    let name = channel.name.as_str();
+    let selected = channel.id == app.server.channel_id;
+    let unread = app.unread.contains(&channel.id);
     let color = if selected || unread { pal.text_strong } else { pal.text_muted };
     let bg = if selected { pal.selected_bg } else { Color::TRANSPARENT };
     let mut inner = row![text(format!("# {name}")).size(15).color(color).width(Length::Fill)]
@@ -210,16 +272,28 @@ fn channel_row<'a>(app: &App, pal: Pal, name: &str) -> Element<'a, Message> {
     if unread && !selected {
         inner = inner.push(container(space()).width(Length::Fixed(8.0)).height(Length::Fixed(8.0)).style(move |_: &Theme| round(pal.text_strong, 4.0)));
     }
+    // While another channel is dragged over this one, it is highlighted: the drop goes before it.
+    let target = crate::app::DropTarget::Channel { id: channel.id, category: category_of(app, channel.id) };
+    let dragged_channel = matches!(app.dnd.as_ref().map(|d| (d.moved, d.item)), Some((true, crate::app::DragItem::Channel(_))));
+    let hovered = dragged_channel && app.dnd.as_ref().and_then(|d| d.over) == Some(target);
+    let bg = if hovered { pal.selected_bg } else { bg };
     let body = container(inner)
         .padding(crate::util::pad2(0.0, 10.0))
         .height(Length::Fixed(32.0))
         .align_y(iced::alignment::Vertical::Center)
         .width(Length::Fill)
         .style(move |_: &Theme| round(bg, 4.0));
-    mouse_area(body)
-        .on_press(Message::ChannelOpen(name.to_string()))
-        .on_right_press(Message::OpenMenu(crate::app::MenuKind::Channel { name: name.to_string(), unread }))
+    let mut area = mouse_area(body).on_press(Message::DndPress(crate::app::DragItem::Channel(channel.id)));
+    if dragged_channel {
+        area = area.on_enter(Message::DndOver(Some(target))).on_exit(Message::DndOver(None));
+    }
+    area.on_right_press(Message::OpenMenu(crate::app::MenuKind::Channel { id: channel.id, name: name.to_string(), unread }))
         .into()
+}
+
+/// The category a channel is in, if any.
+fn category_of(app: &App, channel: i64) -> Option<i64> {
+    app.server.categories.iter().find(|c| c.channels.iter().any(|ch| ch.id == channel)).map(|c| c.id)
 }
 
 fn user_bar(app: &App, pal: Pal) -> Element<'_, Message> {
@@ -409,7 +483,7 @@ fn suggestions_menu<'a>(app: &App, pal: Pal) -> Option<Vec<Element<'a, Message>>
     let query = query.to_lowercase();
     let filter = filter.to_lowercase();
     let (heading, names): (&str, Vec<String>) = match filter.as_str() {
-        "in" => ("In Channel", app.server.channels.clone()),
+        "in" => ("In Channel", app.server.channels.iter().map(|c| c.name.clone()).collect()),
         "from" | "mentions" => (
             "Members",
             app.server.online.iter().chain(app.server.offline.iter()).cloned().collect(),
@@ -486,7 +560,7 @@ fn messages<'a>(app: &'a App, pal: Pal, entries: Vec<Entry>, search: &Search) ->
     let person = app.current_person();
     let channel = app.server.channel.clone();
     let active = !search.is_empty();
-    let new_at = if person.is_none() { app.read_marks.get(&channel).copied() } else { None };
+    let new_at = if person.is_none() { app.read_marks.get(&app.server.channel_id).copied() } else { None };
     let now = crate::util::now();
     let mut out: Vec<Element<'a, Message>> = Vec::new();
 
