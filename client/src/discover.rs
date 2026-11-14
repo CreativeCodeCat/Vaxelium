@@ -4,16 +4,17 @@
 use std::io::{BufRead, BufReader, Write};
 use std::time::Duration;
 
-use common::{ClientMsg, ServerMsg};
-use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use std::sync::mpsc::Sender;
 
+use common::{ClientMsg, ServerMsg};
+
+use crate::backend::Event;
 use crate::trust;
 
 const TIMEOUT: Duration = Duration::from_secs(3);
 
-/// A server that answered a discovery request. Sent to the page as the `discovered` event.
-#[derive(Clone, Serialize)]
+/// A server that answered a discovery request.
+#[derive(Clone, Debug)]
 pub struct FoundServer {
     pub addr: String,
     pub name: String,
@@ -40,21 +41,21 @@ fn ask(addr: &str, msg: &ClientMsg) -> Result<ServerMsg, String> {
     serde_json::from_str(&reply).map_err(|e| e.to_string())
 }
 
-/// Starts a background search. Each server that answers is emitted to the page as `discovered`.
-pub fn start(via: String, app: AppHandle) {
+/// Starts a background search. Each server that answers is sent on `events` as `Event::Discovered`.
+pub fn start(via: String, events: Sender<Event>) {
     std::thread::spawn(move || {
         let Ok(ServerMsg::Peers { addrs }) = ask(&via, &ClientMsg::Peers { known: Vec::new() }) else {
             return;
         };
         let mut workers = Vec::new();
         for addr in addrs {
-            let app = app.clone();
+            let events = events.clone();
             workers.push(std::thread::spawn(move || {
                 if let Ok(ServerMsg::Info { name, description, icon, online, public }) =
                     ask(&addr, &ClientMsg::Info)
                 {
                     let found = FoundServer { addr, name, description, icon, online, public };
-                    let _ = app.emit("discovered", found);
+                    let _ = events.send(Event::Discovered(found));
                 }
             }));
         }

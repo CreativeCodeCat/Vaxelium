@@ -1,7 +1,7 @@
 # Vaxelium
 
 A small Discord-style chat system written in Rust: an auth service, chat
-servers, and a desktop GUI client (Tauri, with an HTML/CSS/JavaScript page).
+servers, and a desktop GUI client (built with Iced, in Rust).
 
 ## Layout
 
@@ -9,7 +9,7 @@ servers, and a desktop GUI client (Tauri, with an HTML/CSS/JavaScript page).
 common/   shared wire protocol (auth and chat messages, newline-delimited JSON)
 auth/     auth service: owns all accounts and login sessions (SQLite + Argon2)
 server/   chat server: channels, messages, presence (SQLite)
-client/   desktop GUI client (Tauri): Rust in src/, the page in ui/
+client/   desktop GUI client (Iced): Rust in src/, fonts, icons and emoji artwork in ui/
 ```
 
 One account works on every chat server. The chat servers do not store
