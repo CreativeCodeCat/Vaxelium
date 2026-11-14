@@ -1,17 +1,15 @@
-//! The account and the connections to servers. The session token and the connections live here;
-//! the page only receives what servers send and the account's name. Messages reach the page as
-//! `net` events, and dropped connections as `net-closed` events.
+//! The connections to the chat servers and the auth service. Nothing here draws anything: the app
+//! asks for things, and what the servers send comes back as `Event`s on a channel.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use common::{is_valid_email, AuthReply, AuthRequest, ClientMsg, ServerMsg};
-use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
 
+use crate::discover::FoundServer;
 use crate::net::{self, Connection, NetEvent};
 use crate::{auth_client, keychain};
 
@@ -19,10 +17,10 @@ use crate::{auth_client, keychain};
 const DM_RETRY: Duration = Duration::from_secs(30);
 /// How long to wait before reconnecting to a server whose direct message link dropped.
 const DM_DROP_RETRY: Duration = Duration::from_secs(5);
-const MIN_PASSWORD_LEN: usize = 8;
+pub const MIN_PASSWORD_LEN: usize = 8;
 
-/// An error the page shows. `auth_down` is true when the auth service could not be reached.
-#[derive(Debug, Serialize)]
+/// An error the app shows. `auth_down` is true when the auth service could not be reached.
+#[derive(Debug, Clone)]
 pub struct CmdError {
     pub message: String,
     pub auth_down: bool,
@@ -39,22 +37,17 @@ impl CmdError {
 }
 
 /// The account's name, username and email, as the auth service reports them.
-#[derive(Serialize)]
+#[derive(Debug, Clone)]
 pub struct Profile {
     pub name: String,
     pub username: String,
     pub email: Option<String>,
 }
 
-/// A login saved on disk by the page. Only the account name is needed to find its token.
-#[derive(Deserialize)]
-pub struct SavedLogin {
-    pub name: String,
-}
-
-/// The outcome of restoring a saved login at startup. `user` is None when nothing was restored.
-#[derive(Serialize)]
+/// The outcome of restoring a saved login at startup.
+#[derive(Debug, Clone)]
 pub struct Restored {
+    /// The account's name, or None when nothing was restored.
     pub user: Option<String>,
     /// True when the auth service could not be reached and the saved login was used as it is.
     pub auth_down: bool,
@@ -64,7 +57,20 @@ pub struct Restored {
     pub notice: Option<String>,
 }
 
-/// One open connection and the id the page uses to tell it apart from earlier ones.
+/// Something a connection tells the app.
+#[derive(Debug, Clone)]
+pub enum Event {
+    /// A message from the open server (`dm` is false) or from a direct message connection.
+    Net { dm: bool, addr: String, id: u64, msg: ServerMsg },
+    /// A connection ended.
+    Closed { dm: bool, addr: String, id: u64, reason: String },
+    /// A direct message connection came up or went down.
+    DmLink { addr: String, id: u64, up: bool },
+    /// A server answered a discovery request.
+    Discovered(FoundServer),
+}
+
+/// One open connection and the id the app uses to tell it apart from earlier ones.
 struct Link {
     id: u64,
     conn: Connection,
@@ -85,40 +91,26 @@ struct Inner {
     dm_retry_at: HashMap<String, Instant>,
 }
 
-#[derive(Clone, Serialize)]
-struct NetPayload<'a> {
-    link: &'static str,
-    addr: &'a str,
-    id: u64,
-    msg: &'a ServerMsg,
-}
-
-#[derive(Clone, Serialize)]
-struct ClosedPayload<'a> {
-    link: &'static str,
-    addr: &'a str,
-    id: u64,
-    reason: String,
-}
-
-#[derive(Clone, Serialize)]
-struct DmLinkPayload<'a> {
-    addr: &'a str,
-    id: u64,
-    up: bool,
-}
-
+/// Shared handle to the connections. Cheap to clone; every clone sees the same connections.
 #[derive(Clone)]
-pub struct AppState {
+pub struct Backend {
     inner: Arc<Mutex<Inner>>,
-    app: AppHandle,
-    /// The folder for the app's saved settings.
-    pub config_dir: PathBuf,
+    events: Sender<Event>,
+    config_dir: PathBuf,
 }
 
-impl AppState {
-    pub fn new(app: AppHandle, config_dir: PathBuf) -> Self {
-        Self { inner: Arc::new(Mutex::new(Inner::default())), app, config_dir }
+impl Backend {
+    pub fn new(events: Sender<Event>, config_dir: PathBuf) -> Self {
+        Self { inner: Arc::new(Mutex::new(Inner::default())), events, config_dir }
+    }
+
+    /// A sender for events, for background work that reports back to the app.
+    pub fn events_sender(&self) -> Sender<Event> {
+        self.events.clone()
+    }
+
+    pub fn config_dir(&self) -> &PathBuf {
+        &self.config_dir
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
@@ -136,18 +128,18 @@ impl AppState {
         inner.remember = remember;
     }
 
-    /// Passes everything a connection receives to the page until the connection ends.
-    fn forward(&self, link: &'static str, addr: String, id: u64, rx: Receiver<NetEvent>) {
-        let state = self.clone();
+    /// Passes everything a connection receives to the app until the connection ends.
+    fn forward(&self, dm: bool, addr: String, id: u64, rx: Receiver<NetEvent>) {
+        let backend = self.clone();
         std::thread::spawn(move || {
             while let Ok(event) = rx.recv() {
                 match event {
                     NetEvent::Server(msg) => {
-                        let _ = state.app.emit("net", NetPayload { link, addr: &addr, id, msg: &msg });
+                        let _ = backend.events.send(Event::Net { dm, addr: addr.clone(), id, msg });
                     }
                     NetEvent::Disconnected(reason) => {
-                        state.forget_link(link, &addr, id);
-                        let _ = state.app.emit("net-closed", ClosedPayload { link, addr: &addr, id, reason });
+                        backend.forget_link(dm, &addr, id);
+                        let _ = backend.events.send(Event::Closed { dm, addr: addr.clone(), id, reason });
                         break;
                     }
                 }
@@ -156,8 +148,8 @@ impl AppState {
     }
 
     /// Removes a connection that has ended, so it is not used again.
-    fn forget_link(&self, link: &str, addr: &str, id: u64) {
-        if link == "main" {
+    fn forget_link(&self, dm: bool, addr: &str, id: u64) {
+        if !dm {
             let mut inner = self.lock();
             if inner.main.as_ref().is_some_and(|l| l.id == id) {
                 inner.main = None;
@@ -175,7 +167,7 @@ impl AppState {
             }
         };
         if dropped {
-            let _ = self.app.emit("dm-link", DmLinkPayload { addr, id, up: false });
+            let _ = self.events.send(Event::DmLink { addr: addr.to_string(), id, up: false });
         }
     }
 
@@ -193,7 +185,7 @@ impl AppState {
             inner.main = Some(Link { id, conn });
             id
         };
-        self.forward("main", addr.to_string(), id, rx);
+        self.forward(false, addr.to_string(), id, rx);
         Ok(id)
     }
 
@@ -243,9 +235,9 @@ impl AppState {
                 }
                 inner.dm_connecting.insert(addr.clone());
             }
-            let state = self.clone();
+            let backend = self.clone();
             let token = token.clone();
-            std::thread::spawn(move || state.connect_dm(addr, token));
+            std::thread::spawn(move || backend.connect_dm(addr, token));
         }
     }
 
@@ -264,8 +256,8 @@ impl AppState {
                 inner.dm_retry_at.remove(&addr);
                 inner.dm.insert(addr.clone(), Link { id, conn });
                 drop(inner);
-                self.forward("dm", addr.clone(), id, rx);
-                let _ = self.app.emit("dm-link", DmLinkPayload { addr: &addr, id, up: true });
+                self.forward(true, addr.clone(), id, rx);
+                let _ = self.events.send(Event::DmLink { addr, id, up: true });
             }
             Err(_) => {
                 inner.dm_retry_at.insert(addr, Instant::now() + DM_RETRY);
@@ -295,21 +287,12 @@ impl AppState {
         drop(old);
     }
 
-    async fn auth(&self, request: AuthRequest) -> Result<AuthReply, CmdError> {
-        let result = tauri::async_runtime::spawn_blocking(move || auth_client::request(&request))
-            .await
-            .map_err(|e| CmdError::new(e.to_string()))?;
-        result.map_err(CmdError::unreachable)
+    fn auth(&self, request: AuthRequest) -> Result<AuthReply, CmdError> {
+        auth_client::request(&request).map_err(CmdError::unreachable)
     }
 
     /// Registers or logs in with the auth service. With `name` set, the account is registered.
-    pub async fn login(
-        &self,
-        email: String,
-        password: String,
-        name: Option<String>,
-        remember: bool,
-    ) -> Result<String, CmdError> {
+    pub fn login(&self, email: String, password: String, name: Option<String>, remember: bool) -> Result<String, CmdError> {
         let email = email.trim().to_string();
         let request = match name {
             Some(name) => {
@@ -332,7 +315,7 @@ impl AppState {
                 AuthRequest::Login { email, password }
             }
         };
-        match self.auth(request).await? {
+        match self.auth(request)? {
             AuthReply::Session { token, name } => {
                 if remember {
                     if let Err(e) = keychain::store(&name, &token) {
@@ -349,12 +332,12 @@ impl AppState {
 
     /// Checks a login saved from an earlier run. If the auth service cannot be reached, the saved
     /// login is used anyway, so the chat server can still accept it.
-    pub async fn restore(&self, saved: SavedLogin) -> Restored {
+    pub fn restore(&self, saved_name: &str) -> Restored {
         let none = |error: Option<String>| Restored { user: None, auth_down: false, error, notice: None };
-        let Some(token) = keychain::load(&saved.name) else {
+        let Some(token) = keychain::load(saved_name) else {
             return none(None);
         };
-        match self.auth(AuthRequest::Verify { token: token.clone() }).await {
+        match self.auth(AuthRequest::Verify { token: token.clone() }) {
             Ok(AuthReply::Verified { name, .. }) => {
                 self.set_session(token, name.clone(), true);
                 Restored { user: Some(name), auth_down: false, error: None, notice: None }
@@ -362,9 +345,9 @@ impl AppState {
             Ok(AuthReply::Error { text }) => none(Some(format!("Your saved login has ended: {text}"))),
             Ok(_) => none(Some("Unexpected reply from the auth service.".into())),
             Err(e) => {
-                self.set_session(token, saved.name.clone(), true);
+                self.set_session(token, saved_name.to_string(), true);
                 Restored {
-                    user: Some(saved.name),
+                    user: Some(saved_name.to_string()),
                     auth_down: true,
                     error: None,
                     notice: Some(format!("Auth service unreachable ({}). Using your saved login.", e.message)),
@@ -374,13 +357,9 @@ impl AppState {
     }
 
     /// Ends the session on the server and the auth service, and forgets the saved login.
-    pub async fn logout(&self) {
-        let state = self.clone();
-        let _ = tauri::async_runtime::spawn_blocking(move || {
-            state.farewell_main();
-            state.dm_disconnect_all();
-        })
-        .await;
+    pub fn logout(&self) {
+        self.farewell_main();
+        self.dm_disconnect_all();
         let (token, user) = {
             let mut inner = self.lock();
             inner.remember = false;
@@ -388,20 +367,20 @@ impl AppState {
         };
         if let Some(token) = token {
             // Logging out still clears the local session if the auth service cannot be reached.
-            let _ = self.auth(AuthRequest::Logout { token }).await;
+            let _ = self.auth(AuthRequest::Logout { token });
         }
         keychain::forget(&user);
     }
 
-    pub async fn profile(&self) -> Result<Profile, CmdError> {
+    pub fn profile(&self) -> Result<Profile, CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
-        let reply = self.auth(AuthRequest::Profile { token }).await?;
+        let reply = self.auth(AuthRequest::Profile { token })?;
         self.apply_profile(reply)
     }
 
-    pub async fn update_profile(&self, name: Option<String>, username: Option<String>) -> Result<Profile, CmdError> {
+    pub fn update_profile(&self, name: Option<String>, username: Option<String>) -> Result<Profile, CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
-        let reply = self.auth(AuthRequest::UpdateProfile { token, name, username }).await?;
+        let reply = self.auth(AuthRequest::UpdateProfile { token, name, username })?;
         self.apply_profile(reply)
     }
 
@@ -427,12 +406,13 @@ impl AppState {
         }
     }
 
-    pub async fn change_email(&self, password: String, new_email: String) -> Result<String, CmdError> {
+    pub fn change_email(&self, password: String, new_email: String) -> Result<String, CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
-        match self.auth(AuthRequest::ChangeEmail { token, password, new_email }).await? {
+        match self.auth(AuthRequest::ChangeEmail { token, password, new_email })? {
             AuthReply::EmailChanged { email } => Ok(email),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
         }
     }
+
 }
