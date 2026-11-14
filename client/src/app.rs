@@ -549,8 +549,15 @@ impl App {
         if self.selected == Some(index) {
             // Still connected here, but a direct message may be open: go back to this server's channel.
             if self.main.id.is_some() && is_dm_channel(&self.server.channel) {
-                let channel = self.main.addr.as_ref().and_then(|a| self.prefs.last_channels.get(a).cloned());
-                self.join(channel.as_deref().unwrap_or("general"));
+                // Go back to the last channel used here, if it still exists, else the first one.
+                // Joining by name would create a channel that was deleted, so join by id.
+                let last = self.main.addr.as_ref().and_then(|a| self.prefs.last_channels.get(a).cloned());
+                let target = last
+                    .and_then(|name| self.server.channels.iter().find(|c| c.name == name).map(|c| c.id))
+                    .or_else(|| self.server.channels.first().map(|c| c.id));
+                if let Some(id) = target {
+                    self.join_id(id);
+                }
             }
             return Task::none();
         }
@@ -624,9 +631,10 @@ impl App {
                 self.save_prefs();
                 self.status = format!("Connected as {name}");
                 send_main(self, ClientMsg::ListChannels);
-                send_main(self, ClientMsg::Join { channel: self.server.channel.clone() });
+                // A direct message asked for before connecting is opened instead of the first channel.
                 if let Some((addr, channel)) = self.pending_dm.take() {
                     if self.main.addr.as_deref() == Some(addr.as_str()) {
+                        self.main.joined_initial = true;
                         send_main(self, ClientMsg::Join { channel });
                     }
                 }
@@ -703,7 +711,22 @@ impl App {
                 }
                 self.save_prefs();
             }
-            ServerMsg::Channels { channels } => self.server.channels = channels,
+            ServerMsg::Channels { channels } => {
+                self.server.channels = channels;
+                // Open a channel that exists: the last one used here, else general, else the first.
+                // Nothing is created: a channel is only made when it is asked for by name.
+                if !self.main.joined_initial && self.chat_ready() {
+                    self.main.joined_initial = true;
+                    let last = self.main.addr.as_ref().and_then(|a| self.prefs.last_channels.get(a).cloned());
+                    let pick = last
+                        .filter(|l| self.server.channels.iter().any(|c| &c.name == l))
+                        .or_else(|| self.server.channels.iter().find(|c| c.name == "general").map(|c| c.name.clone()))
+                        .or_else(|| self.server.channels.first().map(|c| c.name.clone()));
+                    if let Some(name) = pick {
+                        send_main(self, ClientMsg::Join { channel: name });
+                    }
+                }
+            }
             ServerMsg::Categories { categories, uncategorized } => {
                 self.server.categories = categories;
                 self.server.uncategorized = uncategorized;
@@ -719,9 +742,11 @@ impl App {
                 self.unread.remove(&id);
                 self.read_marks.remove(&id);
                 if was_open {
-                    // The channel is gone: go to general, as the server has moved this connection there.
+                    // The channel is gone. Move to another channel that exists, if there is one.
                     self.server.channel_id = 0;
-                    send_main(self, ClientMsg::Join { channel: "general".into() });
+                    if let Some(next) = self.server.channels.first().map(|c| c.name.clone()) {
+                        send_main(self, ClientMsg::Join { channel: next });
+                    }
                 }
             }
             ServerMsg::ChannelRenamed { id, name } => self.channel_renamed(id, &name),
