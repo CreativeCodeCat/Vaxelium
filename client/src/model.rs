@@ -34,13 +34,21 @@ pub struct ServerView {
     pub description: String,
     pub icon: Option<String>,
     pub public: bool,
-    pub channels: Vec<String>,
+    pub channels: Vec<common::ChannelRef>,
     /// The server's categories, in order, with the channels in each.
     pub categories: Vec<common::CategoryInfo>,
+    /// The channels in no category, in order.
+    pub uncategorized: Vec<common::ChannelRef>,
+    /// The open channel's name, and its permanent id.
     pub channel: String,
+    pub channel_id: i64,
+    /// The server's own id, as it sent it.
+    pub server_id: String,
     pub dms: Vec<DirectMessage>,
     pub online: Vec<String>,
     pub offline: Vec<String>,
+    /// Each member's account id, by display name, as the server's member list gave them.
+    pub member_ids: std::collections::HashMap<String, String>,
     pub owner: Option<String>,
     pub owner_id: Option<String>,
     pub user_id: String,
@@ -52,7 +60,8 @@ pub struct DmLink {
     pub id: u64,
     pub server_name: String,
     pub dms: Vec<DirectMessage>,
-    pub unread: HashSet<String>,
+    /// Conversations with unread messages, by channel id.
+    pub unread: HashSet<i64>,
     pub history: HashMap<String, Vec<ChatMessage>>,
 }
 
@@ -129,6 +138,11 @@ impl App {
         self.channel_label_for(&self.server.channel)
     }
 
+    /// The name of a channel by its id, from the server's list.
+    pub fn channel_name_of(&self, id: i64) -> Option<String> {
+        self.server.channels.iter().find(|c| c.id == id).map(|c| c.name.clone())
+    }
+
     pub fn channel_label_for(&self, channel: &str) -> String {
         if is_dm_channel(channel) {
             format!("@ {}", self.dm_name(channel).unwrap_or_else(|| "Direct message".into()))
@@ -189,7 +203,7 @@ impl App {
                     row.last = dm.last_message;
                     row.name = dm.name.clone();
                 }
-                if link.unread.contains(&dm.channel) {
+                if link.unread.contains(&dm.channel_id) {
                     row.unread = true;
                 }
             }
@@ -231,7 +245,7 @@ impl App {
         if self.current_person().is_some() {
             return self.dm_timeline();
         }
-        self.messages.get(&self.server.channel).cloned().unwrap_or_default()
+        self.messages.get(&self.server.channel_id).cloned().unwrap_or_default()
     }
 
     /// Which server a direct message id belongs to, and its real id there.

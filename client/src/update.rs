@@ -148,11 +148,24 @@ impl App {
             }
 
             // ----- channels -----
-            Message::ChannelOpen(name) => {
-                if name != self.server.channel {
-                    self.join(&name);
+            Message::DndPress(item) => {
+                self.dnd = Some(crate::app::Dnd { item, start: self.cursor, moved: false, over: None });
+            }
+            Message::DndOver(target) => {
+                if let Some(dnd) = self.dnd.as_mut() {
+                    dnd.over = target;
                 }
             }
+            Message::DeleteChannelAsk(id, name) => {
+                self.menu = None;
+                self.pending_channel_delete = Some((id, name));
+            }
+            Message::DeleteChannelConfirm => {
+                if let Some((id, _)) = self.pending_channel_delete.take() {
+                    let _ = self.backend.send_main(ClientMsg::DeleteChannel { channel: id });
+                }
+            }
+            Message::DeleteChannelCancel => self.pending_channel_delete = None,
             Message::CreateOpen => {
                 self.create_open = true;
                 self.menu = None;
@@ -172,46 +185,46 @@ impl App {
                     let _ = self.backend.send_main(ClientMsg::CreateCategory { name });
                 }
             }
-            Message::DeleteCategory(name) => {
+            Message::DeleteCategory(category) => {
                 self.menu = None;
-                let _ = self.backend.send_main(ClientMsg::DeleteCategory { name });
+                let _ = self.backend.send_main(ClientMsg::DeleteCategory { category });
             }
-            Message::RenameStart(name) => {
+            Message::RenameStart(id, name) => {
                 self.menu = None;
-                self.rename_channel = Some((name.clone(), name));
+                self.rename_channel = Some((id, name.clone(), name));
                 return operation::focus(crate::app::RENAME_ID);
             }
             Message::RenameInput(v) => {
-                if let Some((_, text)) = self.rename_channel.as_mut() {
+                if let Some((_, _, text)) = self.rename_channel.as_mut() {
                     *text = v;
                 }
             }
             Message::RenameSubmit => {
-                if let Some((old, new)) = self.rename_channel.take() {
+                if let Some((id, old, new)) = self.rename_channel.take() {
                     let new = new.trim().to_string();
                     if !new.is_empty() && new != old {
-                        let _ = self.backend.send_main(ClientMsg::RenameChannel { channel: old, new_name: new });
+                        let _ = self.backend.send_main(ClientMsg::RenameChannel { channel: id, new_name: new });
                     }
                 }
             }
             Message::RenameCancel => self.rename_channel = None,
-            Message::MoveChannel(channel, category) => {
-                self.menu = None;
-                let _ = self.backend.send_main(ClientMsg::MoveChannel { channel, category });
-            }
             Message::CreateChannel => {
                 let name = std::mem::take(&mut self.new_channel);
                 self.create_open = false;
                 self.join(&name);
             }
-            Message::ToggleChannels => self.channels_collapsed = !self.channels_collapsed,
+            Message::ToggleCategory(id) => {
+                if !self.collapsed_categories.remove(&id) {
+                    self.collapsed_categories.insert(id);
+                }
+            }
             Message::ToggleMembers => {
                 self.members_hidden = !self.members_hidden;
                 self.menu = None;
             }
-            Message::MarkRead(name) => {
-                self.unread.remove(&name);
-                self.read_marks.remove(&name);
+            Message::MarkRead(id) => {
+                self.unread.remove(&id);
+                self.read_marks.remove(&id);
                 self.menu = None;
             }
             Message::CopyText(text) => {
@@ -245,7 +258,7 @@ impl App {
                 self.search = format!("{}{filter} ", &keep[..start]);
                 // A channel picked with in: opens, as it does when typed.
                 if let Some(channel) = self.search_channel() {
-                    self.join(&channel);
+                    self.join_id(channel.id);
                 }
                 return operation::focus(crate::app::SEARCH_ID);
             }
@@ -468,6 +481,8 @@ impl App {
             self.editing = None;
         } else if self.pending_delete.is_some() {
             self.pending_delete = None;
+        } else if self.pending_channel_delete.is_some() {
+            self.pending_channel_delete = None;
         } else if self.rename_channel.is_some() {
             self.rename_channel = None;
         } else if self.category_open {
@@ -570,7 +585,7 @@ impl App {
     fn search_channel_task(&mut self) -> Task<Message> {
         match self.search_channel() {
             Some(channel) => {
-                self.join(&channel);
+                self.join_id(channel.id);
                 Task::none()
             }
             None => Task::none(),

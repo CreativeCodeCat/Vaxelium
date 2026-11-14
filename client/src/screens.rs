@@ -22,7 +22,7 @@ fn app() -> App {
     let dir = std::env::temp_dir().join("vaxelium-screens");
     let backend = Backend::new(tx, dir);
     let mut prefs = Prefs::default();
-    prefs.servers = vec![ServerPref { name: "Home".into(), addr: "127.0.0.1:7878".into(), icon: None }];
+    prefs.servers = vec![ServerPref { name: "Home".into(), addr: "127.0.0.1:7878".into(), icon: None, id: None }];
     App::new(backend, prefs, Vec::new(), HashMap::new())
 }
 
@@ -35,8 +35,9 @@ fn chat_app() -> App {
     app.main.addr = Some("127.0.0.1:7878".into());
     app.main.welcomed = true;
     app.server.name = "Home".into();
-    app.server.channels = vec!["general".into(), "random".into()];
+    app.server.channels = vec![common::ChannelRef { id: 1, name: "general".into() }, common::ChannelRef { id: 2, name: "random".into() }];
     app.server.channel = "general".into();
+    app.server.channel_id = 1;
     app.server.user_id = "u1".into();
     app.server.owner = Some("alice".into());
     app.server.owner_id = Some("u1".into());
@@ -45,6 +46,7 @@ fn chat_app() -> App {
     let msg = |id: i64, author: &str, author_id: &str, text: &str, ts: u64| {
         Entry::Chat(ChatMessage {
             id,
+            channel_id: 1,
             channel: "general".into(),
             author: author.into(),
             author_id: author_id.into(),
@@ -60,13 +62,14 @@ fn chat_app() -> App {
         msg(2, "alice", "u1", "hi bob, the new client is up", now - 3500),
         msg(3, "alice", "u1", "see https://example.com for details", now - 3400),
     ];
-    app.messages.insert("general".into(), entries);
+    app.messages.insert(1, entries);
     app.dm_links.insert(
         "127.0.0.1:7878".into(),
         crate::model::DmLink {
             id: 9,
             server_name: "Home".into(),
             dms: vec![DirectMessage {
+                channel_id: 5,
                 channel: "dm-1".into(),
                 name: "bob".into(),
                 last_message: now,
@@ -159,7 +162,7 @@ fn direct_messages_screen() {
     let mut app = chat_app();
     app.home = true;
     app.server.channel = "dm-1".into();
-    app.server.dms = vec![DirectMessage { channel: "dm-1".into(), name: "bob".into(), last_message: 1, other_id: "u2".into() }];
+    app.server.dms = vec![DirectMessage { channel_id: 5, channel: "dm-1".into(), name: "bob".into(), last_message: 1, other_id: "u2".into() }];
     let mut ui = simulate(&app);
     save(&mut ui, &app, "dms");
 }
@@ -169,6 +172,7 @@ fn discover_screen() {
     let mut app = chat_app();
     app.page = Page::Discover;
     app.discover.found = vec![crate::discover::FoundServer {
+        server_id: "server-2".into(),
         addr: "127.0.0.1:7879".into(),
         name: "Second".into(),
         description: "A second server".into(),
@@ -181,7 +185,12 @@ fn discover_screen() {
 }
 
 fn save_at(app: &App, name: &str, w: f32, h: f32) {
-    let mut ui = iced_test::Simulator::with_size(iced::Settings::default(), Size::new(w, h), crate::view::view(app));
+    let settings = iced::Settings {
+        fonts: vec![include_bytes!("../ui/fonts/NotoSans-Subset.ttf").as_slice().into()],
+        default_font: iced::Font::with_name("Noto Sans"),
+        ..iced::Settings::default()
+    };
+    let mut ui = iced_test::Simulator::with_size(settings, Size::new(w, h), crate::view::view(app));
     save(&mut ui, app, name);
 }
 
@@ -228,14 +237,73 @@ fn server_profile_multiline_screen() {
 #[test]
 fn categories_screen() {
     let mut app = chat_app();
-    app.server.channels = vec!["general".into(), "random".into(), "dev".into()];
-    app.server.categories = vec![common::CategoryInfo { name: "Text channels".into(), channels: vec!["dev".into(), "random".into()] }];
+    app.server.channels = vec![
+        common::ChannelRef { id: 1, name: "general".into() },
+        common::ChannelRef { id: 2, name: "random".into() },
+        common::ChannelRef { id: 3, name: "dev".into() },
+    ];
+    app.server.categories = vec![common::CategoryInfo {
+        id: 1,
+        name: "Voice and text".into(),
+        channels: vec![common::ChannelRef { id: 3, name: "dev".into() }, common::ChannelRef { id: 2, name: "random".into() }],
+    }];
     save_at(&app, "categories", 1100.0, 700.0);
+}
+
+#[test]
+fn small_caps_screen() {
+    let mut app = chat_app();
+    let now = crate::util::now();
+    app.messages.insert(
+        1,
+        vec![Entry::Chat(ChatMessage {
+            id: 9,
+            channel_id: 1,
+            channel: "general".into(),
+            author: "alice".into(),
+            author_id: "u1".into(),
+            text: "`| ====== ᴍᴀɪɴ ====== |`".into(),
+            timestamp: now,
+            edited: false,
+            reactions: Vec::new(),
+        })],
+    );
+    save_at(&app, "small-caps", 1100.0, 700.0);
+}
+
+#[test]
+fn collapsed_category_screen() {
+    let mut app = chat_app();
+    app.server.channels = vec![common::ChannelRef { id: 1, name: "general".into() }, common::ChannelRef { id: 2, name: "random".into() }];
+    app.server.categories = vec![common::CategoryInfo { id: 7, name: "Community".into(), channels: vec![common::ChannelRef { id: 3, name: "dev".into() }] }];
+    app.collapsed_categories.insert(7);
+    save_at(&app, "collapsed", 1100.0, 700.0);
 }
 
 #[test]
 fn rename_channel_screen() {
     let mut app = chat_app();
-    let _ = app.update(Message::RenameStart("general".into()));
+    let _ = app.update(Message::RenameStart(1, "general".into()));
     save_at(&app, "rename", 1100.0, 700.0);
+}
+
+#[test]
+fn unsaved_bar_screen() {
+    let mut app = chat_app();
+    app.page = Page::User;
+    app.account.draft_name = Some("New name".into());
+    save_at(&app, "unsaved", 1100.0, 700.0);
+}
+
+#[test]
+fn dragging_category_screen() {
+    use crate::app::{Dnd, DragItem, DropTarget};
+    let mut app = chat_app();
+    app.server.channels = vec![common::ChannelRef { id: 1, name: "general".into() }];
+    app.server.categories = vec![
+        common::CategoryInfo { id: 1, name: "Community".into(), channels: Vec::new() },
+        common::CategoryInfo { id: 2, name: "Games".into(), channels: Vec::new() },
+    ];
+    app.dnd = Some(Dnd { item: DragItem::Category(1), start: iced::Point::ORIGIN, moved: true, over: Some(DropTarget::End) });
+    save_at(&app, "dragging-category", 1100.0, 700.0);
 }

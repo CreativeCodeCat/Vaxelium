@@ -11,6 +11,9 @@ use serde::{Deserialize, Serialize};
 pub struct ServerPref {
     pub name: String,
     pub addr: String,
+    /// The server's own id, learned when it first answers. Stays the same when the address changes.
+    #[serde(default)]
+    pub id: Option<String>,
     #[serde(default)]
     pub icon: Option<String>,
 }

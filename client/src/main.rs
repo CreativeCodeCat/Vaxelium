@@ -99,8 +99,10 @@ fn main() -> iced::Result {
     .title("Vaxelium")
     .subscription(App::subscription)
     .theme(|app: &App| theme::iced_theme(&app.prefs.theme))
-    .font(include_bytes!("../ui/fonts/OpenSans-Regular.ttf").as_slice())
-    .default_font(Font::with_name("Open Sans"))
+    // Noto Sans has the small capitals some names use, and all the Latin letters. Open Sans lacked
+    // the small capitals, so text containing them was drawn with the wrong glyphs.
+    .font(include_bytes!("../ui/fonts/NotoSans-Subset.ttf").as_slice())
+    .default_font(Font::with_name("Noto Sans"))
     .window(window::Settings {
         size: Size::new(1100.0, 700.0),
         min_size: Some(Size::new(820.0, 480.0)),

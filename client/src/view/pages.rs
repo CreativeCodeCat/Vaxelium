@@ -290,7 +290,11 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     };
     let theme_name = app.theme_id_name(&acc.draft_theme.clone().unwrap_or_else(|| app.prefs.theme.clone()));
     let theme_button = button(
-        row![text(theme_name).size(14).color(pal.text_strong), icons::icon(icons::CHEVRON_DOWN, 14.0, pal.text_muted)]
+        row![
+            text(theme_name).size(14).color(pal.text_strong),
+            space().width(Length::Fill),
+            icons::icon(icons::CHEVRON_DOWN, 14.0, pal.text_muted),
+        ]
             .spacing(12)
             .align_y(iced::alignment::Vertical::Center),
     )
@@ -333,37 +337,40 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     }
     let content = settings_column(main);
     let dirty = acc.draft_name.is_some() || acc.draft_username.is_some() || acc.draft_email.is_some() || acc.draft_theme.is_some();
-    let page = column![
-        row![settings_nav("User settings", "Account", pal), content].height(Length::Fill),
-        if dirty { unsaved_bar(pal, Message::AccountReset, Message::AccountSave, "Careful – you have unsaved changes!") } else { space().height(Length::Fixed(0.0)).into() },
-    ]
-    .height(Length::Fill);
+    let page = row![settings_nav("User settings", "Account", pal), content].height(Length::Fill);
     let page = container(page).width(Length::Fill).height(Length::Fill).style(move |_: &Theme| round(pal.app_bg, 0.0));
-    match acc.editing {
-        Some(which) => stack_dialog(page.into(), account_edit_dialog(app, which, pal), pal),
-        None => page.into(),
+    let mut layers: Vec<Element<'_, Message>> = vec![page.into()];
+    if dirty {
+        layers.push(unsaved_bar(pal, Message::AccountReset, Message::AccountSave, "Careful – you have unsaved changes!"));
     }
+    if let Some(which) = acc.editing {
+        layers.push(account_edit_dialog(app, which, pal));
+    }
+    iced::widget::stack(layers).into()
 }
 
-/// The bar that appears when there are changes to save.
+/// The bar that appears when there are changes to save. It floats over the bottom of the page,
+/// centred, at most 640 pixels wide, as it did in the old client.
 fn unsaved_bar<'a>(pal: Pal, reset: Message, save: Message, title: &str) -> Element<'a, Message> {
-    container(row![
+    let card = container(row![
         text(title.to_string()).size(14).color(pal.text_strong).width(Length::Fill),
         link("Reset", reset, pal.link),
         solid("Save Changes", save, pal.green, pal.on_color, None),
     ]
     .spacing(12)
     .align_y(iced::alignment::Vertical::Center))
-    .padding(crate::util::pad2(10.0, 16.0))
-    .style(move |_: &Theme| round(pal.sidebar_bg, 0.0))
-    .into()
+    .padding(crate::util::pad2(12.0, 16.0))
+    .max_width(640.0)
+    .style(move |_: &Theme| round(pal.rail_bg, 8.0));
+    container(card)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(iced::alignment::Horizontal::Center)
+        .align_y(iced::alignment::Vertical::Bottom)
+        .padding(crate::util::pad(0.0, 0.0, 24.0, 0.0))
+        .into()
 }
 
-/// Puts a dialog over a page, with a dimmed backdrop that is not clickable.
-fn stack_dialog<'a>(page: Element<'a, Message>, dialog: Element<'a, Message>, pal: Pal) -> Element<'a, Message> {
-    let _ = pal;
-    iced::widget::stack![page, dialog].into()
-}
 
 fn account_edit_dialog(app: &App, which: Field, pal: Pal) -> Element<'_, Message> {
     let acc = &app.account;
@@ -473,19 +480,15 @@ pub fn server_settings(app: &App, pal: Pal) -> Element<'_, Message> {
         items.push(divider(pal.selected_bg));
     }
     let content = scrollable(Column::with_children(items).spacing(14).padding(crate::util::pad2(24.0, 40.0)).width(Length::Fill)).height(Length::Fill);
-    let bottom: Element<'_, Message> = if dirty {
-        unsaved_bar(pal, Message::ServerReset, Message::ServerSave, "Careful – you have unsaved changes!")
+    let page = container(row![settings_nav(&name.to_uppercase(), "Server Profile", pal), content].height(Length::Fill))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(move |_: &Theme| round(pal.app_bg, 0.0));
+    if dirty {
+        iced::widget::stack![page, unsaved_bar(pal, Message::ServerReset, Message::ServerSave, "Careful – you have unsaved changes!")].into()
     } else {
-        space().height(Length::Fixed(0.0)).into()
-    };
-    container(column![
-        row![settings_nav(&name.to_uppercase(), "Server Profile", pal), content].height(Length::Fill),
-        bottom,
-    ])
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .style(move |_: &Theme| round(pal.app_bg, 0.0))
-    .into()
+        page.into()
+    }
 }
 
 /// The join-a-server dialog, opened from the + button.

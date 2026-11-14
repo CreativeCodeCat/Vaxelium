@@ -196,7 +196,25 @@ pub fn dialog_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     if app.add_server.open {
         return Some(super::pages::join_server(app, pal));
     }
-    if let Some((old, new)) = &app.rename_channel {
+    if let Some((_, name)) = &app.pending_channel_delete {
+        let items: Vec<Element<'_, Message>> = vec![
+            text(format!("Delete #{name}?")).size(20).color(pal.text_strong).into(),
+            text("The channel and every message in it will be removed for everyone. It can't be undone.")
+                .size(14)
+                .color(pal.text)
+                .into(),
+            row![
+                space().width(Length::Fill),
+                link("Cancel", Message::DeleteChannelCancel, pal.text_muted),
+                solid("Delete", Message::DeleteChannelConfirm, pal.red, pal.on_color, None),
+            ]
+            .spacing(10)
+            .align_y(iced::alignment::Vertical::Center)
+            .into(),
+        ];
+        return Some(modal(items, pal, Message::DeleteChannelCancel));
+    }
+    if let Some((_, old, new)) = &app.rename_channel {
         let items: Vec<Element<'_, Message>> = vec![
             text(format!("Rename #{old}")).size(20).color(pal.text_strong).into(),
             text_input("new-channel-name", new)
