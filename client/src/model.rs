@@ -76,6 +76,8 @@ pub struct MainConn {
     pub buffer: Vec<(u64, ServerMsg)>,
     pub error: Option<String>,
     pub welcomed: bool,
+    /// The first channel has been chosen (or a direct message was asked for instead).
+    pub joined_initial: bool,
 }
 
 /// One conversation with a person, on one server.
