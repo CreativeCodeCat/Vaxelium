@@ -419,9 +419,111 @@ impl App {
             Message::ServerSettingsOpen => {
                 self.menu = None;
                 self.reset_server_form();
+                self.role_form = None;
+                self.role_error = None;
+                // The owner starts on the profile; everyone else who can open the page starts on roles.
+                self.server_section = if self.is_owner() { crate::app::ServerSection::Profile } else { crate::app::ServerSection::Roles };
                 self.page = Page::Server;
             }
-            Message::ServerSettingsClose => self.page = Page::None,
+            Message::ServerSettingsClose => {
+                self.role_form = None;
+                self.role_error = None;
+                self.page = Page::None;
+            }
+            Message::ServerSectionPick(section) => {
+                self.role_form = None;
+                self.role_error = None;
+                self.server_section = section;
+            }
+            Message::RoleTab(tab) => self.role_tab = tab,
+            Message::RoleColorPick(hex) => {
+                if let Some(draft) = self.role_form.as_mut() {
+                    draft.color = hex;
+                }
+            }
+            Message::RoleEdit(id) => {
+                self.role_error = None;
+                self.role_tab = crate::app::RoleTab::Display;
+                self.role_form = Some(match id.and_then(|id| self.server.roles.iter().find(|r| r.id == id)) {
+                    Some(role) => crate::app::RoleDraft {
+                        id: Some(role.id),
+                        name: role.name.clone(),
+                        color: role.color.clone(),
+                        permissions: role.permissions,
+                    },
+                    None => crate::app::RoleDraft::default(),
+                });
+            }
+            Message::RoleEditCancel => self.role_form = None,
+            Message::RoleDraftName(v) => {
+                if let Some(draft) = self.role_form.as_mut() {
+                    draft.name = v;
+                }
+            }
+            Message::RoleDraftColor(v) => {
+                if let Some(draft) = self.role_form.as_mut() {
+                    draft.color = v;
+                }
+            }
+            Message::RoleDraftPerm(bit, on) => {
+                if let Some(draft) = self.role_form.as_mut() {
+                    if on {
+                        draft.permissions |= bit;
+                    } else {
+                        draft.permissions &= !bit;
+                    }
+                }
+            }
+            Message::RoleReset => {
+                self.role_error = None;
+                let saved = self
+                    .role_form
+                    .as_ref()
+                    .and_then(|d| d.id)
+                    .and_then(|id| self.server.roles.iter().find(|r| r.id == id).cloned());
+                if let Some(draft) = self.role_form.as_mut() {
+                    *draft = match saved {
+                        Some(role) => crate::app::RoleDraft {
+                            id: Some(role.id),
+                            name: role.name,
+                            color: role.color,
+                            permissions: role.permissions,
+                        },
+                        None => crate::app::RoleDraft::default(),
+                    };
+                }
+            }
+            Message::RoleSave => {
+                if let Some(draft) = self.role_form.take() {
+                    self.role_error = None;
+                    let name = draft.name.trim().to_string();
+                    let color = draft.color.trim().to_string();
+                    let msg = match draft.id {
+                        Some(role) => ClientMsg::UpdateRole { role, name, color, permissions: draft.permissions },
+                        None => ClientMsg::CreateRole { name, color, permissions: draft.permissions },
+                    };
+                    let _ = self.backend.send_main(msg);
+                }
+            }
+            Message::RoleDeleteAsk(role, name) => {
+                self.pending_role_delete = Some((role, name));
+            }
+            Message::RoleDeleteCancel => self.pending_role_delete = None,
+            Message::RoleDeleteConfirm => {
+                if let Some((role, _)) = self.pending_role_delete.take() {
+                    self.role_form = None;
+                    self.role_error = None;
+                    let _ = self.backend.send_main(ClientMsg::DeleteRole { role });
+                }
+            }
+            Message::RoleMove(role, before) => {
+                self.role_error = None;
+                let _ = self.backend.send_main(ClientMsg::MoveRole { role, before });
+            }
+            Message::SetMemberRole(user, role, on) => {
+                self.menu = None;
+                let _ = self.backend.send_main(ClientMsg::SetMemberRole { user, role, on });
+            }
             Message::ServerName(v) => self.server_form.name = v,
             Message::ServerDescriptionEdit(action) => {
                 self.description_editor.perform(action);
@@ -481,6 +583,8 @@ impl App {
             self.editing = None;
         } else if self.pending_delete.is_some() {
             self.pending_delete = None;
+        } else if self.pending_role_delete.is_some() {
+            self.pending_role_delete = None;
         } else if self.pending_channel_delete.is_some() {
             self.pending_channel_delete = None;
         } else if self.rename_channel.is_some() {

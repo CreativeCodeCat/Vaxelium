@@ -6,7 +6,7 @@ use std::sync::mpsc;
 use common::{ChannelRef, ChatMessage, ServerMsg, UserStatus};
 use iced::Point;
 
-use crate::app::{App, Message, MenuItem};
+use crate::app::{App, Message};
 use crate::backend::{Backend, Event};
 use crate::prefs::{Prefs, ServerPref};
 
@@ -75,8 +75,8 @@ fn welcome_then_joined_shows_history_and_presence() {
 
     let _ = app.update(net(ServerMsg::Presence {
         users: vec![
-            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true },
-            UserStatus { name: "bob".into(), id: "id-bob".into(), online: false, owner: false },
+            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true, roles: vec![] },
+            UserStatus { name: "bob".into(), id: "id-bob".into(), online: false, owner: false, roles: vec![] },
         ],
     }));
     assert!(app.is_owner());
@@ -299,4 +299,49 @@ fn a_category_dropped_on_the_end_zone_moves_to_the_end() {
     assert_eq!(app.dnd.as_ref().and_then(|d| d.over), Some(DropTarget::End));
     let _ = app.update(Message::MouseReleased);
     assert!(app.dnd.is_none());
+}
+
+#[test]
+fn roles_grant_permissions_to_their_holders() {
+    let mut app = app();
+    welcome(&mut app);
+    let mods = common::RoleInfo {
+        id: 5,
+        name: "Mods".into(),
+        color: "#ff0000".into(),
+        permissions: common::perm::MANAGE_MESSAGES,
+        position: 1,
+    };
+    let _ = app.update(net(ServerMsg::Roles { roles: vec![mods] }));
+    let _ = app.update(net(ServerMsg::Presence {
+        users: vec![
+            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true, roles: vec![] },
+            UserStatus { name: "bob".into(), id: "id-bob".into(), online: true, owner: false, roles: vec![5] },
+        ],
+    }));
+
+    // Alice is the owner, so she has everything and may manage every role.
+    assert!(app.can(common::perm::MANAGE_ROLES));
+    assert!(app.outranks_role(5));
+
+    // Bob holds Mods: he may delete messages, but not channels, and cannot manage the role he holds.
+    app.user_id = "id-bob".into();
+    assert!(app.can(common::perm::MANAGE_MESSAGES));
+    assert!(!app.can(common::perm::MANAGE_CHANNELS));
+    assert!(!app.outranks_role(5));
+    assert_eq!(app.top_role_by_name("bob").map(|r| r.name.as_str()), Some("Mods"));
+    assert!(app.top_role_by_name("alice").is_none());
+}
+
+#[test]
+fn deleting_a_role_asks_first() {
+    let mut app = app();
+    welcome(&mut app);
+    let _ = app.update(Message::RoleDeleteAsk(5, "Mods".into()));
+    assert_eq!(app.pending_role_delete, Some((5, "Mods".into())));
+    let _ = app.update(Message::RoleDeleteCancel);
+    assert!(app.pending_role_delete.is_none());
+    let _ = app.update(Message::RoleDeleteAsk(5, "Mods".into()));
+    let _ = app.update(Message::RoleDeleteConfirm);
+    assert!(app.pending_role_delete.is_none());
 }

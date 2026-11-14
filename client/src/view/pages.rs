@@ -1,10 +1,11 @@
 //! The full pages: login, the server status page, discovery, and the settings pages.
 
-use iced::widget::{button, column, container, mouse_area, row, scrollable, space, text, text_editor, text_input, Column};
+use iced::widget::{button, column, container, mouse_area, row, scrollable, space, text, text_editor, text_input, toggler, Column};
 use iced::{border, Background, Color, Element, Length, Padding, Theme};
 
 use super::{divider, letter_badge, link, muted_text, round, server_icon, solid};
-use crate::app::{App, Field, Message, ADD_ADDR_ID};
+use crate::app::{App, Field, Message, RoleDraft, RoleTab, ServerSection, ADD_ADDR_ID};
+use common::{RoleInfo, EVERYONE_ROLE};
 use crate::icons;
 use crate::theme::Pal;
 
@@ -203,15 +204,42 @@ pub fn discover(app: &App, pal: Pal) -> Element<'_, Message> {
 }
 
 /// The heading row of a full page: a section name, the title and a close button.
+/// The title at the top of a settings page's content. The close button is in the frame's corner.
+fn page_title<'a>(title: &str, pal: Pal) -> Element<'a, Message> {
+    text(title.to_string()).size(22).color(pal.text_strong).into()
+}
+
+/// A settings page: its navigation on the left, and its content on the right with the close button in
+/// the same top-right corner on every settings page.
+fn settings_frame<'a>(nav: Element<'a, Message>, body: Element<'a, Message>, close: Message, pal: Pal) -> Element<'a, Message> {
+    let corner = row![space().width(Length::Fill), close_button(close, pal)].padding(crate::util::pad2(12.0, 16.0));
+    let right = column![corner, body].width(Length::Fill).height(Length::Fill);
+    container(row![nav, right].height(Length::Fill))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(move |_: &Theme| round(pal.app_bg, 0.0))
+        .into()
+}
+
 fn page_head<'a>(title: &str, pal: Pal, close: Message) -> Element<'a, Message> {
     row![
         text(title.to_string()).size(22).color(pal.text_strong).width(Length::Fill),
-        button(icons::icon(icons::CLOSE, 16.0, pal.text_muted))
-            .padding(4)
-            .on_press(close)
-            .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() }),
+        close_button(close, pal),
     ]
     .align_y(iced::alignment::Vertical::Center)
+    .into()
+}
+
+/// The X in the corner of a page, with ESC under it, as Discord has it.
+fn close_button<'a>(close: Message, pal: Pal) -> Element<'a, Message> {
+    button(
+        column![icons::icon(icons::CLOSE, 16.0, pal.text_muted), text("ESC").size(11).color(pal.text_muted)]
+            .align_x(iced::alignment::Horizontal::Center)
+            .spacing(2),
+    )
+    .padding(4)
+    .on_press(close)
+    .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() })
     .into()
 }
 
@@ -309,7 +337,7 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     });
 
     let mut main: Vec<Element<'_, Message>> = vec![
-        page_head("Account", pal, Message::UserSettingsClose),
+        page_title("Account", pal),
         row![
             letter_badge(&user, 72.0, &pal),
             column![
@@ -337,9 +365,8 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     }
     let content = settings_column(main);
     let dirty = acc.draft_name.is_some() || acc.draft_username.is_some() || acc.draft_email.is_some() || acc.draft_theme.is_some();
-    let page = row![settings_nav("User settings", "Account", pal), content].height(Length::Fill);
-    let page = container(page).width(Length::Fill).height(Length::Fill).style(move |_: &Theme| round(pal.app_bg, 0.0));
-    let mut layers: Vec<Element<'_, Message>> = vec![page.into()];
+    let page = settings_frame(settings_nav("User settings", "Account", pal), content, Message::UserSettingsClose, pal);
+    let mut layers: Vec<Element<'_, Message>> = vec![page];
     if dirty {
         layers.push(unsaved_bar(pal, Message::AccountReset, Message::AccountSave, "Careful – you have unsaved changes!"));
     }
@@ -438,14 +465,76 @@ pub fn modal<'a>(items: Vec<Element<'a, Message>>, pal: Pal, close: Message) -> 
     iced::widget::stack![backdrop, centred].into()
 }
 
-/// The server's own settings page: the owner's name, description and picture.
+/// The server settings page. The owner sees the Server Profile section and the Roles section; anyone
+/// who may manage roles sees Roles only.
 pub fn server_settings(app: &App, pal: Pal) -> Element<'_, Message> {
+    let name = app.selected_name().unwrap_or_else(|| "Server".into());
+    let section = if app.is_owner() { app.server_section } else { ServerSection::Roles };
+    let (content, dirty): (Element<'_, Message>, bool) = match section {
+        ServerSection::Profile => {
+            let (items, dirty) = profile_items(app, pal);
+            let content = scrollable(Column::with_children(items).spacing(14).padding(crate::util::pad2(24.0, 40.0)).width(Length::Fill)).height(Length::Fill);
+            (content.into(), dirty)
+        }
+        ServerSection::Roles => roles_section(app, pal),
+    };
+    // The bar saves whichever section is open.
+    let (reset, save) = if section == ServerSection::Roles {
+        (Message::RoleReset, Message::RoleSave)
+    } else {
+        (Message::ServerReset, Message::ServerSave)
+    };
+    let page = settings_frame(server_nav(&name, app.is_owner(), section, pal), content, Message::ServerSettingsClose, pal);
+    if dirty {
+        iced::widget::stack![page, unsaved_bar(pal, reset, save, "Careful – you have unsaved changes!")].into()
+    } else {
+        page.into()
+    }
+}
+
+/// The navigation down the left of the server settings page.
+fn server_nav<'a>(name: &str, owner: bool, active: ServerSection, pal: Pal) -> Element<'a, Message> {
+    let mut items = Column::new().spacing(4);
+    if owner {
+        items = items.push(nav_item("Server Profile", ServerSection::Profile, active, pal));
+    }
+    items = items.push(nav_item("Roles", ServerSection::Roles, active, pal));
+    container(column![text(name.to_uppercase()).size(12).color(pal.text_muted), items].spacing(8))
+        .padding(crate::util::pad2(24.0, 12.0))
+        .width(Length::Fixed(220.0))
+        .height(Length::Fill)
+        .style(move |_: &Theme| round(pal.sidebar_bg, 0.0))
+        .into()
+}
+
+fn nav_item<'a>(label: &str, section: ServerSection, active: ServerSection, pal: Pal) -> Element<'a, Message> {
+    let selected = section == active;
+    let color = if selected { pal.text_strong } else { pal.text_muted };
+    button(text(label.to_string()).size(15).color(color))
+        .width(Length::Fill)
+        .padding(crate::util::pad2(6.0, 10.0))
+        .on_press(Message::ServerSectionPick(section))
+        .style(move |_: &Theme, status: button::Status| {
+            let bg = if selected {
+                pal.selected_bg
+            } else if matches!(status, button::Status::Hovered) {
+                pal.hover_bg
+            } else {
+                Color::TRANSPARENT
+            };
+            button::Style { background: Some(Background::Color(bg)), text_color: color, border: border::rounded(4.0), ..button::Style::default() }
+        })
+        .into()
+}
+
+/// The Server Profile section: the name, description and picture. Also says whether it has unsaved changes.
+fn profile_items(app: &App, pal: Pal) -> (Vec<Element<'_, Message>>, bool) {
     let form = &app.server_form;
     let name = app.selected_name().unwrap_or_else(|| "Server".into());
     let dirty = (!form.name.trim().is_empty() && form.name.trim() != name) || form.description.trim() != app.server.description;
     let icon: Element<'_, Message> = server_icon(app.server.icon.as_deref(), &name, 64.0, &pal, 8.0);
     let mut items: Vec<Element<'_, Message>> = vec![
-        page_head("Server Profile", pal, Message::ServerSettingsClose),
+        page_title("Server Profile", pal),
         muted_text("Customise how your server appears to its members.", 14.0, pal.text_muted),
         text("SERVER ICON").size(12).color(pal.text_muted).into(),
         row![
@@ -479,16 +568,305 @@ pub fn server_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     if dirty {
         items.push(divider(pal.selected_bg));
     }
-    let content = scrollable(Column::with_children(items).spacing(14).padding(crate::util::pad2(24.0, 40.0)).width(Length::Fill)).height(Length::Fill);
-    let page = container(row![settings_nav(&name.to_uppercase(), "Server Profile", pal), content].height(Length::Fill))
-        .width(Length::Fill)
+    (items, dirty)
+}
+
+/// The colours offered for a role, as in Discord's palette.
+const ROLE_COLORS: [&str; 20] = [
+    "#1abc9c", "#2ecc71", "#3498db", "#9b59b6", "#e91e63", "#f1c40f", "#e67e22", "#e74c3c", "#95a5a6", "#607d8b",
+    "#11806a", "#1f8b4c", "#206694", "#71368a", "#ad1457", "#c27c0e", "#a84300", "#992d22", "#979c9f", "#546e7a",
+];
+
+/// The permissions a role can grant: the label, what it lets a member do, and its bit.
+const PERMISSIONS: [(&str, &str, u32); 3] = [
+    ("Manage channels", "Allows members to create, rename, move and delete channels and categories.", common::perm::MANAGE_CHANNELS),
+    ("Manage roles", "Allows members to create and edit roles below their own, and give them to members below them.", common::perm::MANAGE_ROLES),
+    ("Manage messages", "Allows members to delete other members' messages.", common::perm::MANAGE_MESSAGES),
+];
+
+/// The Roles section, laid out like Discord's: the roles on the left, and the chosen role's settings on the right.
+/// True when the editor's draft differs from the role as the server has it, so there is something to save.
+fn role_changed(app: &App, draft: &RoleDraft) -> bool {
+    if !draft.id.map_or(true, |id| app.outranks_role(id)) {
+        return false;
+    }
+    match draft.id.and_then(|id| app.server.roles.iter().find(|r| r.id == id)) {
+        Some(role) => role.name != draft.name.trim() || role.color != draft.color.trim() || role.permissions != draft.permissions,
+        // A new role is made with its own Create button, so it has no bar.
+        None => false,
+    }
+}
+
+/// The roles section. Also says whether the open role has changes that are not saved.
+fn roles_section(app: &App, pal: Pal) -> (Element<'_, Message>, bool) {
+    let dirty = app.role_form.as_ref().is_some_and(|draft| role_changed(app, draft));
+    let selected = app.role_form.as_ref().map(|d| d.id);
+    let mut list: Vec<Element<'_, Message>> = vec![
+        row![
+            text(format!("ROLES — {}", app.server.roles.len())).size(12).color(pal.text_muted).width(Length::Fill),
+            small_button("New role", Message::RoleEdit(None), pal),
+        ]
+        .align_y(iced::alignment::Vertical::Center)
+        .into(),
+    ];
+    for role in &app.server.roles {
+        list.push(role_row(role, members_with(app, role.id), selected == Some(Some(role.id)), pal));
+    }
+    let roles_list = container(scrollable(Column::with_children(list).spacing(4).padding(crate::util::pad2(16.0, 10.0)).width(Length::Fill)).height(Length::Fill))
+        .width(Length::Fixed(240.0))
         .height(Length::Fill)
         .style(move |_: &Theme| round(pal.app_bg, 0.0));
-    if dirty {
-        iced::widget::stack![page, unsaved_bar(pal, Message::ServerReset, Message::ServerSave, "Careful – you have unsaved changes!")].into()
+    let editor: Element<'_, Message> = match app.role_form.as_ref() {
+        Some(draft) => role_editor(app, draft, pal),
+        None => container(
+            column![
+                text("Pick a role to edit it").size(18).color(pal.text_strong),
+                muted_text("Roles give members permissions and a colour in the member list. Choose one on the left, or make a new one.", 14.0, pal.text_muted),
+                solid("Create role", Message::RoleEdit(None), pal.accent, pal.on_color, None),
+            ]
+            .spacing(12)
+            .max_width(420.0)
+            .align_x(iced::alignment::Horizontal::Center),
+        )
+        .width(Length::Fill)
+        .padding(crate::util::pad2(96.0, 24.0))
+        .align_x(iced::alignment::Horizontal::Center)
+        .into(),
+    };
+    let body = scrollable(container(editor).padding(crate::util::pad(24.0, 32.0, 96.0, 32.0)).max_width(640.0).width(Length::Fill)).height(Length::Fill).width(Length::Fill);
+    (row![roles_list, body].height(Length::Fill).into(), dirty)
+}
+
+/// How many members hold a role.
+fn members_with(app: &App, role: i64) -> usize {
+    app.server.member_roles.values().filter(|held| held.contains(&role)).count()
+}
+
+/// One role in the list: a colour, its name, how many hold it, and a click to edit it.
+fn role_row<'a>(role: &RoleInfo, members: usize, selected: bool, pal: Pal) -> Element<'a, Message> {
+    let color = crate::util::hex_color(&role.color).unwrap_or(pal.text_muted);
+    let everyone = role.id == EVERYONE_ROLE;
+    let subtitle = if everyone {
+        "Every member has this".to_string()
     } else {
-        page.into()
+        format!("{members} {}", if members == 1 { "member" } else { "members" })
+    };
+    let marker = container(space().width(Length::Fixed(3.0)).height(Length::Fixed(30.0)))
+        .style(move |_: &Theme| round(if selected { pal.accent } else { Color::TRANSPARENT }, 2.0));
+    let dot = container(space().width(Length::Fixed(12.0)).height(Length::Fixed(12.0))).style(move |_: &Theme| round(color, 6.0));
+    let label = column![
+        text(role.name.clone()).size(15).color(if selected { pal.text_strong } else { pal.text }),
+        text(subtitle).size(12).color(pal.text_muted),
+    ]
+    .spacing(2);
+    button(
+        row![marker, dot, label]
+            .spacing(10)
+            .align_y(iced::alignment::Vertical::Center),
+    )
+    .width(Length::Fill)
+    .padding(crate::util::pad2(6.0, 8.0))
+    .on_press(Message::RoleEdit(Some(role.id)))
+    .style(move |_: &Theme, status: button::Status| {
+        let bg = if selected {
+            pal.selected_bg
+        } else if matches!(status, button::Status::Hovered) {
+            pal.hover_bg
+        } else {
+            Color::TRANSPARENT
+        };
+        button::Style { background: Some(Background::Color(bg)), text_color: pal.text, border: border::rounded(6.0), ..button::Style::default() }
+    })
+    .into()
+}
+
+/// A rounded card of the editor's content.
+fn editor_card<'a>(items: Vec<Element<'a, Message>>, pal: Pal) -> Element<'a, Message> {
+    container(Column::with_children(items).spacing(14).width(Length::Fill))
+        .padding(crate::util::pad2(18.0, 20.0))
+        .width(Length::Fill)
+        .style(move |_: &Theme| round(pal.sidebar_bg, 8.0))
+        .into()
+}
+
+/// The editor for the chosen role: a header with its colour, then its name, colour and position on the
+/// Display tab, or its permissions on the Permissions tab, and the save and cancel buttons.
+fn role_editor<'a>(app: &'a App, draft: &'a RoleDraft, pal: Pal) -> Element<'a, Message> {
+    let everyone = draft.id == Some(EVERYONE_ROLE);
+    // A new role is always allowed here (the server checks the permission). An existing role must sit below the viewer's highest.
+    let editable = draft.id.map_or(true, |id| app.outranks_role(id));
+    let swatch = crate::util::hex_color(&draft.color).unwrap_or(pal.text_muted);
+    let granted = PERMISSIONS.iter().filter(|(_, _, bit)| draft.permissions & bit == *bit).count();
+    let (title, detail) = match draft.id {
+        Some(id) => (
+            draft.name.clone(),
+            format!("{} · {granted} of {} permissions", pluralise(members_with(app, id), "member"), PERMISSIONS.len()),
+        ),
+        None => ("New role".to_string(), "Give it a name, a colour and some permissions".to_string()),
+    };
+    let header = container(
+        row![
+            container(space().width(Length::Fixed(44.0)).height(Length::Fixed(44.0))).style(move |_: &Theme| round(swatch, 10.0)),
+            column![text(title).size(20).color(pal.text_strong), text(detail).size(13).color(pal.text_muted)].spacing(4),
+        ]
+        .spacing(16)
+        .align_y(iced::alignment::Vertical::Center),
+    )
+    .padding(crate::util::pad2(16.0, 20.0))
+    .width(Length::Fill)
+    .style(move |_: &Theme| round(pal.sidebar_bg, 8.0));
+
+    let mut items: Vec<Element<'a, Message>> = vec![header.into()];
+    if !editable {
+        items.push(muted_text("Your highest role is not above this one, so you cannot change it.", 13.0, pal.text_muted));
     }
+    items.push(
+        row![
+            tab_button("Display", RoleTab::Display, app.role_tab, pal),
+            tab_button("Permissions", RoleTab::Permissions, app.role_tab, pal),
+        ]
+        .spacing(18)
+        .into(),
+    );
+    match app.role_tab {
+        RoleTab::Display => items.push(editor_card(display_tab(app, draft, everyone, editable, pal), pal)),
+        RoleTab::Permissions => items.push(editor_card(permissions_tab(app, draft, editable, pal), pal)),
+    }
+
+    // Saving and resetting an existing role are in the bar at the bottom of the page, so the footer
+    // only holds creating a new role and deleting an existing one.
+    let mut buttons = row![].spacing(16).align_y(iced::alignment::Vertical::Center);
+    match draft.id {
+        None => {
+            if editable {
+                buttons = buttons.push(solid("Create role", Message::RoleSave, pal.accent, pal.on_color, None));
+            }
+            buttons = buttons.push(link("Cancel", Message::RoleEditCancel, pal.link));
+        }
+        Some(id) => {
+            if editable && !everyone {
+                buttons = buttons.push(link("Delete role", Message::RoleDeleteAsk(id, draft.name.clone()), pal.red));
+            }
+        }
+    }
+    items.push(divider(pal.selected_bg));
+    items.push(buttons.into());
+    Column::with_children(items).spacing(16).width(Length::Fill).into()
+}
+
+fn pluralise(count: usize, noun: &str) -> String {
+    if count == 1 {
+        format!("1 {noun}")
+    } else {
+        format!("{count} {noun}s")
+    }
+}
+
+/// A tab title with an underline when it is the open one.
+fn tab_button<'a>(label: &str, tab: RoleTab, active: RoleTab, pal: Pal) -> Element<'a, Message> {
+    let selected = tab == active;
+    let color = if selected { pal.text_strong } else { pal.text_muted };
+    let underline = container(space().width(Length::Fill).height(Length::Fixed(2.0)))
+        .style(move |_: &Theme| round(if selected { pal.accent } else { Color::TRANSPARENT }, 0.0));
+    let title = button(text(label.to_string()).size(15).color(color))
+        .padding(crate::util::pad2(4.0, 2.0))
+        .on_press(Message::RoleTab(tab))
+        .style(|_: &Theme, _: button::Status| button::Style { background: None, ..button::Style::default() });
+    column![title, underline].spacing(4).width(Length::Shrink).into()
+}
+
+fn display_tab<'a>(app: &'a App, draft: &'a RoleDraft, everyone: bool, editable: bool, pal: Pal) -> Vec<Element<'a, Message>> {
+    let mut items: Vec<Element<'a, Message>> = Vec::new();
+    if everyone {
+        items.push(muted_text("Every member holds @everyone. Its colour and permissions apply to everyone.", 13.0, pal.text_muted));
+    }
+    let mut name = text_input("Moderator", &draft.name).padding(10).style(input_style(pal));
+    if editable && !everyone {
+        name = name.on_input(Message::RoleDraftName);
+    }
+    items.push(field("Role name", name.into()));
+
+    items.push(text("ROLE COLOUR").size(12).color(pal.text_muted).into());
+    let picked = draft.color.to_lowercase();
+    let mut rows: Vec<Element<'a, Message>> = Vec::new();
+    for chunk in ROLE_COLORS.chunks(10) {
+        let mut swatches = row![].spacing(8);
+        for hex in chunk {
+            let color = crate::util::hex_color(hex).unwrap_or(Color::BLACK);
+            let on = picked == *hex;
+            let mut swatch = button(space().width(Length::Fixed(26.0)).height(Length::Fixed(26.0)))
+                .padding(0)
+                .style(move |_: &Theme, _: button::Status| {
+                    let mut ring = border::rounded(13.0);
+                    ring.color = if on { pal.text_strong } else { Color::TRANSPARENT };
+                    ring.width = if on { 2.0 } else { 0.0 };
+                    button::Style { background: Some(Background::Color(color)), border: ring, ..button::Style::default() }
+                });
+            if editable {
+                swatch = swatch.on_press(Message::RoleColorPick(hex.to_string()));
+            }
+            swatches = swatches.push(swatch);
+        }
+        rows.push(swatches.into());
+    }
+    items.push(Column::with_children(rows).spacing(8).into());
+    if editable {
+        items.push(field(
+            "Custom colour",
+            text_input("#rrggbb, or empty for none", &draft.color).on_input(Message::RoleDraftColor).padding(10).style(input_style(pal)).into(),
+        ));
+    }
+    let preview = crate::util::hex_color(&draft.color).unwrap_or(pal.text_strong);
+    let shown = if draft.name.trim().is_empty() { "Role name".to_string() } else { draft.name.trim().to_string() };
+    items.push(
+        row![text("Preview").size(13).color(pal.text_muted), text(shown).size(15).color(preview)]
+            .spacing(10)
+            .align_y(iced::alignment::Vertical::Center)
+            .into(),
+    );
+
+    // Moving is among the real roles. @everyone stays at the bottom.
+    if let Some(id) = draft.id {
+        if editable && !everyone {
+            let real: Vec<i64> = app.server.roles.iter().map(|r| r.id).filter(|&r| r != EVERYONE_ROLE).collect();
+            if let Some(index) = real.iter().position(|&r| r == id) {
+                let mut moves = row![].spacing(12);
+                if index > 0 {
+                    moves = moves.push(link("Move up", Message::RoleMove(id, Some(real[index - 1])), pal.link));
+                }
+                if index + 1 < real.len() {
+                    moves = moves.push(link("Move down", Message::RoleMove(id, real.get(index + 2).copied()), pal.link));
+                }
+                items.push(moves.into());
+            }
+        }
+    }
+    items
+}
+
+fn permissions_tab<'a>(app: &'a App, draft: &'a RoleDraft, editable: bool, pal: Pal) -> Vec<Element<'a, Message>> {
+    let mut items: Vec<Element<'a, Message>> = Vec::new();
+    for (index, (label, hint, bit)) in PERMISSIONS.into_iter().enumerate() {
+        if index > 0 {
+            items.push(divider(pal.selected_bg));
+        }
+        let on = draft.permissions & bit == bit;
+        let mut toggle = toggler(on);
+        // Only someone with the permission can grant it, and only where the role is editable.
+        if editable && app.can(bit) {
+            toggle = toggle.on_toggle(move |v| Message::RoleDraftPerm(bit, v));
+        }
+        items.push(
+            row![
+                column![text(label).size(15).color(pal.text_strong), muted_text(hint, 12.0, pal.text_muted)].spacing(4).width(Length::Fill),
+                toggle,
+            ]
+            .spacing(12)
+            .align_y(iced::alignment::Vertical::Center)
+            .into(),
+        );
+    }
+    items
 }
 
 /// The join-a-server dialog, opened from the + button.

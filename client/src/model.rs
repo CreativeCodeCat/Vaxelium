@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use common::{ChatMessage, DirectMessage, ServerMsg};
+use common::{perm, ChatMessage, DirectMessage, ServerMsg};
 
 use crate::app::App;
 use crate::prefs::ServerPref;
@@ -52,6 +52,10 @@ pub struct ServerView {
     pub owner: Option<String>,
     pub owner_id: Option<String>,
     pub user_id: String,
+    /// The server's roles, highest first.
+    pub roles: Vec<common::RoleInfo>,
+    /// Each member's role ids, by account id.
+    pub member_roles: HashMap<String, Vec<i64>>,
 }
 
 /// A background connection to another server, for its direct messages.
@@ -123,6 +127,69 @@ impl App {
 
     pub fn is_owner(&self) -> bool {
         self.server.owner_id.as_deref().is_some_and(|id| id == self.user_id)
+    }
+
+    /// The permissions this account has on the open server. The owner has all of them; anyone else
+    /// has the ones their roles grant together.
+    pub fn my_permissions(&self) -> u32 {
+        if self.is_owner() {
+            return perm::ALL;
+        }
+        // @everyone is held by everyone, so its permissions apply first.
+        let held = self.server.member_roles.get(&self.user_id);
+        let everyone = self.server.roles.iter().find(|r| r.id == common::EVERYONE_ROLE).map_or(0, |r| r.permissions);
+        self.server
+            .roles
+            .iter()
+            .filter(|r| r.id != common::EVERYONE_ROLE && held.is_some_and(|h| h.contains(&r.id)))
+            .fold(everyone, |bits, r| bits | r.permissions)
+    }
+
+    /// The colour of a member's name: the highest role they have that has a colour, or else
+    /// @everyone's colour. `None` when there is no colour to show.
+    pub fn member_color(&self, member_id: &str) -> Option<iced::Color> {
+        let held = self.server.member_roles.get(member_id);
+        let own = self
+            .server
+            .roles
+            .iter()
+            .find(|r| r.id != common::EVERYONE_ROLE && !r.color.is_empty() && held.is_some_and(|h| h.contains(&r.id)));
+        let role = own.or_else(|| self.server.roles.iter().find(|r| r.id == common::EVERYONE_ROLE))?;
+        crate::util::hex_color(&role.color)
+    }
+
+    /// True when this account has the permission (see `common::perm`).
+    pub fn can(&self, permission: u32) -> bool {
+        self.my_permissions() & permission == permission
+    }
+
+    /// The index, in the role order, of this account's highest role.
+    fn my_top_role(&self) -> Option<usize> {
+        let held = self.server.member_roles.get(&self.user_id)?;
+        self.server.roles.iter().position(|r| held.contains(&r.id))
+    }
+
+    /// True when this account sits above the role, so it may edit, move or give it. Matches the server.
+    pub fn outranks_role(&self, role: i64) -> bool {
+        if self.is_owner() {
+            return true;
+        }
+        let Some(index) = self.server.roles.iter().position(|r| r.id == role) else {
+            return false;
+        };
+        self.my_top_role().is_some_and(|top| index > top)
+    }
+
+    /// The highest role a member has, by account id.
+    pub fn top_role(&self, member_id: &str) -> Option<&common::RoleInfo> {
+        let held = self.server.member_roles.get(member_id)?;
+        self.server.roles.iter().find(|r| held.contains(&r.id))
+    }
+
+    /// The highest role a member has, by display name.
+    pub fn top_role_by_name(&self, name: &str) -> Option<&common::RoleInfo> {
+        let id = self.server.member_ids.get(name)?;
+        self.top_role(id)
     }
 
     /// The name of a direct message's other member, from this server's list or another server's.
@@ -266,7 +333,7 @@ impl App {
     }
 
     pub fn can_delete(&self, m: &ChatMessage) -> bool {
-        self.can_edit(m) || self.is_owner()
+        self.can_edit(m) || self.can(perm::MANAGE_MESSAGES)
     }
 
     /// The message with this id in the open view, if there is one.

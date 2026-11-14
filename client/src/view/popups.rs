@@ -196,6 +196,24 @@ pub fn dialog_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     if app.add_server.open {
         return Some(super::pages::join_server(app, pal));
     }
+    if let Some((_, name)) = &app.pending_role_delete {
+        let items: Vec<Element<'_, Message>> = vec![
+            text(format!("Delete role {name}?")).size(20).color(pal.text_strong).into(),
+            text("Members with this role will lose it. Its permissions go with it. It can't be undone.")
+                .size(14)
+                .color(pal.text)
+                .into(),
+            row![
+                space().width(Length::Fill),
+                link("Cancel", Message::RoleDeleteCancel, pal.text_muted),
+                solid("Delete", Message::RoleDeleteConfirm, pal.red, pal.on_color, None),
+            ]
+            .spacing(10)
+            .align_y(iced::alignment::Vertical::Center)
+            .into(),
+        ];
+        return Some(modal(items, pal, Message::RoleDeleteCancel));
+    }
     if let Some((_, name)) = &app.pending_channel_delete {
         let items: Vec<Element<'_, Message>> = vec![
             text(format!("Delete #{name}?")).size(20).color(pal.text_strong).into(),
