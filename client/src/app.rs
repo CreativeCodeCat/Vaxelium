@@ -18,10 +18,10 @@ use crate::net::{self, Connection, NetEvent};
 use crate::util::now_secs;
 
 /// Key under which the saved server list is stored by eframe.
-pub const SERVERS_KEY: &str = "disscord_servers";
+pub const SERVERS_KEY: &str = "vaxelium_servers";
 /// Key under which the colour theme is stored by eframe.
-pub const THEME_KEY: &str = "disscord_theme";
-pub const SKIN_TONE_KEY: &str = "disscord_skin_tone";
+pub const THEME_KEY: &str = "vaxelium_theme";
+pub const SKIN_TONE_KEY: &str = "vaxelium_skin_tone";
 const MIN_PASSWORD_LEN: usize = 8;
 
 /// A server the user added with the "+" button. Saved between runs.
@@ -50,7 +50,7 @@ fn icon_png_base64(path: &std::path::Path) -> Result<String, String> {
 }
 
 /// Key under which the saved login is stored by eframe.
-pub const SESSION_KEY: &str = "disscord_session";
+pub const SESSION_KEY: &str = "vaxelium_session";
 
 /// A login remembered between runs. The password is never kept. The token is kept in the
 /// system keychain, so it is not written to the data file (`skip_serializing`), but an older
@@ -161,7 +161,7 @@ pub struct PersonRow {
 const DM_RETRY: Duration = Duration::from_secs(30);
 
 #[derive(Default)]
-pub struct DissCordApp {
+pub struct VaxeliumApp {
     /// Background connections for direct messages, one per saved server.
     pub dm_links: Vec<DmLink>,
     /// Connections being made, by server address. Each delivers its result when ready.
@@ -317,7 +317,7 @@ fn friendly_disconnect(reason: &str) -> &'static str {
     }
 }
 
-impl DissCordApp {
+impl VaxeliumApp {
     /// Checks a saved login with the auth service and logs in if it is still valid.
     /// Called once at startup. If the auth service cannot be reached, the saved login is used
     /// anyway, so the chat server can still accept it.

@@ -7,7 +7,7 @@ use chrono::NaiveDate;
 use common::{ChatMessage, QUICK_REACTIONS};
 use eframe::egui::{self, Align2, Color32, CornerRadius, FontId, Frame, Margin, Response, RichText, Sense, TextEdit, Ui};
 
-use crate::app::{DissCordApp, Entry, MenuAction, VIRTUAL_BASE};
+use crate::app::{VaxeliumApp, Entry, MenuAction, VIRTUAL_BASE};
 use crate::discover::FoundServer;
 use crate::theme::*;
 use crate::util::{day_key, day_label, stamp_label, time_label};
@@ -17,7 +17,7 @@ const GROUP_GAP_SECS: u64 = 7 * 60;
 /// Width of the avatar column plus its spacing, used to indent grouped messages.
 const AVATAR_INDENT: f32 = 60.0;
 
-pub fn root(app: &mut DissCordApp, ui: &mut Ui) {
+pub fn root(app: &mut VaxeliumApp, ui: &mut Ui) {
     let ctx = ui.ctx().clone();
     let mut actions = Vec::new();
 
@@ -102,14 +102,14 @@ fn auth_banner(ui: &mut Ui) -> bool {
     close
 }
 
-fn top_bar(app: &DissCordApp, ui: &mut Ui) {
+fn top_bar(app: &VaxeliumApp, ui: &mut Ui) {
     let ctx = ui.ctx().clone();
     let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
     // On the Direct messages page the bar shows only the conversation, not the server's name.
     let title = match app.selected_name() {
         Some(_) if app.is_chat_ready() && app.home => app.channel_label(),
         Some(name) if app.is_chat_ready() => format!("{}  ·  {name}", app.channel_label()),
-        _ => "DissCord".to_string(),
+        _ => "Vaxelium".to_string(),
     };
 
     egui::Panel::top("top_bar")
@@ -233,7 +233,7 @@ fn window_resize_edges(ctx: &egui::Context) {
 }
 
 /// The column of server icons on the far left, with "+" to add a server.
-fn server_rail(app: &DissCordApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
+fn server_rail(app: &VaxeliumApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
     egui::Panel::left("rail")
         .exact_size(72.0)
         .frame(Frame::new().fill(pal().rail_bg))
@@ -372,7 +372,7 @@ fn add_server_button(ui: &mut Ui) -> Response {
 }
 
 /// The server name bar at the top of the channel sidebar. Clicking it opens the server menu.
-fn server_header(app: &DissCordApp, ui: &mut Ui, title: &str, actions: &mut Vec<MenuAction>) {
+fn server_header(app: &VaxeliumApp, ui: &mut Ui, title: &str, actions: &mut Vec<MenuAction>) {
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 48.0), Sense::click());
     let bg = if resp.is_pointer_button_down_on() {
         pal().selected_bg
@@ -465,7 +465,7 @@ fn menu_divider(ui: &mut Ui) {
 }
 
 /// Items shared by the server header's menu and the server icon's right-click menu.
-fn server_menu_items(ui: &mut Ui, app: &DissCordApp, actions: &mut Vec<MenuAction>) {
+fn server_menu_items(ui: &mut Ui, app: &VaxeliumApp, actions: &mut Vec<MenuAction>) {
     ui.spacing_mut().item_spacing.y = 2.0;
     if app.is_owner() && menu_item(ui, "Server settings", false) {
         actions.push(MenuAction::OpenServerSettings);
@@ -489,7 +489,7 @@ fn server_menu_items(ui: &mut Ui, app: &DissCordApp, actions: &mut Vec<MenuActio
     }
 }
 
-fn login(app: &mut DissCordApp, ui: &mut Ui) {
+fn login(app: &mut VaxeliumApp, ui: &mut Ui) {
     egui::CentralPanel::default()
         .frame(Frame::new().fill(pal().app_bg))
         .show(ui, |ui| {
@@ -508,10 +508,10 @@ fn login(app: &mut DissCordApp, ui: &mut Ui) {
 }
 
 /// Log in or register. The account works on every server, so no server is asked for here.
-fn login_form(app: &mut DissCordApp, ui: &mut Ui) {
+fn login_form(app: &mut VaxeliumApp, ui: &mut Ui) {
     let heading = if app.register_mode { "Create an account" } else { "Welcome back!" };
     ui.label(RichText::new(heading).size(24.0).strong().color(pal().text_strong));
-    ui.label(RichText::new("One account works on every DissCord server.").color(pal().text_muted));
+    ui.label(RichText::new("One account works on every Vaxelium server.").color(pal().text_muted));
     ui.add_space(16.0);
 
     let mut submit = false;
@@ -587,7 +587,7 @@ fn login_form(app: &mut DissCordApp, ui: &mut Ui) {
 
 /// Asks before a message is deleted. Deleting is queued as an action, so the server only hears
 /// about it once the user confirms.
-fn delete_confirm_dialog(app: &mut DissCordApp, ctx: &egui::Context, actions: &mut Vec<MenuAction>) {
+fn delete_confirm_dialog(app: &mut VaxeliumApp, ctx: &egui::Context, actions: &mut Vec<MenuAction>) {
     let Some(id) = app.pending_delete else {
         return;
     };
@@ -641,7 +641,7 @@ fn is_certificate_change(err: &str) -> bool {
 }
 
 /// Shown when logged in but no server is open: add one, wait for a join, or retry.
-fn server_status(app: &mut DissCordApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
+fn server_status(app: &mut VaxeliumApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
     egui::CentralPanel::default()
         .frame(Frame::new().fill(pal().app_bg))
         .show(ui, |ui| {
@@ -656,7 +656,7 @@ fn server_status(app: &mut DissCordApp, ui: &mut Ui, actions: &mut Vec<MenuActio
                         if app.servers.is_empty() {
                             ui.label(RichText::new("Add a server").size(24.0).strong().color(pal().text_strong));
                             ui.label(
-                                RichText::new("Enter the address of a DissCord server to start chatting.")
+                                RichText::new("Enter the address of a Vaxelium server to start chatting.")
                                     .color(pal().text_muted),
                             );
                             ui.add_space(16.0);
@@ -726,7 +726,7 @@ fn discover_button(ui: &mut Ui) -> Response {
 
 /// Full-page "Find servers", opened from the rail's compass button. Esc or the X goes back.
 /// Lists the servers found through the server you have open, each with an Add button.
-fn discover_page(app: &mut DissCordApp, ui: &mut Ui) {
+fn discover_page(app: &mut VaxeliumApp, ui: &mut Ui) {
     app.drain_discovered();
     let mut close = ui.input(|i| i.key_pressed(egui::Key::Escape));
     let mut to_add: Option<usize> = None;
@@ -910,7 +910,7 @@ fn discovered_row(ui: &mut Ui, found: &FoundServer, saved: bool, expanded: bool)
     }
 }
 
-fn add_server_dialog(app: &mut DissCordApp, ctx: &egui::Context) {
+fn add_server_dialog(app: &mut VaxeliumApp, ctx: &egui::Context) {
     if !app.show_add_server {
         return;
     }
@@ -1029,7 +1029,7 @@ fn add_server_dialog(app: &mut DissCordApp, ctx: &egui::Context) {
 
 /// Full-page user settings, opened from the gear beside your name. Esc or the close button goes back
 /// to the chat.
-fn user_settings_page(app: &mut DissCordApp, ui: &mut Ui) {
+fn user_settings_page(app: &mut VaxeliumApp, ui: &mut Ui) {
     let mut close = ui.input(|i| i.key_pressed(egui::Key::Escape));
     let mut log_out = false;
 
@@ -1142,7 +1142,7 @@ fn user_settings_page(app: &mut DissCordApp, ui: &mut Ui) {
             account_row_text(
                 ui,
                 "Log out",
-                "Sign out of DissCord on this computer.",
+                "Sign out of Vaxelium on this computer.",
                 |ui| {
                     // Dark text on the pink button, so it reads clearly.
                     let button = egui::Button::new(RichText::new("Log Out").strong().color(pal().on_color))
@@ -1170,7 +1170,7 @@ fn user_settings_page(app: &mut DissCordApp, ui: &mut Ui) {
 
 /// The bar at the bottom of the Account page while changes wait to be saved, like the server
 /// settings page's bar.
-fn account_save_bar(app: &mut DissCordApp, ctx: &egui::Context) {
+fn account_save_bar(app: &mut VaxeliumApp, ctx: &egui::Context) {
     let mut save = false;
     let mut reset = false;
     egui::Area::new(egui::Id::NULL.with("account_unsaved_changes"))
@@ -1212,7 +1212,7 @@ fn account_save_bar(app: &mut DissCordApp, ctx: &egui::Context) {
 
 /// The popup for changing the display name, the username or the email. Esc, the X and Cancel close
 /// it without saving.
-fn account_edit_dialog(app: &mut DissCordApp, ctx: &egui::Context) {
+fn account_edit_dialog(app: &mut VaxeliumApp, ctx: &egui::Context) {
     let field = if app.name_editing {
         Some((ProfileField::DisplayName, "Edit display name"))
     } else if app.username_editing {
@@ -1264,7 +1264,7 @@ enum ProfileField {
 }
 
 /// The form for the display name or the username. Usernames are kept lowercase as they are typed.
-fn profile_form(ui: &mut Ui, app: &mut DissCordApp, field: ProfileField) {
+fn profile_form(ui: &mut Ui, app: &mut VaxeliumApp, field: ProfileField) {
     ui.set_max_width(420.0);
     let (label, hint, input) = match field {
         ProfileField::DisplayName => ("NEW DISPLAY NAME", "How your name appears in chat", &mut app.name_input),
@@ -1313,7 +1313,7 @@ fn profile_form(ui: &mut Ui, app: &mut DissCordApp, field: ProfileField) {
 }
 
 /// The email form on the Account page. Saving asks the auth service, which checks the password.
-fn email_form(ui: &mut Ui, app: &mut DissCordApp) {
+fn email_form(ui: &mut Ui, app: &mut VaxeliumApp) {
     ui.set_max_width(420.0);
     field_label(ui, "NEW EMAIL");
     ui.add(
@@ -1396,7 +1396,7 @@ fn account_row_text(ui: &mut Ui, label: &str, description: &str, right: impl FnO
 
 /// Full-page server settings, opened from the server menu by the owner.
 /// Esc or the close button goes back to the chat.
-fn server_settings_page(app: &mut DissCordApp, ui: &mut Ui) {
+fn server_settings_page(app: &mut VaxeliumApp, ui: &mut Ui) {
     let server_name = app.selected_name().unwrap_or("Server").to_string();
     let mut close = ui.input(|i| i.key_pressed(egui::Key::Escape));
     let mut save = false;
@@ -1565,7 +1565,7 @@ fn close_button(ui: &mut Ui) -> bool {
     resp.clicked()
 }
 
-fn chat(app: &mut DissCordApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
+fn chat(app: &mut VaxeliumApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
     // Order matters: side panels first, then top/bottom, then the centre.
     egui::Panel::left("channels")
         .default_size(250.0)
@@ -1604,7 +1604,7 @@ fn chat(app: &mut DissCordApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
 /// The Direct messages page: your conversations on every server you are in, grouped by server, on
 /// the left. The open one is in the middle. Each server keeps its own direct messages, so opening
 /// one on another server switches to that server.
-fn home(app: &mut DissCordApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
+fn home(app: &mut VaxeliumApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
     egui::Panel::left("dm_list")
         .default_size(250.0)
         .min_size(250.0)
@@ -1708,13 +1708,13 @@ fn home(app: &mut DissCordApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
 
 }
 
-fn channel_sidebar(app: &mut DissCordApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
+fn channel_sidebar(app: &mut VaxeliumApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
     egui::Panel::bottom("user_bar")
         .exact_size(56.0)
         .frame(Frame::new().fill(pal().sidebar_bg).inner_margin(Margin::symmetric(8, 8)))
         .show(ui, |ui| user_bar(app, ui, actions));
 
-    let title = app.selected_name().unwrap_or("DissCord").to_string();
+    let title = app.selected_name().unwrap_or("Vaxelium").to_string();
     server_header(app, ui, &title, actions);
 
     let mut to_join: Option<String> = None;
@@ -2095,7 +2095,7 @@ fn matches_query(entry: &Entry, query: &str) -> bool {
 /// Avatar, name, and the mic, headset and gear buttons at the bottom of the channel sidebar.
 /// Your avatar, name and status in a rounded box at the bottom of the channel sidebar, with the
 /// mic and headset (each with a chevron) and the settings gear on the right.
-fn user_bar(app: &DissCordApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
+fn user_bar(app: &VaxeliumApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
     // Room kept free on the right for the mic, headset, chevrons and gear.
     const ICON_BLOCK_WIDTH: f32 = 130.0;
     Frame::new()
@@ -2129,7 +2129,7 @@ fn user_bar(app: &DissCordApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
 }
 
 /// The right-hand member list: the owner first, then everyone else online, then offline.
-fn member_list(app: &DissCordApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
+fn member_list(app: &VaxeliumApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
@@ -2177,7 +2177,7 @@ fn member_heading(ui: &mut Ui, title: &str, count: usize) {
 /// One member. Online members get a green dot and bright name; offline members are dimmed.
 /// One member. Online members get a green dot and bright name; offline members are dimmed.
 /// The row lights up when the pointer is over it.
-fn member_row(ui: &mut Ui, app: &DissCordApp, name: &str, online: bool, actions: &mut Vec<MenuAction>) {
+fn member_row(ui: &mut Ui, app: &VaxeliumApp, name: &str, online: bool, actions: &mut Vec<MenuAction>) {
     hoverable(ui, |ui| {
         ui.horizontal(|ui| {
             ui.add_space(8.0);
@@ -2207,8 +2207,8 @@ fn owner_crown(ui: &mut Ui) {
 }
 
 /// The channel name bar at the top of the chat, with its icons and a search box.
-fn header(app: &mut DissCordApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
-    let hint = format!("Search {}", app.selected_name().unwrap_or("DissCord"));
+fn header(app: &mut VaxeliumApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
+    let hint = format!("Search {}", app.selected_name().unwrap_or("Vaxelium"));
     // One row, centred vertically in the bar: the channel name on the left, icons and search box on the right.
     ui.horizontal_centered(|ui| {
         ui.add_space(16.0);
@@ -2246,7 +2246,7 @@ fn header(app: &mut DissCordApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
 }
 
 /// The message box with the "+" on the left and gift, GIF, sticker and emoji buttons inside.
-fn composer(app: &mut DissCordApp, ui: &mut Ui) {
+fn composer(app: &mut VaxeliumApp, ui: &mut Ui) {
     let hint = format!("Message {}", app.channel_label());
     ui.horizontal(|ui| {
         icon_button(ui, Icon::Plus, 40.0, false).on_hover_text(NOT_YET_TIP);
@@ -2285,7 +2285,7 @@ fn composer(app: &mut DissCordApp, ui: &mut Ui) {
     }
 }
 
-fn messages(app: &DissCordApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
+fn messages(app: &VaxeliumApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
     let channel = app.channel.clone();
     if app.current_person().is_some() {
         // A conversation with a person: every server's messages with them, in time order.
@@ -2301,7 +2301,7 @@ fn messages(app: &DissCordApp, ui: &mut Ui, actions: &mut Vec<MenuAction>) {
 
 /// The messages with the open person from every server, merged by time. Each message's id says
 /// which server it is on (see `VIRTUAL_BASE`).
-fn dm_timeline(app: &DissCordApp) -> Vec<Entry> {
+fn dm_timeline(app: &VaxeliumApp) -> Vec<Entry> {
     let Some(person) = app.current_person() else {
         return Vec::new();
     };
@@ -2331,7 +2331,7 @@ fn dm_timeline(app: &DissCordApp) -> Vec<Entry> {
 /// The scrolling list of messages. `key` keeps the scroll position apart for each view, and
 /// `channel` names the view in the welcome line.
 fn message_list(
-    app: &DissCordApp,
+    app: &VaxeliumApp,
     ui: &mut Ui,
     actions: &mut Vec<MenuAction>,
     key: &str,
@@ -2404,7 +2404,7 @@ fn message_list(
         });
 }
 
-fn welcome(ui: &mut Ui, app: &DissCordApp, channel: &str) {
+fn welcome(ui: &mut Ui, app: &VaxeliumApp, channel: &str) {
     // A direct message is named after the other member, not as a channel.
     let (title, subtitle) = if channel.starts_with("dm-") {
         let label = app.channel_label();
@@ -2434,7 +2434,7 @@ fn day_divider(ui: &mut Ui, at: u64) {
 }
 
 /// A message with avatar, author, and timestamp. Starts a new group.
-fn full_message(ui: &mut Ui, app: &DissCordApp, m: &ChatMessage, actions: &mut Vec<MenuAction>) {
+fn full_message(ui: &mut Ui, app: &VaxeliumApp, m: &ChatMessage, actions: &mut Vec<MenuAction>) {
     ui.add_space(12.0);
     message_row(ui, app, m, actions, |ui, actions| {
         let row_left = ui.max_rect().left();
@@ -2466,7 +2466,7 @@ fn full_message(ui: &mut Ui, app: &DissCordApp, m: &ChatMessage, actions: &mut V
 }
 
 /// A follow-up message from the same author, indented under the group header.
-fn compact_message(ui: &mut Ui, app: &DissCordApp, m: &ChatMessage, actions: &mut Vec<MenuAction>) {
+fn compact_message(ui: &mut Ui, app: &VaxeliumApp, m: &ChatMessage, actions: &mut Vec<MenuAction>) {
     ui.add_space(2.0);
     message_row(ui, app, m, actions, |ui, actions| {
         ui.horizontal(|ui| {
@@ -2482,7 +2482,7 @@ fn compact_message(ui: &mut Ui, app: &DissCordApp, m: &ChatMessage, actions: &mu
 /// its top right: quick reactions, an emoji picker and a "more" menu.
 fn message_row(
     ui: &mut Ui,
-    app: &DissCordApp,
+    app: &VaxeliumApp,
     m: &ChatMessage,
     actions: &mut Vec<MenuAction>,
     body: impl FnOnce(&mut Ui, &mut Vec<MenuAction>),
@@ -2532,12 +2532,12 @@ fn message_row(
 }
 
 /// Whether the logged-in user may edit this message: only its author may.
-fn can_edit(app: &DissCordApp, m: &ChatMessage) -> bool {
+fn can_edit(app: &VaxeliumApp, m: &ChatMessage) -> bool {
     m.author_id == app.user_id
 }
 
 /// Whether the logged-in user may delete this message: its author, or the server's owner.
-fn can_delete(app: &DissCordApp, m: &ChatMessage) -> bool {
+fn can_delete(app: &VaxeliumApp, m: &ChatMessage) -> bool {
     can_edit(app, m) || app.is_owner()
 }
 
@@ -2692,7 +2692,7 @@ fn emoji_categories() -> Vec<&'static str> {
 
 /// The floating toolbar at the top right of a hovered message, and the menu it has open. Returns
 /// the toolbar's rect.
-fn message_toolbar(ui: &mut Ui, app: &DissCordApp, m: &ChatMessage, row: egui::Rect, actions: &mut Vec<MenuAction>) -> egui::Rect {
+fn message_toolbar(ui: &mut Ui, app: &VaxeliumApp, m: &ChatMessage, row: egui::Rect, actions: &mut Vec<MenuAction>) -> egui::Rect {
     let ctx = ui.ctx().clone();
     let open = open_menu(&ctx).filter(|(id, _)| *id == m.id).map(|(_, menu)| menu);
     let mut clicked: Option<Option<OpenMenu>> = None;
@@ -2814,7 +2814,7 @@ fn message_toolbar(ui: &mut Ui, app: &DissCordApp, m: &ChatMessage, row: egui::R
 
 /// The text of a message. Your own messages can be edited from their right-click menu. While a
 /// message is being edited, its text becomes a box: Enter saves, Escape cancels.
-fn message_text(ui: &mut Ui, app: &DissCordApp, m: &ChatMessage, actions: &mut Vec<MenuAction>) {
+fn message_text(ui: &mut Ui, app: &VaxeliumApp, m: &ChatMessage, actions: &mut Vec<MenuAction>) {
     if m.id != 0 && app.editing == Some(m.id) {
         edit_box(ui, m.id, actions);
         return;
