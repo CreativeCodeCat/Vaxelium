@@ -42,6 +42,10 @@ pub struct Profile {
     pub name: String,
     pub username: String,
     pub email: Option<String>,
+    /// True once the email address has been confirmed with a code.
+    pub verified: bool,
+    /// True when the auth service can send the confirmation code.
+    pub can_verify: bool,
 }
 
 /// The outcome of restoring a saved login at startup.
@@ -387,7 +391,7 @@ impl Backend {
     /// Stores the name the auth service now reports, and moves the saved login to it.
     fn apply_profile(&self, reply: AuthReply) -> Result<Profile, CmdError> {
         match reply {
-            AuthReply::Profile { name, username, email } => {
+            AuthReply::Profile { name, username, email, verified, can_verify } => {
                 let (old, token, remember) = {
                     let mut inner = self.lock();
                     let old = std::mem::replace(&mut inner.user, name.clone());
@@ -399,8 +403,28 @@ impl Backend {
                     }
                     keychain::forget(&old);
                 }
-                Ok(Profile { name, username, email })
+                Ok(Profile { name, username, email, verified, can_verify })
             }
+            AuthReply::Error { text } => Err(CmdError::new(text)),
+            _ => Err(CmdError::new("Unexpected reply from the auth service.")),
+        }
+    }
+
+    /// Emails a confirmation code to the account's address.
+    pub fn request_email_code(&self) -> Result<(), CmdError> {
+        let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
+        match self.auth(AuthRequest::RequestEmailCode { token })? {
+            AuthReply::CodeSent => Ok(()),
+            AuthReply::Error { text } => Err(CmdError::new(text)),
+            _ => Err(CmdError::new("Unexpected reply from the auth service.")),
+        }
+    }
+
+    /// Confirms the email address with the code that was emailed.
+    pub fn verify_email(&self, code: String) -> Result<(), CmdError> {
+        let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
+        match self.auth(AuthRequest::VerifyEmail { token, code })? {
+            AuthReply::EmailVerified => Ok(()),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
         }

@@ -309,11 +309,15 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     let acc = &app.account;
     let user = app.user.clone().unwrap_or_default();
     let shown_name = acc.draft_name.clone().unwrap_or_else(|| user.clone());
-    let shown_user = acc.draft_username.clone().or_else(|| acc.username.clone()).unwrap_or_else(|| "not loaded".into());
-    let email: Element<'_, Message> = match (&acc.draft_email, &acc.email, &acc.email_error) {
-        (Some((e, _)), _, _) => text(e.clone()).size(14).color(pal.text).into(),
-        (None, Some(e), _) => text(e.clone()).size(14).color(pal.text).into(),
-        (None, None, Some(err)) => text(format!("Unavailable ({err})")).size(14).color(pal.text_muted).into(),
+    // When the auth service cannot be reached, the account details are unknown. Show that in the
+    // value, put the reason under the label, and drop the Edit buttons that could not save anyway.
+    let unavailable = acc.username.is_none() && acc.draft_username.is_none() && acc.email_error.is_some();
+    let reason = acc.email_error.clone();
+    let shown_user = acc.draft_username.clone().or_else(|| acc.username.clone()).unwrap_or_else(|| "Unavailable".into());
+    let email: Element<'_, Message> = match (&acc.draft_email, &acc.email) {
+        (Some((e, _)), _) => text(e.clone()).size(14).color(pal.text).into(),
+        (None, Some(e)) => text(e.clone()).size(14).color(pal.text).into(),
+        _ if unavailable => text("Unavailable").size(14).color(pal.text_muted).into(),
         _ => text("Not on record yet. Set it with Edit.").size(14).color(pal.text_muted).into(),
     };
     let theme_name = app.theme_id_name(&acc.draft_theme.clone().unwrap_or_else(|| app.prefs.theme.clone()));
@@ -336,6 +340,15 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
         ..button::Style::default()
     });
 
+    // Verified shows as a label. Otherwise a Verify button starts the code emailed to the address, but
+    // only when this server can send email.
+    let email_status: Element<'_, Message> = if acc.verified {
+        text("Verified").size(13).color(pal.green).into()
+    } else if acc.can_verify {
+        small_button("Verify", Message::VerifyOpen, pal)
+    } else {
+        space().width(Length::Fixed(0.0)).into()
+    };
     let mut main: Vec<Element<'_, Message>> = vec![
         page_title("Account", pal),
         row![
@@ -351,8 +364,30 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
         divider(pal.selected_bg),
         text("ACCOUNT INFO").size(12).color(pal.text_muted).into(),
         setting_row("Display name", None, text(shown_name).size(14).color(pal.text_strong).into(), Some(small_button("Edit", Message::AccountEdit(Field::Name), pal)), pal),
-        setting_row("Username", None, text(format!("@{shown_user}")).size(14).color(pal.text).into(), Some(small_button("Edit", Message::AccountEdit(Field::Username), pal)), pal),
-        setting_row("Email", None, email, Some(small_button("Edit", Message::AccountEdit(Field::Email), pal)), pal),
+        if unavailable {
+            setting_row("Username", reason.as_deref(), text(shown_user).size(14).color(pal.text_muted).into(), None, pal)
+        } else {
+            setting_row("Username", None, text(format!("@{shown_user}")).size(14).color(pal.text).into(), Some(small_button("Edit", Message::AccountEdit(Field::Username), pal)), pal)
+        },
+        if unavailable {
+            setting_row("Email", reason.as_deref(), email, None, pal)
+        } else {
+            setting_row(
+                "Email",
+                None,
+                email,
+                Some(
+                    row![
+                        email_status,
+                        small_button("Edit", Message::AccountEdit(Field::Email), pal),
+                    ]
+                    .spacing(8)
+                    .align_y(iced::alignment::Vertical::Center)
+                    .into(),
+                ),
+                pal,
+            )
+        },
         divider(pal.selected_bg),
         text("PREFERENCES").size(12).color(pal.text_muted).into(),
         setting_row("Theme", None, theme_button.into(), None, pal),

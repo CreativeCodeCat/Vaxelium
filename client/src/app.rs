@@ -17,6 +17,8 @@ use crate::search::Search;
 use crate::theme;
 
 pub const DM_TICK: Duration = Duration::from_secs(5);
+/// How often the app checks whether the auth service is back while the offline banner shows.
+pub const AUTH_PROBE: Duration = Duration::from_secs(10);
 pub const MESSAGES_ID: &str = "messages";
 pub const SEARCH_ID: &str = "search";
 pub const COMPOSER_ID: &str = "composer";
@@ -114,6 +116,15 @@ pub struct Account {
     pub draft_email: Option<(String, String)>,
     pub draft_theme: Option<String>,
     pub save_error: Option<String>,
+    /// The email address has been confirmed with a code.
+    pub verified: bool,
+    /// The auth service can send confirmation codes, so the Verify button is shown.
+    pub can_verify: bool,
+    /// The confirm-your-email dialog is open, the code being typed, its error, and a request in flight.
+    pub verify_open: bool,
+    pub verify_code: String,
+    pub verify_error: Option<String>,
+    pub verify_busy: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -284,6 +295,9 @@ pub struct App {
 pub enum Message {
     Event(Event),
     Tick,
+    /// Time to check whether the auth service has come back (only while the offline banner shows).
+    AuthProbe,
+    AuthProbed(bool),
     WindowOpened(window::Id),
     CursorMoved(Point),
     MouseReleased,
@@ -395,6 +409,13 @@ pub enum Message {
     AccountSave,
     AccountSaved(AccountSaved),
     ThemePick(String),
+    /// Ask for a confirmation code to be emailed, and open the dialog to type it.
+    VerifyOpen,
+    CodeRequested(Result<(), CmdError>),
+    VerifyCodeInput(String),
+    VerifySubmit,
+    VerifyDone(Result<(), CmdError>),
+    VerifyCancel,
 
     ServerSettingsOpen,
     ServerSettingsClose,
@@ -446,6 +467,8 @@ pub struct AccountSaved {
     pub username_saved: bool,
     pub email_saved: bool,
     pub error: Option<String>,
+    /// True when the save failed because the auth service could not be reached.
+    pub auth_down: bool,
 }
 
 /// Runs blocking work on a worker thread and returns a future for its result, so the window stays
@@ -1459,6 +1482,9 @@ impl App {
         ];
         if self.is_logged_in() {
             subs.push(iced::time::every(DM_TICK).map(|_| Message::Tick));
+        }
+        if self.auth_down {
+            subs.push(iced::time::every(AUTH_PROBE).map(|_| Message::AuthProbe));
         }
         Subscription::batch(subs)
     }
