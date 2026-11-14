@@ -92,3 +92,13 @@ pub fn emoji_path(emoji: &str) -> std::path::PathBuf {
         .collect();
     std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/emoji")).join(format!("{}.svg", code.join("-")))
 }
+
+/// The colour of a `#rrggbb` string, or `None` when it is empty or not in that form.
+pub fn hex_color(hex: &str) -> Option<Color> {
+    let digits = hex.strip_prefix('#')?;
+    if digits.len() != 6 {
+        return None;
+    }
+    let value = u32::from_str_radix(digits, 16).ok()?;
+    Some(Color::from_rgb8((value >> 16) as u8, (value >> 8) as u8, value as u8))
+}

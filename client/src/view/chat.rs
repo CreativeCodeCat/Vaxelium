@@ -11,7 +11,7 @@ use crate::icons;
 use crate::model::{is_dm_channel, Entry, GROUP_GAP_SECS};
 use crate::search::Search;
 use crate::theme::Pal;
-use crate::util::{day_label, emoji_path, name_color, stamp_label};
+use crate::util::{day_label, emoji_path, stamp_label};
 
 /// Emoji offered on every message's toolbar.
 pub const QUICK_REACTIONS: [&str; 3] = ["👍", "❤️", "😂"];
@@ -655,6 +655,12 @@ fn entry_visible(channel: &str, e: &Entry, search: &Search) -> bool {
 }
 
 /// One chat message. Hovering shows its toolbar; right-clicking opens its menu.
+/// The colour of a message's author name: their highest role's colour, or the strong text colour
+/// (white on the dark themes) when that role has no colour or they have no role.
+fn author_color(app: &App, m: &ChatMessage, pal: &Pal) -> Color {
+    app.member_color(&m.author_id).unwrap_or(pal.text_strong)
+}
+
 fn chat_message<'a>(app: &'a App, pal: Pal, m: ChatMessage, grouped: bool, now: u64) -> Element<'a, Message> {
     let m_id = m.id;
     let editing = app.editing.as_ref().is_some_and(|(id, _)| *id == m.id);
@@ -685,7 +691,9 @@ fn chat_message<'a>(app: &'a App, pal: Pal, m: ChatMessage, grouped: bool, now: 
     if !grouped {
         content = content.push(
             row![
-                mouse_area(text(m.author.clone()).size(15).color(name_color(&pal, &m.author)))
+                // Names are white unless the author has a role with a colour. Read from the current roles, so
+                // a change to them shows on every message at once.
+                mouse_area(text(m.author.clone()).size(15).color(author_color(app, &m, &pal)))
                     .on_press(Message::OpenMenu(crate::app::MenuKind::User {
                         name: m.author.clone(),
                         can_message: m.author != app.user.clone().unwrap_or_default(),
@@ -815,6 +823,8 @@ fn members(app: &App, pal: Pal) -> Element<'_, Message> {
     let owner = server.owner.clone();
     let row_for = |name: &String, online: bool| -> Element<'_, Message> {
         let color = if online { if *name == app.user.clone().unwrap_or_default() { pal.text_strong } else { pal.text } } else { pal.text_muted };
+        // A member's highest role colours their name.
+        let color = app.server.member_ids.get(name).and_then(|id| app.member_color(id)).unwrap_or(color);
         let mut r = row![letter_badge(name, 32.0, &pal), text(name.clone()).size(15).color(color).width(Length::Fill)]
             .spacing(8)
             .align_y(iced::alignment::Vertical::Center);
@@ -841,8 +851,31 @@ fn members(app: &App, pal: Pal) -> Element<'_, Message> {
         items.push(row_for(o, server.online.contains(o)));
         items.push(space().height(Length::Fixed(12.0)).into());
     }
-    items.push(head(format!("ONLINE — {}", online.len())).into());
-    for n in online {
+    // Online members are grouped under their highest role, highest role first. Members with no role
+    // are listed under ONLINE.
+    let mut plain: Vec<&String> = Vec::new();
+    // @everyone is held by all, so it does not group anyone.
+    let mut groups: Vec<(&common::RoleInfo, Vec<&String>)> =
+        server.roles.iter().filter(|r| r.id != common::EVERYONE_ROLE).map(|r| (r, Vec::new())).collect();
+    for n in &online {
+        match app.top_role_by_name(n) {
+            Some(top) => {
+                if let Some((_, members)) = groups.iter_mut().find(|(r, _)| r.id == top.id) {
+                    members.push(n);
+                }
+            }
+            None => plain.push(n),
+        }
+    }
+    for (role, members) in groups.iter().filter(|(_, m)| !m.is_empty()) {
+        items.push(head(format!("{} — {}", role.name.to_uppercase(), members.len())).into());
+        for n in members {
+            items.push(row_for(n, true));
+        }
+        items.push(space().height(Length::Fixed(12.0)).into());
+    }
+    items.push(head(format!("ONLINE — {}", plain.len())).into());
+    for n in plain {
         items.push(row_for(n, true));
     }
     items.push(space().height(Length::Fixed(12.0)).into());

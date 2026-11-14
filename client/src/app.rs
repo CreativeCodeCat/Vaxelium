@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::time::Duration;
 
-use common::{ClientMsg, ServerMsg};
+use common::{perm, ClientMsg, ServerMsg};
 use iced::futures::channel::oneshot;
 use iced::widget::operation;
 use iced::{event, keyboard, mouse, window, Point, Subscription, Task};
@@ -36,6 +36,31 @@ pub enum Page {
     Discover,
     User,
     Server,
+}
+
+/// A section of the server settings page.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ServerSection {
+    #[default]
+    Profile,
+    Roles,
+}
+
+/// A tab of the role editor.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum RoleTab {
+    #[default]
+    Display,
+    Permissions,
+}
+
+/// A role being edited on the roles page. `id` is `None` for a new role.
+#[derive(Debug, Clone, Default)]
+pub struct RoleDraft {
+    pub id: Option<i64>,
+    pub name: String,
+    pub color: String,
+    pub permissions: u32,
 }
 
 /// Which account field is being edited.
@@ -193,6 +218,14 @@ pub struct App {
     pub discover: Discover,
     pub account: Account,
     pub server_form: ServerForm,
+    /// The role being edited on the roles page, if one is open.
+    pub role_form: Option<RoleDraft>,
+    /// The section of the server settings page that is showing.
+    pub server_section: ServerSection,
+    /// The tab open in the role editor.
+    pub role_tab: RoleTab,
+    /// The last refusal from the server about roles, shown on the roles page.
+    pub role_error: Option<String>,
     /// The editor state for the description box. `server_form.description` follows its text.
     pub description_editor: iced::widget::text_editor::Content,
 
@@ -217,6 +250,8 @@ pub struct App {
     pub dnd: Option<Dnd>,
     /// The channel waiting for its delete confirmation.
     pub pending_channel_delete: Option<(i64, String)>,
+    /// The role waiting for confirmation before it is deleted.
+    pub pending_role_delete: Option<(i64, String)>,
     pub new_category: String,
     pub members_hidden: bool,
     /// Categories whose channels are folded away, by category id.
@@ -351,6 +386,29 @@ pub enum Message {
 
     ServerSettingsOpen,
     ServerSettingsClose,
+    /// Switch the server settings page to another section.
+    ServerSectionPick(ServerSection),
+    /// Open the editor for a role, or for a new one with `None`.
+    RoleEdit(Option<i64>),
+    RoleEditCancel,
+    RoleDraftName(String),
+    /// Pick a colour from the palette.
+    RoleColorPick(String),
+    /// Switch the role editor to another tab.
+    RoleTab(RoleTab),
+    RoleDraftColor(String),
+    RoleDraftPerm(u32, bool),
+    RoleSave,
+    /// Put the role's saved values back into the editor.
+    RoleReset,
+    /// Ask before deleting a role, with its name for the dialog.
+    RoleDeleteAsk(i64, String),
+    RoleDeleteConfirm,
+    RoleDeleteCancel,
+    /// Move a role so it sits just above another one, or at the bottom with `None`.
+    RoleMove(i64, Option<i64>),
+    /// Give a member a role (`true`) or take it away (`false`): the member's id, the role, and on/off.
+    SetMemberRole(String, i64, bool),
     ServerName(String),
     /// An edit in the multi-line description box.
     ServerDescriptionEdit(iced::widget::text_editor::Action),
@@ -417,6 +475,10 @@ impl App {
             discover: Discover::default(),
             account: Account::default(),
             server_form: ServerForm::default(),
+            role_form: None,
+            server_section: ServerSection::default(),
+            role_tab: RoleTab::default(),
+            role_error: None,
             description_editor: iced::widget::text_editor::Content::new(),
             main: MainConn::default(),
             server: ServerView::default(),
@@ -434,6 +496,7 @@ impl App {
             rename_channel: None,
             dnd: None,
             pending_channel_delete: None,
+            pending_role_delete: None,
             new_category: String::new(),
             members_hidden: false,
             collapsed_categories: HashSet::new(),
@@ -756,9 +819,11 @@ impl App {
                 let owner = users.iter().find(|u| u.owner).cloned();
                 self.server.online = users.iter().filter(|u| u.online).map(|u| u.name.clone()).collect();
                 self.server.offline = users.iter().filter(|u| !u.online).map(|u| u.name.clone()).collect();
+                self.server.member_roles = users.iter().map(|u| (u.id.clone(), u.roles.clone())).collect();
                 self.server.owner = owner.as_ref().map(|o| o.name.clone());
                 self.server.owner_id = owner.map(|o| o.id);
             }
+            ServerMsg::Roles { roles } => self.server.roles = roles,
             ServerMsg::System { channel_id, text } => {
                 self.messages
                     .entry(channel_id)
@@ -766,6 +831,9 @@ impl App {
                     .push(Entry::System { text, at: crate::util::now() });
             }
             ServerMsg::Error { text } => {
+                if self.page == Page::Server {
+                    self.role_error = Some(text.clone());
+                }
                 if self.main.welcomed {
                     self.status = format!("Error: {text}");
                 } else {
@@ -1017,8 +1085,8 @@ impl App {
                     items.push(item("Mark as read", None, false, Message::MarkRead(id)));
                 }
                 if !is_dm_channel(&name) {
-                    items.push(item("Rename channel", None, false, Message::RenameStart(id, name.clone())));
-                    if self.is_owner() {
+                    if self.can(perm::MANAGE_CHANNELS) {
+                        items.push(item("Rename channel", None, false, Message::RenameStart(id, name.clone())));
                         items.push(item("Delete channel", Some(crate::icons::TRASH), true, Message::DeleteChannelAsk(id, name.clone())));
                     }
                     items.push(item("Copy channel name", None, false, Message::CopyText(format!("#{name}"))));
@@ -1029,11 +1097,12 @@ impl App {
                 (format!("channel-{name}"), items, None)
             }
             MenuKind::Category { id, name } => {
-                let items = vec![
-                    item("Delete category", Some(crate::icons::TRASH), true, Message::DeleteCategory(id)),
-                    MenuItem::Divider,
-                    item("Copy ID", None, false, Message::CopyText(id.to_string())),
-                ];
+                let mut items = Vec::new();
+                if self.can(perm::MANAGE_CHANNELS) {
+                    items.push(item("Delete category", Some(crate::icons::TRASH), true, Message::DeleteCategory(id)));
+                    items.push(MenuItem::Divider);
+                }
+                items.push(item("Copy ID", None, false, Message::CopyText(id.to_string())));
                 (format!("category-{name}"), items, None)
             }
             MenuKind::User { name, can_message } => {
@@ -1050,6 +1119,33 @@ impl App {
                     })
                 });
                 if let Some(id) = id {
+                    // Roles this member can be given or have taken away by the viewer.
+                    let member_is_owner = self.server.owner_id.as_deref() == Some(id.as_str());
+                    // Only the owner may change the owner's roles.
+                    let member_can_change = if member_is_owner {
+                        self.is_owner()
+                    } else {
+                        self.top_role(&id).map_or(true, |top| self.outranks_role(top.id))
+                    };
+                    if self.can(perm::MANAGE_ROLES) && member_can_change {
+                        let held = self.server.member_roles.get(&id).cloned().unwrap_or_default();
+                        // @everyone is never given out; every member has it already.
+                        let giveable: Vec<&common::RoleInfo> = self
+                            .server
+                            .roles
+                            .iter()
+                            .filter(|r| r.id != common::EVERYONE_ROLE && self.outranks_role(r.id))
+                            .collect();
+                        if !giveable.is_empty() {
+                            items.push(MenuItem::Divider);
+                            items.push(MenuItem::Heading("Roles".into()));
+                            for role in giveable {
+                                let has = held.contains(&role.id);
+                                let label = if has { format!("Remove {}", role.name) } else { format!("Add {}", role.name) };
+                                items.push(item(&label, None, false, Message::SetMemberRole(id.clone(), role.id, !has)));
+                            }
+                        }
+                    }
                     items.push(MenuItem::Divider);
                     items.push(item("Copy ID", None, false, Message::CopyText(id)));
                 }
@@ -1090,11 +1186,13 @@ impl App {
 
     pub(crate) fn server_menu_items(&self) -> Vec<MenuItem> {
         let mut items = Vec::new();
-        if self.is_owner() {
+        if self.is_owner() || self.can(perm::MANAGE_ROLES) {
             items.push(item("Server settings", None, false, Message::ServerSettingsOpen));
         }
-        items.push(item("Create channel", None, false, Message::CreateOpen));
-        items.push(item("Create category", None, false, Message::CategoryOpen));
+        if self.can(perm::MANAGE_CHANNELS) {
+            items.push(item("Create channel", None, false, Message::CreateOpen));
+            items.push(item("Create category", None, false, Message::CategoryOpen));
+        }
         items.push(MenuItem::Divider);
         let label = if self.members_hidden { "Show member list" } else { "Hide member list" };
         items.push(item(label, None, false, Message::ToggleMembers));

@@ -307,3 +307,64 @@ fn dragging_category_screen() {
     app.dnd = Some(Dnd { item: DragItem::Category(1), start: iced::Point::ORIGIN, moved: true, over: Some(DropTarget::End) });
     save_at(&app, "dragging-category", 1100.0, 700.0);
 }
+
+fn with_roles(app: &mut App) {
+    use common::{perm, RoleInfo};
+    app.server.roles = vec![
+        RoleInfo { id: 1, name: "Admin".into(), color: "#e91e63".into(), permissions: perm::ALL, position: 3 },
+        RoleInfo { id: 2, name: "Moderator".into(), color: "#2ecc71".into(), permissions: perm::MANAGE_MESSAGES, position: 2 },
+        RoleInfo { id: 3, name: "Helper".into(), color: String::new(), permissions: 0, position: 1 },
+        RoleInfo { id: 0, name: "@everyone".into(), color: "#95a5a6".into(), permissions: 0, position: -1_000_000_000 },
+    ];
+    app.server.online = vec!["alice".into(), "bob".into(), "carol".into(), "erin".into()];
+    app.server.offline = vec!["dan".into()];
+    app.server.member_ids = [("alice", "u1"), ("bob", "u2"), ("carol", "u3"), ("erin", "u5"), ("dan", "u4")]
+        .into_iter()
+        .map(|(n, i)| (n.to_string(), i.to_string()))
+        .collect();
+    app.server.member_roles = [("u2".to_string(), vec![2]), ("u5".to_string(), vec![1, 3])].into_iter().collect();
+}
+
+#[test]
+fn members_grouped_by_role_screen() {
+    let mut app = chat_app();
+    with_roles(&mut app);
+    save_at(&app, "members-roles", 1100.0, 700.0);
+}
+
+#[test]
+fn roles_page_screen() {
+    let mut app = chat_app();
+    with_roles(&mut app);
+    let _ = app.update(Message::ServerSettingsOpen);
+    let _ = app.update(Message::ServerSectionPick(crate::app::ServerSection::Roles));
+    let _ = app.update(Message::RoleEdit(Some(2)));
+    save_at(&app, "roles-page", 1100.0, 900.0);
+}
+
+#[test]
+fn chat_names_by_role_screen() {
+    let mut app = chat_app();
+    with_roles(&mut app);
+    save_at(&app, "chat-names", 1100.0, 700.0);
+}
+
+#[test]
+fn roles_empty_state_screen() {
+    let mut app = chat_app();
+    with_roles(&mut app);
+    let _ = app.update(Message::ServerSettingsOpen);
+    let _ = app.update(Message::ServerSectionPick(crate::app::ServerSection::Roles));
+    save_at(&app, "roles-empty", 1100.0, 700.0);
+}
+
+#[test]
+fn roles_unsaved_bar_screen() {
+    let mut app = chat_app();
+    with_roles(&mut app);
+    let _ = app.update(Message::ServerSettingsOpen);
+    let _ = app.update(Message::ServerSectionPick(crate::app::ServerSection::Roles));
+    let _ = app.update(Message::RoleEdit(Some(2)));
+    let _ = app.update(Message::RoleDraftName("Mod Team".into()));
+    save_at(&app, "roles-unsaved", 1100.0, 700.0);
+}
