@@ -7,7 +7,7 @@ import {
 } from './state.js';
 import {
   body, titlebar, authBanner, resizeEdges, dialogs, menuPopup, pickerPopup, channelMenuItems, userMenuItems,
-  messageMenuItems, railMenuItems, serverMenuItems,
+  messageMenuItems, railMenuItems, serverMenuItems, parseSearch,
 } from './render.js';
 import { errMsg } from './util.js';
 
@@ -20,7 +20,7 @@ const DEFAULT_ADDR = '127.0.0.1:7878';
 const DM_TICK_MS = 5000;
 const RESIZE = { n: 'North', s: 'South', e: 'East', w: 'West', nw: 'NorthWest', ne: 'NorthEast', sw: 'SouthWest', se: 'SouthEast' };
 /** Buttons that open a popup. A click on them is not a click away from the popup. */
-const OPENERS = new Set(['more', 'picker', 'channel-menu', 'server-menu', 'user-menu']);
+const OPENERS = new Set(['more', 'picker', 'channel-menu', 'server-menu', 'user-menu', 'theme-menu']);
 
 let dmTimer = null;
 let saveTimer = null;
@@ -124,6 +124,7 @@ function resetServerView(srv) {
   S.unread = new Set();
   S.readMarks = {};
   S.search = '';
+  S.searchMore = false;
   S.editing = null;
   S.pendingDelete = null;
   S.input = '';
@@ -687,6 +688,18 @@ function accountEditSubmit(field) {
 }
 
 /** Runs the action named by a button, menu item or key. */
+/** The theme menu: dark themes, a divider, then light themes. */
+function themeMenuItems() {
+  const item = ([id, name]) => ({ label: name, act: 'theme-pick', args: { id } });
+  return [
+    { heading: 'Dark' },
+    ...THEMES.filter(([, , group]) => group === 'dark').map(item),
+    'sep',
+    { heading: 'Light' },
+    ...THEMES.filter(([, , group]) => group === 'light').map(item),
+  ];
+}
+
 async function act(name, el) {
   const d = el.dataset;
   switch (name) {
@@ -782,6 +795,20 @@ async function act(name, el) {
     case 'copy':
       S.menu = null;
       return navigator.clipboard?.writeText(d.text).catch(() => {});
+    case 'search-filter':
+      S.search = S.search.trim() ? `${S.search.trimEnd()} ${d.prefix}` : d.prefix;
+      focusId = 'search';
+      return;
+    case 'theme-menu':
+      return rectMenu(el, themeMenuItems(), 'theme', el.offsetWidth);
+    case 'theme-pick':
+      S.account.draft.theme = d.id === S.prefs.theme ? null : d.id;
+      S.menu = null;
+      return;
+    case 'search-more':
+      S.searchMore = !S.searchMore;
+      focusId = 'search';
+      return;
     case 'mention':
       S.input += `@${d.name} `;
       S.menu = null;
@@ -974,6 +1001,18 @@ function onContextMenu(event) {
   render();
 }
 
+/** Opens the channel named by an in: filter, when it is a channel of the open server. */
+function searchChannel() {
+  if (!chatReady() || currentPerson() !== null || isDmChannel(S.server.channel)) return;
+  for (const name of parseSearch(S.search).filters.in) {
+    const found = S.server.channels.find((c) => c.toLowerCase() === name);
+    if (found) {
+      join(found);
+      return;
+    }
+  }
+}
+
 function onInput(event) {
   const el = event.target;
   if (!el.dataset || !el.dataset.model) return;
@@ -983,7 +1022,10 @@ function onInput(event) {
     el.value = value;
   }
   setPath(el.dataset.model, value);
-  if (el.dataset.rerender) render();
+  // The message search is per channel. An in: filter naming another channel of this server opens it.
+  if (el.id === 'search') searchChannel();
+  // The flag is a bare attribute, so its value is "" when set. Check for the attribute itself.
+  if ('rerender' in el.dataset) render();
 }
 
 function onChange(event) {
@@ -993,9 +1035,6 @@ function onChange(event) {
   if (el.dataset.check === 'remember') {
     S.remember = el.checked;
     saveSoon();
-  } else if (el.dataset.change === 'theme') {
-    const theme = el.value;
-    S.account.draft.theme = theme === S.prefs.theme ? null : theme;
   } else if (el.dataset.change === 'dm-server') {
     const target = personTargets(currentPerson() ?? '')[Number(el.value)];
     if (target) openDmOn(target.addr, target.channel);
@@ -1050,6 +1089,10 @@ function onKeydown(event) {
     return;
   }
   if (event.key === 'Escape') {
+    if (el.id === 'search') {
+      el.blur();
+      return;
+    }
     if (el.dataset && el.dataset.escape) {
       act(el.dataset.escape, el).then(render);
       return;
@@ -1072,6 +1115,11 @@ function onKeydown(event) {
 const RESIZE_CURSOR_EDGES = new Set(Object.keys(RESIZE));
 
 function onMouseDown(event) {
+  // Pressing a filter keeps focus in the search box, so its menu stays open for the click.
+  if (event.target.closest?.('.search-filters')) {
+    event.preventDefault();
+    return;
+  }
   const split = event.target.dataset?.split;
   if (split && event.button === 0) {
     event.preventDefault();
@@ -1105,6 +1153,8 @@ function onSplitMove(event) {
   const delta = split.right ? -dx : dx;
   split.width = Math.max(PANEL_MIN, Math.min(PANEL_MAX, split.startWidth + delta));
   split.panel.style.width = `${split.width}px`;
+  // The header slot above the member list moves with it.
+  document.querySelectorAll(`[data-follow="${split.key}"]`).forEach((el) => { el.style.width = `${split.width}px`; });
 }
 
 function onSplitEnd() {

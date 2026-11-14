@@ -193,14 +193,24 @@ function railHtml() {
 // ----- channel view -----
 
 export function chatView() {
+  // The header runs across the chat and member columns, as in Discord, so the member list starts below it.
+  const memberTop = S.membersHidden ? '' : `<div class="members-top" data-follow="members" style="width:${S.layout.members}px">${searchBox()}</div>`;
+  const members = S.membersHidden ? '' : splitter('members', true) + membersHtml();
   return `
     ${sidebarHtml()}${splitter('channels')}
-    <section class="center">
-      ${chatHeader()}
-      ${messagesHtml()}
-      ${composerHtml()}
-    </section>
-    ${S.membersHidden ? '' : splitter('members', true) + membersHtml()}`;
+    <div class="chat-main">
+      <div class="top-row">
+        ${chatHeader()}
+        ${memberTop}
+      </div>
+      <div class="body-row">
+        <section class="center">
+          ${messagesHtml()}
+          ${composerHtml()}
+        </section>
+        ${members}
+      </div>
+    </div>`;
 }
 
 function sidebarHtml() {
@@ -250,10 +260,43 @@ function userBar() {
         <div class="name">${esc(S.user)}</div>
         <div class="state">Online</div>
       </div>
-      ${iconBtn('user-settings-open', {}, ICON.gear, 'User settings')}
       ${soonBtn(ICON.headset, 'Voice chat isn\'t available yet')}
       ${soonBtn(ICON.mic, 'Voice chat isn\'t available yet')}
+      ${iconBtn('user-settings-open', {}, ICON.gear, 'User settings')}
     </div>`;
+}
+
+/** The message search box. It sits above the member list, or in the header when the list is hidden. */
+function searchBox() {
+  const item = (prefix, label, hint, icon) => `
+    <button type="button" class="sf-item" data-act="search-filter" data-prefix="${prefix}">
+      <span class="sf-icon">${icon}</span>
+      <span class="sf-text"><span class="t">${label}</span><span class="d">${hint}</span></span>
+    </button>`;
+  // The menu shows while the box has focus (see .search-box:focus-within in app.css).
+  return `
+    <label class="search-box">
+      ${ICON.search}
+      <input type="text" id="search" data-model="search" data-rerender placeholder="Search ${esc(selectedName() ?? 'Vaxelium')}" value="${esc(S.search)}" autocomplete="off">
+      <div class="popup search-filters" role="menu">
+        <div class="sf-head">Filters</div>
+        ${item('from:', 'From a specific user', 'from: user', ICON.user)}
+        ${item('in:', 'Sent in a specific channel', 'in: channel', '<span class="sf-hash">#</span>')}
+        ${item('has:', 'Includes a specific type of data', 'has: link, embed or file', ICON.attach)}
+        ${item('mentions:', 'Mentions a specific user', 'mentions: user', ICON.at)}
+        <button type="button" class="sf-item" data-act="search-more">
+          <span class="sf-icon">${ICON.sliders}</span>
+          <span class="sf-text"><span class="t">More filters</span><span class="d">dates</span></span>
+          <span class="sf-chev">${S.searchMore ? ICON.chevronDown : ICON.chevronRight}</span>
+        </button>
+        ${S.searchMore ? `
+          <div class="sf-more">
+            ${item('before:', 'Before a date', 'before: YYYY-MM-DD', ICON.search)}
+            ${item('after:', 'On or after a date', 'after: YYYY-MM-DD', ICON.search)}
+            ${item('during:', 'During a date', 'during: YYYY-MM-DD', ICON.search)}
+          </div>` : ''}
+      </div>
+    </label>`;
 }
 
 function chatHeader() {
@@ -264,15 +307,12 @@ function chatHeader() {
       <span class="hash">#</span>
       <span class="title">${esc(S.server.channel)}</span>
       <span class="spacer"></span>
-      <label class="search-box">
-        ${ICON.search}
-        <input type="text" id="search" data-model="search" data-rerender placeholder="Search ${esc(selectedName() ?? 'Vaxelium')}" value="${esc(S.search)}" autocomplete="off">
-      </label>
+      ${S.membersHidden ? searchBox() : ''}
       <div class="header-icons">
-        ${members}
-        ${soonBtn(ICON.pin, 'Not available yet')}
-        ${soonBtn(ICON.bell, 'Not available yet')}
         ${soonBtn(ICON.hash, 'Not available yet')}
+        ${soonBtn(ICON.bell, 'Not available yet')}
+        ${soonBtn(ICON.pin, 'Not available yet')}
+        ${members}
       </div>
     </header>`;
 }
@@ -321,26 +361,68 @@ function membersHtml() {
 
 // ----- messages -----
 
+/** Splits a search into free text and the filters from:, in:, has:, mentions:, before:, after: and during:. */
+export function parseSearch(raw) {
+  const filters = { from: [], in: [], has: [], mentions: [], before: [], after: [], during: [] };
+  const words = [];
+  for (const word of raw.trim().split(/\s+/).filter(Boolean)) {
+    const m = /^(from|in|has|mentions|before|after|during):(.+)$/i.exec(word);
+    if (m) filters[m[1].toLowerCase()].push(m[2].toLowerCase());
+    else words.push(word.toLowerCase());
+  }
+  return { text: words.join(' '), filters };
+}
+
+/** The start and end (Unix seconds, local time) of a day written as YYYY-MM-DD, or null. */
+export function dayRange(text) {
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(text);
+  if (!m) return null;
+  const [year, month, day] = [Number(m[1]), Number(m[2]) - 1, Number(m[3])];
+  const start = new Date(year, month, day);
+  if (start.getDate() !== day) return null;
+  return { start: start.getTime() / 1000, end: new Date(year, month, day + 1).getTime() / 1000 };
+}
+
+/** True when a chat message matches the parsed search in the given channel. */
+function matchesSearch(m, search, channel) {
+  const author = m.author.toLowerCase();
+  const text = m.text.toLowerCase();
+  const f = search.filters;
+  if (search.text && !text.includes(search.text) && !author.includes(search.text)) return false;
+  if (!f.from.every((name) => author.includes(name))) return false;
+  // A mention is the name as a whole word after @, so @bo does not match @bob.
+  if (!f.mentions.every((name) => new RegExp(`@${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`).test(text))) return false;
+  if (!f.in.every((name) => name === channel.toLowerCase())) return false;
+  // Messages carry no files or embeds, so only has:link can match.
+  if (!f.has.every((kind) => kind === 'link' && /https?:\/\//.test(text))) return false;
+  const ts = m.timestamp;
+  if (!f.before.every((text) => { const d = dayRange(text); return d !== null && ts < d.start; })) return false;
+  if (!f.after.every((text) => { const d = dayRange(text); return d !== null && ts >= d.start; })) return false;
+  if (!f.during.every((text) => { const d = dayRange(text); return d !== null && ts >= d.start && ts < d.end; })) return false;
+  return true;
+}
+
 /** The message list for the open view, with day dividers, grouped authors and the "NEW" line. */
 function messagesHtml() {
   const person = currentPerson();
   const channel = S.server.channel;
-  const query = S.search.trim().toLowerCase();
+  const search = parseSearch(S.search);
+  const active = S.search.trim() !== '';
   const entries = currentEntries();
   const newAt = person === null ? S.readMarks[channel] : undefined;
   const welcome = person !== null || isDmChannel(channel)
     ? `<h1>${esc(channelLabel())}</h1><p>This is the start of your direct messages with ${esc(channelLabel().replace(/^@ /, ''))}.</p>`
     : `<h1>Welcome to #${esc(channel)}!</h1><p>This is the start of the #${esc(channel)} channel.</p>`;
-  const matches = (e) => e.kind === 'chat' && (e.m.text.toLowerCase().includes(query) || e.m.author.toLowerCase().includes(query));
+  const matches = (e) => e.kind === 'chat' && matchesSearch(e.m, search, channel);
 
   let out = '';
-  if (query && !entries.some(matches)) out += `<div class="no-match">No messages match your search.</div>`;
+  if (active && !entries.some(matches)) out += `<div class="no-match">No messages match your search.</div>`;
   let prevDay = null;
   let prevAuthor = null;
   let prevAt = 0;
   entries.forEach((entry, i) => {
-    if (query && !matches(entry)) return;
-    if (!query && newAt === i) {
+    if (active && !matches(entry)) return;
+    if (!active && newAt === i) {
       out += `<div class="new-divider"><span class="pill">NEW</span></div>`;
       prevAuthor = null;
     }
@@ -508,9 +590,11 @@ function userSettingsPage() {
       : A.emailError ? '<span class="muted" title="' + esc(A.emailError) + '">Unavailable</span>'
         : '<span class="muted">Not on record yet. Set it with Edit.</span>';
   const theme = A.draft.theme ?? S.prefs.theme;
-  const themeSelect = `<select class="theme-select" data-change="theme" aria-label="Theme">
-      ${THEMES.map(([id, name]) => `<option value="${id}" ${id === theme ? 'selected' : ''}>${esc(name)}</option>`).join('')}
-    </select>`;
+  // A button that opens a menu of themes, drawn by the app so it follows the theme.
+  const themeName = THEMES.find(([id]) => id === theme)?.[1] ?? theme;
+  const themeSelect = `<button type="button" class="theme-btn" data-act="theme-menu" aria-haspopup="menu" aria-label="Theme">
+      <span>${esc(themeName)}</span>${ICON.chevronDown}
+    </button>`;
   return `
     <div class="page">
       <nav class="page-nav">
@@ -705,6 +789,7 @@ export function menuPopup() {
   if (!m) return '';
   const items = m.items.map((item) => {
     if (item === 'sep') return '<hr>';
+    if (item.heading) return `<div class="menu-head">${esc(item.heading)}</div>`;
     return `<button type="button" class="${item.danger ? 'danger' : ''}" data-act="${item.act}"${data(item.args)}>${item.icon ? item.icon : ''}${esc(item.label)}</button>`;
   }).join('');
   const width = m.width ? `;width:${m.width}px` : '';

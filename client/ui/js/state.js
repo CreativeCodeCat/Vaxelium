@@ -7,10 +7,20 @@ export const GROUP_GAP_SECS = 7 * 60;
 export const MIN_PASSWORD_LEN = 8;
 
 export const THEMES = [
-  ['breeze-dark', 'Breeze Dark'],
-  ['breeze-light', 'Breeze Light'],
-  ['catppuccin-mocha', 'Catppuccin Mocha'],
-  ['catppuccin-latte', 'Catppuccin Latte'],
+  ['breeze-dark', 'Breeze Dark', 'dark'],
+  ['breeze-light', 'Breeze Light', 'light'],
+  ['catppuccin-mocha', 'Catppuccin Mocha', 'dark'],
+  ['catppuccin-latte', 'Catppuccin Latte', 'light'],
+  ['adwaita-dark', 'Adwaita Dark', 'dark'],
+  ['arc-dark', 'Arc Dark', 'dark'],
+  ['dracula', 'Dracula', 'dark'],
+  ['nord', 'Nord', 'dark'],
+  ['gruvbox-dark', 'Gruvbox Dark', 'dark'],
+  ['adwaita-light', 'Adwaita Light', 'light'],
+  ['arc-light', 'Arc Light', 'light'],
+  ['solarized-light', 'Solarized Light', 'light'],
+  ['gruvbox-light', 'Gruvbox Light', 'light'],
+  ['ayu-light', 'Ayu Light', 'light'],
 ];
 
 export const S = {
@@ -68,6 +78,7 @@ export const S = {
   unread: new Set(),
   readMarks: {}, // channel -> index of the first message after the last visit
   search: '',
+  searchMore: false, // the date filters under More filters are showing
   editing: null, // {id, text}
   pendingDelete: null,
   input: '',
