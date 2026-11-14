@@ -244,7 +244,7 @@ impl App {
     pub fn person_targets(&self, other_id: &str) -> Vec<Target> {
         let mut out = Vec::new();
         for (addr, link) in &self.dm_links {
-            for dm in link.dms.iter().filter(|d| d.other_id == other_id) {
+            for dm in link.dms.iter().filter(|d| d.other_id == other_id && !self.blocked_on(addr, other_id)) {
                 out.push(Target {
                     addr: addr.clone(),
                     channel: dm.channel.clone(),
@@ -260,8 +260,8 @@ impl App {
     /// The direct messages list: one row per person across every server, most recent first.
     pub fn persons(&self) -> Vec<PersonRow> {
         let mut rows: HashMap<String, PersonRow> = HashMap::new();
-        for link in self.dm_links.values() {
-            for dm in &link.dms {
+        for (addr, link) in &self.dm_links {
+            for dm in link.dms.iter().filter(|d| !self.blocked_on(addr, &d.other_id)) {
                 let row = rows.entry(dm.other_id.clone()).or_insert_with(|| PersonRow {
                     id: dm.other_id.clone(),
                     name: dm.name.clone(),
@@ -277,8 +277,7 @@ impl App {
                 }
             }
         }
-        // Blocked people are not listed.
-        let mut rows: Vec<PersonRow> = rows.into_values().filter(|r| !self.is_blocked(&r.id)).collect();
+        let mut rows: Vec<PersonRow> = rows.into_values().collect();
         rows.sort_by(|a, b| b.last.cmp(&a.last).then_with(|| a.name.cmp(&b.name)));
         rows
     }
@@ -313,11 +312,7 @@ impl App {
     /// The entries shown for the open view: channel messages, or the direct message timeline.
     pub fn current_entries(&self) -> Vec<Entry> {
         if self.current_person().is_some() {
-            return self
-                .dm_timeline()
-                .into_iter()
-                .filter(|e| !matches!(e, Entry::Chat(m) if self.is_blocked(&m.author_id)))
-                .collect();
+            return self.dm_timeline();
         }
         self.messages
             .get(&self.server.channel_id)
@@ -349,6 +344,36 @@ impl App {
     /// True when nobody may ignore or block this account: the owner, and anyone with Bypass ignore.
     pub fn is_protected(&self, account_id: &str) -> bool {
         self.permissions_of(account_id) & perm::BYPASS_IGNORE != 0
+    }
+
+    /// True when this account is blocked on the server at `addr`. Blocks apply on every server, except
+    /// where the account has Bypass ignore (as that server last reported it).
+    pub fn blocked_on(&self, addr: &str, account_id: &str) -> bool {
+        if !self.prefs.blocked.iter().any(|id| id == account_id) {
+            return false;
+        }
+        let protected_there = self
+            .prefs
+            .servers
+            .iter()
+            .find(|s| s.addr == addr)
+            .is_some_and(|s| s.protected.iter().any(|id| id == account_id));
+        !protected_there
+    }
+
+    /// Saves which members of the open server are protected, as the server has just reported them.
+    /// Returns true when the saved list changed.
+    pub fn remember_protected(&mut self) -> bool {
+        let mut protected: Vec<String> = self.server.member_ids.values().filter(|id| self.is_protected(id)).cloned().collect();
+        protected.sort();
+        let Some(server) = self.selected.and_then(|i| self.prefs.servers.get_mut(i)) else {
+            return false;
+        };
+        if server.protected == protected {
+            return false;
+        }
+        server.protected = protected;
+        true
     }
 
     /// True when this account is blocked on every server. A protected account is never blocked.

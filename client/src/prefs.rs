@@ -19,6 +19,10 @@ pub struct ServerPref {
     /// Account ids whose messages are hidden on this server only (see the member menu's Ignore).
     #[serde(default)]
     pub ignored: Vec<String>,
+    /// Account ids with Bypass ignore (or who own) this server, as the server last said. Blocks do not
+    /// apply to them here.
+    #[serde(default)]
+    pub protected: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

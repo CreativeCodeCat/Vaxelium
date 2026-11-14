@@ -22,7 +22,7 @@ fn app() -> App {
     let dir = std::env::temp_dir().join("vaxelium-screens");
     let backend = Backend::new(tx, dir);
     let mut prefs = Prefs::default();
-    prefs.servers = vec![ServerPref { name: "Home".into(), addr: "127.0.0.1:7878".into(), icon: None, id: None, ignored: Vec::new() }];
+    prefs.servers = vec![ServerPref { name: "Home".into(), addr: "127.0.0.1:7878".into(), icon: None, id: None, ignored: Vec::new(), protected: Vec::new() }];
     App::new(backend, prefs, Vec::new(), HashMap::new())
 }
 
