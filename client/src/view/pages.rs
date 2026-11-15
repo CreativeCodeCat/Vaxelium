@@ -637,7 +637,8 @@ pub fn server_settings(app: &App, pal: Pal) -> Element<'_, Message> {
         (Message::ServerReset, Message::ServerSave)
     };
     let manage = app.my_permissions() & common::perm::MANAGE_ROLES != 0;
-    let page = settings_frame(server_nav(&name, app.is_owner(), manage, section, pal), content, Message::ServerSettingsClose, pal);
+    let may_edit_profile = app.is_owner() || app.can(common::perm::MANAGE_SERVER);
+    let page = settings_frame(server_nav(&name, may_edit_profile, manage, section, pal), content, Message::ServerSettingsClose, pal);
     if dirty {
         iced::widget::stack![page, unsaved_bar(app, pal, reset, save, "Careful – you have unsaved changes!")].into()
     } else {
@@ -741,9 +742,10 @@ const ROLE_COLORS: [&str; 20] = [
 ];
 
 /// The permissions a role can grant: the label, what it lets a member do, and its bit.
-const PERMISSIONS: [(&str, &str, u32); 7] = [
+const PERMISSIONS: [(&str, &str, u32); 8] = [
     ("Administrator", "Has every permission, even ones switched off. Turning it on asks first.", common::perm::ADMINISTRATOR),
     ("Manage roles", "Allows members to create and edit roles below their own, and give them to members below them.", common::perm::MANAGE_ROLES),
+    ("Manage server", "Allows members to change the server's name, description and picture.", common::perm::MANAGE_SERVER),
     ("Manage channels", "Allows members to create, rename, move and delete channels and categories.", common::perm::MANAGE_CHANNELS),
     ("Manage messages", "Allows members to delete other members' messages.", common::perm::MANAGE_MESSAGES),
     ("Bypass ignore", "Members with this cannot be ignored or blocked by anyone.", common::perm::BYPASS_IGNORE),

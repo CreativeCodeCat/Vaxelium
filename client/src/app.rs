@@ -1565,7 +1565,7 @@ impl App {
 
     pub(crate) fn server_menu_items(&self) -> Vec<MenuItem> {
         let mut items = Vec::new();
-        if self.is_owner() || self.can(perm::MANAGE_ROLES) {
+        if self.is_owner() || self.can(perm::MANAGE_ROLES) || self.can(perm::MANAGE_SERVER) {
             items.push(item("Server settings", None, false, Message::ServerSettingsOpen));
         }
         if self.can(perm::MANAGE_CHANNELS) {
@@ -1877,7 +1877,7 @@ impl App {
     /// The server settings section on screen. Only the owner may open the Server Profile, so anyone
     /// else who opens the page sees Roles instead.
     pub fn shown_server_section(&self) -> ServerSection {
-        if !self.is_owner() && self.server_section == ServerSection::Profile {
+        if !self.can(perm::MANAGE_SERVER) && self.server_section == ServerSection::Profile {
             ServerSection::Roles
         } else {
             self.server_section
