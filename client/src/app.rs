@@ -322,6 +322,8 @@ pub struct App {
     pub card_badges_open: bool,
     /// The search text in the role or badge list on a member's card.
     pub card_list_search: String,
+    /// Where the + that opened the role or badge list was clicked.
+    pub card_pick_at: Point,
     pub badge_color: String,
     /// The name of a role just created from the editor, so the editor can select it once it arrives.
     pub role_created_name: Option<String>,
@@ -722,6 +724,7 @@ impl App {
             card_roles_open: false,
             card_badges_open: false,
             card_list_search: String::new(),
+            card_pick_at: Point::ORIGIN,
             badge_color: String::new(),
             server_section: ServerSection::default(),
             user_section: UserSection::default(),

@@ -640,6 +640,8 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     // under the name. On other members' cards it sits beside the avatar.
     let status = card.map(|c| c.status.clone()).unwrap_or_default();
     let mut items: Vec<Element<'_, Message>> = Vec::new();
+    // The role or badge list opened from a +. It floats where the + was clicked, over the card.
+    let mut pick_popup: Option<(Element<'_, Message>, Message)> = None;
     let name_size = 20.0;
     // The picture overlaps the bottom of the banner, in a ring of the card's colour, as on Discord. The
     // base layer is as tall as the whole header, since an overlay is clipped to the base's height.
@@ -789,7 +791,7 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
                     msg: Message::SetMemberRole(id.to_string(), r.id, true),
                 })
                 .collect();
-            items.push(container(pick_list("Role", &app.card_list_search, rows, pal)).padding(crate::util::pad(0.0, 14.0, 10.0, 14.0)).into());
+            pick_popup = Some((container(pick_list("Role", &app.card_list_search, rows, pal)).width(Length::Fixed(260.0)).into(), Message::CardRolesToggle));
         }
     }
 
@@ -857,7 +859,7 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
                         msg: Message::SetMemberBadge { user: id.to_string(), badge: b.id, on: true },
                     })
                     .collect();
-                items.push(container(pick_list("Badge", &app.card_list_search, rows, pal)).padding(crate::util::pad(0.0, 14.0, 10.0, 14.0)).into());
+                pick_popup = Some((container(pick_list("Badge", &app.card_list_search, rows, pal)).width(Length::Fixed(260.0)).into(), Message::CardBadgesToggle));
             }
         }
     }
@@ -896,11 +898,21 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     // Beside the click, to its left, kept on screen.
     let x = (view.at.x - 316.0).max(8.0);
     let y = (view.at.y - 40.0).max(8.0);
-    if view.above {
+    let card_layer: Element<'_, Message> = if view.above {
         // Opened from the user bar: the card's bottom edge sits just above the bar, whatever its height.
-        return Some(anchored_above(body.into(), iced::Point::new(x, view.at.y), app.window_size.height, Message::CardClose));
+        anchored_above(body.into(), iced::Point::new(x, view.at.y), app.window_size.height, Message::CardClose)
+    } else {
+        anchored(body.into(), iced::Point::new(x, y), Message::CardClose)
+    };
+    match pick_popup {
+        Some((list, close)) => {
+            // Where the + was clicked, kept on screen. Clicking outside the list closes it, not the card.
+            const LIST_SIZE: iced::Size = iced::Size::new(260.0, 320.0);
+            let at = keep_on_screen(app.card_pick_at, LIST_SIZE, app.window_size);
+            Some(iced::widget::stack![card_layer, anchored(list, at, close)].into())
+        }
+        None => Some(card_layer),
     }
-    Some(anchored(body.into(), iced::Point::new(x, y), Message::CardClose))
 }
 
 /// The permissions of one channel: what each role may do there, with the server-wide setting as the default.
