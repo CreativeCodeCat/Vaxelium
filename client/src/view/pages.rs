@@ -172,7 +172,7 @@ pub fn discover(app: &App, pal: Pal) -> Element<'_, Message> {
         }
         let mut info = Column::new().spacing(2).push(title);
         if !f.description.is_empty() {
-            info = info.push(text(f.description.clone()).size(13).color(pal.text));
+            info = info.push(super::linked_text(&f.description, 13.0, pal.text, pal));
         }
         let mut details = row![
             text(f.addr.clone()).size(12).color(pal.text_muted),
@@ -337,8 +337,14 @@ fn about_editor<'a>(app: &'a App, pal: Pal) -> Element<'a, Message> {
             .padding(10)
             .style(editor_style(pal))
             .into(),
-        text("BANNER COLOUR").size(12).color(pal.text_muted).into(),
     ];
+    // The editor cannot show links, so a preview appears under it while the bio has any.
+    let draft = app.bio_editor.text();
+    if !super::link_ranges(&draft).is_empty() {
+        rows.push(text("PREVIEW").size(12).color(pal.text_muted).into());
+        rows.push(super::linked_text(draft.trim_end(), 13.0, pal.text, pal));
+    }
+    rows.push(text("BANNER COLOUR").size(12).color(pal.text_muted).into());
     let picked = acc.about_banner.to_lowercase();
     let mut swatches = row![].spacing(8).align_y(iced::alignment::Vertical::Center);
     for hex in ROLE_COLORS.iter().take(10) {
