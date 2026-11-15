@@ -680,7 +680,28 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     let base = column![banner_block, space().height(Length::Fixed(48.0))].width(Length::Fill);
     let head = iced::widget::stack![base, container(overlay_row).padding(crate::util::pad(48.0, 0.0, 0.0, 14.0))];
     items.push(container(head).width(Length::Fill).height(Length::Fixed(144.0)).into());
-    items.push(container(text(name.clone()).size(name_size).color(pal.text_strong)).padding(crate::util::pad(12.0, 14.0, 0.0, 14.0)).into());
+    // The name takes the member's role colour, and the crown follows it when they own the server.
+    let name_color = if own {
+        app.member_color(&app.user_id)
+    } else {
+        app.server.member_ids.get(&name).and_then(|id| app.member_color(id))
+    }
+    .unwrap_or(pal.text_strong);
+    let mut name_line = row![text(name.clone()).size(name_size).color(name_color)].spacing(8).align_y(iced::alignment::Vertical::Center);
+    if app.server.owner.as_deref() == Some(name.as_str()) {
+        let crown = iced::widget::svg(iced::widget::svg::Handle::from_path(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/assets/crown.svg")))
+            .width(Length::Fixed(16.0))
+            .height(Length::Fixed(12.0));
+        let bubble = container(text("Server Owner").size(12).color(pal.text_strong))
+            .padding(crate::util::pad2(4.0, 8.0))
+            .style(move |_: &Theme| container::Style {
+                background: Some(Background::Color(pal.sidebar_bg)),
+                border: border::rounded(6.0).color(pal.hover_bg).width(1.0),
+                ..container::Style::default()
+            });
+        name_line = name_line.push(iced::widget::tooltip(crown, bubble, iced::widget::tooltip::Position::Top).gap(6));
+    }
+    items.push(container(name_line).padding(crate::util::pad(12.0, 14.0, 0.0, 14.0)).into());
     if let Some(c) = card {
         items.push(container(text(format!("@{}", c.username)).size(13).color(pal.text_muted)).padding(crate::util::pad(0.0, 14.0, 8.0, 14.0)).into());
         // The servers you and this member both are in, by name.
