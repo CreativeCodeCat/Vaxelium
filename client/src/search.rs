@@ -91,7 +91,7 @@ fn parse_day(text: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(text, "%Y-%m-%d").ok()
 }
 
-fn mention_in(text: &str, name: &str) -> bool {
+pub(crate) fn mention_in(text: &str, name: &str) -> bool {
     let needle = format!("@{name}");
     let mut from = 0;
     while let Some(at) = text[from..].find(&needle) {

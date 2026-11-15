@@ -22,7 +22,7 @@ fn app() -> App {
     let dir = std::env::temp_dir().join("vaxelium-screens");
     let backend = Backend::new(tx, dir);
     let mut prefs = Prefs::default();
-    prefs.servers = vec![ServerPref { name: "Home".into(), addr: "127.0.0.1:7878".into(), icon: None, id: None, ignored: Vec::new(), protected: Vec::new() }];
+    prefs.servers = vec![ServerPref { name: "Home".into(), addr: "127.0.0.1:7878".into(), icon: None, id: None, ignored: Vec::new(), protected: Vec::new(), linked: false }];
     App::new(backend, prefs, Vec::new(), HashMap::new())
 }
 
@@ -311,10 +311,10 @@ fn dragging_category_screen() {
 fn with_roles(app: &mut App) {
     use common::{perm, RoleInfo};
     app.server.roles = vec![
-        RoleInfo { id: 1, name: "Admin".into(), color: "#e91e63".into(), permissions: perm::ALL, position: 3 },
-        RoleInfo { id: 2, name: "Moderator".into(), color: "#2ecc71".into(), permissions: perm::MANAGE_MESSAGES, position: 2 },
-        RoleInfo { id: 3, name: "Helper".into(), color: String::new(), permissions: 0, position: 1 },
-        RoleInfo { id: 0, name: "@everyone".into(), color: "#95a5a6".into(), permissions: 0, position: -1_000_000_000 },
+        RoleInfo { id: 1, name: "Admin".into(), color: "#e91e63".into(), permissions: perm::ALL, position: 3, mentionable: false, hoisted: false },
+        RoleInfo { id: 2, name: "Moderator".into(), color: "#2ecc71".into(), permissions: perm::MANAGE_MESSAGES, position: 2, mentionable: false, hoisted: false },
+        RoleInfo { id: 3, name: "Helper".into(), color: String::new(), permissions: 0, position: 1, mentionable: false, hoisted: false },
+        RoleInfo { id: 0, name: "@everyone".into(), color: "#95a5a6".into(), permissions: 0, position: -1_000_000_000, mentionable: false, hoisted: false },
     ];
     app.server.online = vec!["alice".into(), "bob".into(), "carol".into(), "erin".into()];
     app.server.offline = vec!["dan".into()];
@@ -405,4 +405,41 @@ fn account_auth_unavailable_screen() {
     app.account.email = None;
     app.account.email_error = Some("The account service is offline right now. Try again in a little while.".into());
     save_at(&app, "account-auth-unavailable", 1100.0, 700.0);
+}
+
+#[test]
+fn role_display_toggles_screen() {
+    let mut app = chat_app();
+    with_roles(&mut app);
+    app.server.roles[1].hoisted = true;
+    app.server.roles[1].mentionable = true;
+    let _ = app.update(Message::ServerSettingsOpen);
+    let _ = app.update(Message::ServerSectionPick(crate::app::ServerSection::Roles));
+    let _ = app.update(Message::RoleEdit(Some(2)));
+    save_at(&app, "role-display-toggles", 1100.0, 900.0);
+}
+
+#[test]
+fn at_mention_menu_screen() {
+    let mut app = chat_app();
+    with_roles(&mut app);
+    app.server.roles[1].mentionable = true;
+    app.input = "hey @".into();
+    save_at(&app, "at-mention-menu", 1100.0, 700.0);
+}
+
+#[test]
+fn linked_server_header_screen() {
+    let mut app = chat_app();
+    app.prefs.servers[0].linked = true;
+    save_at(&app, "linked-server-header", 1100.0, 500.0);
+}
+
+#[test]
+fn long_server_name_header_screen() {
+    let mut app = chat_app();
+    app.prefs.servers[0].linked = true;
+    app.prefs.servers[0].name = "HeCodes2Much Support Community Hub".into();
+    app.server.name = app.prefs.servers[0].name.clone();
+    save_at(&app, "long-server-name-header", 1100.0, 500.0);
 }

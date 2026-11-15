@@ -65,6 +65,8 @@ pub struct RoleDraft {
     pub name: String,
     pub color: String,
     pub permissions: u32,
+    pub mentionable: bool,
+    pub hoisted: bool,
 }
 
 /// Which account field is being edited.
@@ -251,6 +253,8 @@ pub struct App {
     /// Messages by channel id, and the channels with unread messages, by id.
     pub messages: HashMap<i64, Vec<Entry>>,
     pub unread: HashSet<i64>,
+    /// Channels with a message that pings a role this viewer holds, until they are read.
+    pub pinged: HashSet<i64>,
     pub read_marks: HashMap<i64, usize>,
     pub search: String,
     pub search_more: bool,
@@ -431,6 +435,10 @@ pub enum Message {
     RoleTab(RoleTab),
     RoleDraftColor(String),
     RoleDraftPerm(u32, bool),
+    RoleDraftMentionable(bool),
+    /// A name picked from the @ menu under the message box. Roles and members both use their name.
+    MentionPick(String),
+    RoleDraftHoisted(bool),
     /// The pointer is on the Roles entry of a member's menu, or has pressed it: show the flyout.
     RolesMenuOpen,
     /// The pointer is on another entry of the menu: hide the flyout.
@@ -523,6 +531,7 @@ impl App {
             server: ServerView::default(),
             messages: HashMap::new(),
             unread: HashSet::new(),
+            pinged: HashSet::new(),
             read_marks: HashMap::new(),
             search: String::new(),
             search_more: false,
@@ -588,6 +597,7 @@ impl App {
         };
         self.messages.clear();
         self.unread.clear();
+        self.pinged.clear();
         self.read_marks.clear();
         self.search.clear();
         self.search_more = false;
@@ -730,6 +740,7 @@ impl App {
                 // The rail draws the icon from the saved server list, so keep that copy in step too.
                 if let Some(server) = self.selected.and_then(|i| self.prefs.servers.get_mut(i)) {
                     server.icon = server_icon;
+                    server.linked = server_public;
                 }
                 self.save_prefs();
                 self.status = format!("Connected as {name}");
@@ -753,6 +764,7 @@ impl App {
                     }
                 }
                 self.unread.remove(&channel.id);
+                self.pinged.remove(&channel.id);
                 self.messages.insert(channel.id, history.into_iter().map(Entry::Chat).collect());
                 self.server.channel = channel.name.clone();
                 self.server.channel_id = channel.id;
@@ -769,6 +781,9 @@ impl App {
                 ]);
             }
             ServerMsg::Message { message } => {
+                if message.channel_id != self.server.channel_id && self.pings_me(&message.text) {
+                    self.pinged.insert(message.channel_id);
+                }
                 self.messages.entry(message.channel_id).or_default().push(Entry::Chat(message));
             }
             ServerMsg::Reactions { channel_id, id, reactions } => {
@@ -1055,7 +1070,7 @@ impl App {
             self.add_server.error = Some("That server is already in your list.".into());
             return Task::none();
         }
-        self.prefs.servers.push(ServerPref { name: addr.clone(), addr, icon: None, id: None, ignored: Vec::new(), protected: Vec::new() });
+        self.prefs.servers.push(ServerPref { name: addr.clone(), addr, icon: None, id: None, ignored: Vec::new(), protected: Vec::new(), linked: false });
         self.add_server = AddServer::default();
         self.save_prefs();
         let index = self.prefs.servers.len() - 1;
@@ -1071,7 +1086,7 @@ impl App {
         if self.prefs.servers.iter().any(|s| s.addr == addr) {
             return;
         }
-        self.prefs.servers.push(ServerPref { name: found.name, addr: found.addr, icon: found.icon, id: Some(found.server_id), ignored: Vec::new(), protected: Vec::new() });
+        self.prefs.servers.push(ServerPref { name: found.name, addr: found.addr, icon: found.icon, id: Some(found.server_id), ignored: Vec::new(), protected: Vec::new(), linked: false });
         self.save_prefs();
         self.dm_tick();
     }
@@ -1159,7 +1174,6 @@ impl App {
                 if can_message {
                     items.push(item("Message", None, false, Message::MessageUser(name.clone())));
                 }
-                items.push(item("Copy name", None, false, Message::CopyText(name.clone())));
                 // The ID is always last, below a divider. Known from the member list, or the messages.
                 let id = self.server.member_ids.get(&name).cloned().or_else(|| {
                     self.current_entries().into_iter().find_map(|e| match e {
@@ -1189,7 +1203,10 @@ impl App {
                         items.push(item(if blocked { "Unblock" } else { "Block" }, None, true, Message::BlockToggle(id.clone())));
                         items.push(MenuItem::Divider);
                     }
+                    items.push(item("Copy name", None, false, Message::CopyText(name.clone())));
                     items.push(item("Copy ID", None, false, Message::CopyText(id)));
+                } else {
+                    items.push(item("Copy name", None, false, Message::CopyText(name.clone())));
                 }
                 (format!("user-{name}"), items, Some(MEMBER_MENU_WIDTH))
             }

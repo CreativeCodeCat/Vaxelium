@@ -1,6 +1,6 @@
 //! The full pages: login, the server status page, discovery, and the settings pages.
 
-use iced::widget::{button, column, container, mouse_area, row, scrollable, space, text, text_editor, text_input, toggler, Column};
+use iced::widget::{button, column, container, mouse_area, row, scrollable, space, svg, text, text_editor, text_input, toggler, Column};
 use iced::{border, Background, Color, Element, Length, Padding, Theme};
 
 use super::{divider, letter_badge, link, muted_text, round, server_icon, solid};
@@ -165,7 +165,12 @@ pub fn discover(app: &App, pal: Pal) -> Element<'_, Message> {
     for f in &d.found {
         let saved = app.prefs.servers.iter().any(|s| s.addr == f.addr);
         let expanded = d.expanded.contains(&f.addr);
-        let mut info = Column::new().spacing(2).push(text(f.name.clone()).size(16).color(pal.text_strong));
+        // A house beside the name marks a server that other servers know about.
+        let mut title = row![text(f.name.clone()).size(16).color(pal.text_strong)].spacing(8).align_y(iced::alignment::Vertical::Center);
+        if f.public {
+            title = title.push(svg(svg::Handle::from_path(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/assets/house.svg"))).width(Length::Fixed(14.0)).height(Length::Fixed(14.0)));
+        }
+        let mut info = Column::new().spacing(2).push(title);
         if !f.description.is_empty() {
             info = info.push(text(f.description.clone()).size(13).color(pal.text));
         }
@@ -627,7 +632,13 @@ fn role_changed(app: &App, draft: &RoleDraft) -> bool {
         return false;
     }
     match draft.id.and_then(|id| app.server.roles.iter().find(|r| r.id == id)) {
-        Some(role) => role.name != draft.name.trim() || role.color != draft.color.trim() || role.permissions != draft.permissions,
+        Some(role) => {
+            role.name != draft.name.trim()
+                || role.color != draft.color.trim()
+                || role.permissions != draft.permissions
+                || role.mentionable != draft.mentionable
+                || role.hoisted != draft.hoisted
+        }
         // A new role is made with its own Create button, so it has no bar.
         None => false,
     }
@@ -861,6 +872,26 @@ fn display_tab<'a>(app: &'a App, draft: &'a RoleDraft, everyone: bool, editable:
             .into(),
     );
 
+    // How the role behaves for members: pinged by name, and grouped in the member list.
+    if !everyone {
+        items.push(divider(pal.selected_bg));
+        items.push(flag_row(
+            "Display role members separately",
+            "Members with this role are listed in their own group in the member list.",
+            draft.hoisted,
+            (editable).then_some(Message::RoleDraftHoisted as fn(bool) -> Message),
+            pal,
+        ));
+        items.push(divider(pal.selected_bg));
+        items.push(flag_row(
+            "Allow anyone to @mention this role",
+            "Anyone can type @name to ping everyone with this role.",
+            draft.mentionable,
+            (editable).then_some(Message::RoleDraftMentionable as fn(bool) -> Message),
+            pal,
+        ));
+    }
+
     // Moving is among the real roles. @everyone stays at the bottom.
     if let Some(id) = draft.id {
         if editable && !everyone {
@@ -878,6 +909,21 @@ fn display_tab<'a>(app: &'a App, draft: &'a RoleDraft, everyone: bool, editable:
         }
     }
     items
+}
+
+/// A labelled switch for a role option. `on_toggle` is `None` where the role cannot be changed.
+fn flag_row<'a>(label: &'a str, hint: &'a str, on: bool, on_toggle: Option<fn(bool) -> Message>, pal: Pal) -> Element<'a, Message> {
+    let mut switch = toggler(on);
+    if let Some(msg) = on_toggle {
+        switch = switch.on_toggle(msg);
+    }
+    row![
+        column![text(label).size(15).color(pal.text_strong), muted_text(hint, 12.0, pal.text_muted)].spacing(4).width(Length::Fill),
+        switch,
+    ]
+    .spacing(12)
+    .align_y(iced::alignment::Vertical::Center)
+    .into()
 }
 
 fn permissions_tab<'a>(app: &'a App, draft: &'a RoleDraft, editable: bool, pal: Pal) -> Vec<Element<'a, Message>> {

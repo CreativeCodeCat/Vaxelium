@@ -239,7 +239,7 @@ pub fn server_icon<'a>(icon: Option<&str>, name: &str, size: f32, pal: &Pal, rad
 static ICON_CACHE: OnceLock<Mutex<HashMap<String, iced::widget::image::Handle>>> = OnceLock::new();
 
 /// Turns a base64 PNG from the server into an image handle, reusing the handle made before.
-fn decode_icon(b64: &str) -> Option<iced::widget::image::Handle> {
+pub(super) fn decode_icon(b64: &str) -> Option<iced::widget::image::Handle> {
     use base64::Engine;
     let cache = ICON_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     let mut cache = cache.lock().unwrap_or_else(|e| e.into_inner());

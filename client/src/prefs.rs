@@ -23,6 +23,10 @@ pub struct ServerPref {
     /// apply to them here.
     #[serde(default)]
     pub protected: Vec<String>,
+    /// True once another server has got in touch with this one, as the server last said. Shows a
+    /// house beside its name.
+    #[serde(default)]
+    pub linked: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
