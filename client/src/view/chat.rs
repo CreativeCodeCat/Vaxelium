@@ -392,7 +392,7 @@ fn user_bar(app: &App, pal: Pal) -> Element<'_, Message> {
         None => (app.account.avatar.as_str(), app.account.banner.as_str()),
     };
     let content = row![
-        super::avatar(picture, banner, &user, 32.0, &pal),
+        own_badge(picture, banner, &user, own_status, pal),
         who,
         icons::icon(icons::HEADSET, 16.0, pal.text_muted),
         icons::icon(icons::MIC, 16.0, pal.text_muted),
@@ -982,6 +982,20 @@ fn mention_menu<'a>(app: &App, pal: Pal) -> Option<Element<'a, Message>> {
 }
 
 /// The message box at the bottom. Its placeholder names the channel or the person.
+/// Your picture with your status as a dot on its bottom-right corner. Invisible shows as grey, so you
+/// can still see that you are hidden.
+fn own_badge<'a>(picture: &str, banner: &str, name: &str, status: common::PresenceStatus, pal: Pal) -> Element<'a, Message> {
+    let dot = status_color(status, &pal).unwrap_or(pal.text_muted);
+    let ring = container(space().width(Length::Fixed(10.0)).height(Length::Fixed(10.0))).style(move |_: &Theme| container::Style {
+        background: Some(Background::Color(dot)),
+        border: border::rounded(5.0).color(pal.user_bar_bg).width(2.0),
+        ..container::Style::default()
+    });
+    let corner = container(ring).width(Length::Fill).height(Length::Fill).align_x(iced::alignment::Horizontal::Right).align_y(iced::alignment::Vertical::Bottom);
+    let picture_el = super::avatar(picture, banner, name, 32.0, &pal);
+    container(iced::widget::stack![picture_el, corner]).width(Length::Fixed(32.0)).height(Length::Fixed(32.0)).into()
+}
+
 /// The label for a status, as shown on the user bar and in the status menu.
 fn status_label(status: common::PresenceStatus) -> &'static str {
     use common::PresenceStatus::*;
