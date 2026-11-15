@@ -191,6 +191,8 @@ pub struct CardView {
     pub loading: bool,
     pub card: Option<crate::backend::Card>,
     pub error: Option<String>,
+    /// Opened from the user bar at the bottom of the sidebar, so it sits above that bar.
+    pub above: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -559,6 +561,8 @@ pub enum Message {
     RoleDraftMentionable(bool),
     /// Open a member's profile card, and close it.
     CardOpen { id: String, name: String },
+    /// Opens a profile card above the user bar (your own name there).
+    CardOpenAbove { id: String, name: String },
     CardLoaded(String, Result<crate::backend::Card, CmdError>),
     CardClose,
     /// Start, change or cancel editing your own status text on your profile card.

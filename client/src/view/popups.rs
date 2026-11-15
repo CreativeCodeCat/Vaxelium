@@ -57,6 +57,19 @@ fn keep_on_screen(at: iced::Point, size: iced::Size, window: iced::Size) -> iced
     iced::Point::new(x, y)
 }
 
+/// Like `anchored`, but the popup's bottom edge sits 8 pixels above `at.y`, so it grows upward.
+fn anchored_above<'a>(popup: Element<'a, Message>, at: iced::Point, window_height: f32, close: Message) -> Element<'a, Message> {
+    let backdrop = mouse_area(container(space()).width(Length::Fill).height(Length::Fill))
+        .on_press(close)
+        .interaction(iced::mouse::Interaction::Idle);
+    let placed = container(popup)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_y(iced::alignment::Vertical::Bottom)
+        .padding(Padding::default().bottom(window_height - at.y + 8.0).left(at.x));
+    iced::widget::stack![backdrop, placed].into()
+}
+
 /// The context menu, when one is open.
 pub fn menu_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     let menu: &Menu = app.menu.as_ref()?;
@@ -607,6 +620,10 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     // Beside the click, to its left, kept on screen.
     let x = (view.at.x - 316.0).max(8.0);
     let y = (view.at.y - 40.0).max(8.0);
+    if view.above {
+        // Opened from the user bar: the card's bottom edge sits just above the bar, whatever its height.
+        return Some(anchored_above(body.into(), iced::Point::new(x, view.at.y), app.window_size.height, Message::CardClose));
+    }
     Some(anchored(body.into(), iced::Point::new(x, y), Message::CardClose))
 }
 

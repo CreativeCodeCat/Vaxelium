@@ -466,6 +466,7 @@ fn member_profile_card_screen() {
             created: 0,
         }),
         error: None,
+        above: false,
     });
     save_at(&app, "member-profile-card", 1100.0, 700.0);
 }
@@ -538,6 +539,7 @@ fn profile_card_blocks_hovers_underneath() {
         loading: false,
         card: None,
         error: None,
+        above: false,
     });
     let open = hovers_during_sweep(&app);
     assert!(closed > 0, "the sweep should hover messages at all");

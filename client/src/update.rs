@@ -590,13 +590,11 @@ impl App {
                 }
                 Err(e) => self.card_status_error = Some(e.message),
             },
-            Message::CardOpen { id, name } => {
-                self.card = Some(crate::app::CardView { id: id.clone(), name, at: self.cursor, loading: true, card: None, error: None });
-                let backend = self.backend.clone();
-                return Task::perform(offload(move || {
-                    let result = backend.profile_card(&id);
-                    (id, result)
-                }), |(id, result)| Message::CardLoaded(id, result));
+            Message::CardOpen { id, name } => return self.open_card(id, name, self.cursor, false),
+            Message::CardOpenAbove { id, name } => {
+                // The top edge of the user bar, at the cursor's column, so the card sits just above it.
+                let at = iced::Point::new(self.cursor.x, self.window_size.height - crate::view::USER_BAR_HEIGHT);
+                return self.open_card(id, name, at, true);
             }
             Message::CardLoaded(id, result) => {
                 if let Ok(card) = &result {
@@ -975,6 +973,16 @@ impl App {
     }
 
     /// Starts the bio editor from the bio being edited.
+    /// Opens a profile card at a point and asks for the card's details.
+    fn open_card(&mut self, id: String, name: String, at: iced::Point, above: bool) -> Task<Message> {
+        self.card = Some(crate::app::CardView { id: id.clone(), name, at, loading: true, card: None, error: None, above });
+        let backend = self.backend.clone();
+        Task::perform(offload(move || {
+            let result = backend.profile_card(&id);
+            (id, result)
+        }), |(id, result)| Message::CardLoaded(id, result))
+    }
+
     fn reset_bio_editor(&mut self) {
         self.bio_editor = iced::widget::text_editor::Content::with_text(&self.account.about_bio);
     }

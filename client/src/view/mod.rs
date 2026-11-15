@@ -2,6 +2,7 @@
 //! state: buttons and fields send messages, which `app.rs` and `update.rs` handle.
 
 mod chat;
+pub use chat::USER_BAR_HEIGHT;
 pub(crate) mod pages;
 mod popups;
 
