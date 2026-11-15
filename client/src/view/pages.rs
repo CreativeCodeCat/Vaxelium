@@ -162,22 +162,6 @@ pub fn discover(app: &App, pal: Pal) -> Element<'_, Message> {
     } else if d.found.is_empty() {
         items.push(muted_text("Searching...", 14.0, pal.text_muted));
     }
-    // Servers that were reached but could not be used are listed with the reason, so none drop out silently.
-    for (addr, error) in d.failed.iter().filter(|(a, _)| !d.found.iter().any(|f| f.addr == *a)) {
-        items.push(
-            container(
-                column![
-                    text(addr.clone()).size(14).color(pal.text_strong),
-                    text(error.clone()).size(13).color(pal.red),
-                ]
-                .spacing(4),
-            )
-            .padding(Padding::from(12.0))
-            .width(Length::Fill)
-            .style(move |_: &Theme| round(pal.sidebar_bg, 8.0))
-            .into(),
-        );
-    }
     for f in &d.found {
         let saved = app.prefs.servers.iter().any(|s| s.addr == f.addr);
         let expanded = d.expanded.contains(&f.addr);
