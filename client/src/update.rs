@@ -2,6 +2,7 @@
 
 use common::ClientMsg;
 use iced::widget::operation;
+use iced::window;
 use iced::Task;
 
 use crate::app::{offload, App, AccountSaved, Field, Message, Page, Picker, ADD_ADDR_ID, COMPOSER_ID, EDIT_ID, NEW_CHANNEL_ID};
@@ -401,7 +402,7 @@ impl App {
                 self.account.editing = None;
                 return self.load_profile();
             }
-            Message::UserSettingsClose => self.page = Page::None,
+            Message::UserSettingsClose => return self.close_settings(),
             Message::ProfileLoaded(result) => match result {
                 Ok(p) => {
                     self.user = Some(p.name);
@@ -555,16 +556,24 @@ impl App {
                 self.account.avatar_error = None;
                 return Task::perform(offload(crate::icons::pick_avatar), Message::AvatarPicked);
             }
+            // A picked or removed picture is a draft until Save; Reset drops it.
             Message::AvatarPicked(result) => match result {
-                Ok(Some(png)) => return self.save_avatar(Some(png)),
+                Ok(Some(png)) => {
+                    self.account.avatar_draft = Some(png);
+                    self.account.avatar_error = None;
+                }
                 Ok(None) => {}
                 Err(e) => self.account.avatar_error = Some(e.message),
             },
-            Message::AvatarRemove => return self.save_avatar(None),
+            Message::AvatarRemove => {
+                self.account.avatar_draft = Some(String::new());
+                self.account.avatar_error = None;
+            }
             Message::AvatarDone(result) => match result {
                 Ok(avatar) => {
                     self.profiles.insert(self.user_id.clone(), crate::app::ProfileLook { avatar: avatar.clone(), banner: self.account.banner.clone() });
                     self.account.avatar = avatar;
+                    self.account.avatar_draft = None;
                     self.account.avatar_error = None;
                 }
                 Err(e) => self.account.avatar_error = Some(e.message),
@@ -572,7 +581,9 @@ impl App {
             Message::AboutReset => {
                 self.account.about_bio = self.account.bio.clone();
                 self.account.about_banner = self.account.banner.clone();
+                self.account.avatar_draft = None;
                 self.account.about_error = None;
+                self.account.avatar_error = None;
             }
             Message::AboutSave => {
                 if self.account.about_busy {
@@ -582,7 +593,12 @@ impl App {
                 self.account.about_error = None;
                 let (bio, banner) = (self.account.about_bio.trim().to_string(), self.account.about_banner.clone());
                 let backend = self.backend.clone();
-                return Task::perform(offload(move || backend.set_about(bio, banner)), Message::AboutDone);
+                let about = Task::perform(offload(move || backend.set_about(bio, banner)), Message::AboutDone);
+                // A picture change is saved with the rest.
+                return match self.account.avatar_draft.clone() {
+                    Some(draft) => Task::batch([about, self.save_avatar((!draft.is_empty()).then_some(draft))]),
+                    None => about,
+                };
             }
             Message::AboutDone(result) => {
                 self.account.about_busy = false;
@@ -613,10 +629,24 @@ impl App {
                 self.server_section = if self.is_owner() { crate::app::ServerSection::Profile } else { crate::app::ServerSection::Roles };
                 self.page = Page::Server;
             }
-            Message::ServerSettingsClose => {
-                self.role_form = None;
-                self.role_error = None;
-                self.page = Page::None;
+            Message::ServerSettingsClose => return self.close_settings(),
+            Message::TrayToggle => {
+                // Hiding closes the window and keeps the app running in the tray; showing opens it
+                // again with the same state.
+                return match self.window {
+                    Some(_) => self.hide_window(),
+                    None => {
+                        let (_, open) = window::open(crate::main_window_settings());
+                        Task::batch([open.map(Message::WindowOpened), Task::done(Message::TrayVisible(true))])
+                    }
+                };
+            }
+            Message::TrayVisible(shown) => crate::tray::set_shown(shown),
+            Message::TrayQuit => return iced::exit(),
+            Message::FlashTick => {
+                if !self.unsaved_flash_on() {
+                    self.unsaved_flash = None;
+                }
             }
             Message::UserSectionPick(section) => {
                 self.user_section = section;
@@ -823,9 +853,24 @@ impl App {
             self.add_server.open = false;
         } else if self.account.editing.is_some() {
             self.account.editing = None;
-        } else if matches!(self.page, Page::Discover | Page::User | Page::Server) {
+        } else if matches!(self.page, Page::User | Page::Server) {
+            return self.close_settings();
+        } else if matches!(self.page, Page::Discover) {
             self.page = Page::None;
         }
+        Task::none()
+    }
+
+    /// Closes a settings page. Refused while it has unsaved changes: the save bar flashes red instead.
+    fn close_settings(&mut self) -> Task<Message> {
+        if self.settings_unsaved() {
+            self.unsaved_flash = Some(std::time::Instant::now());
+            return Task::none();
+        }
+        self.unsaved_flash = None;
+        self.role_form = None;
+        self.role_error = None;
+        self.page = Page::None;
         Task::none()
     }
 
@@ -938,5 +983,15 @@ impl App {
         self.account.avatar_error = None;
         let backend = self.backend.clone();
         Task::perform(offload(move || backend.set_avatar(png)), Message::AvatarDone)
+    }
+}
+
+impl App {
+    /// Closes the main window and keeps the app running in the tray.
+    pub(crate) fn hide_window(&mut self) -> Task<Message> {
+        match self.window.take() {
+            Some(id) => Task::batch([window::close(id), Task::done(Message::TrayVisible(false))]),
+            None => Task::none(),
+        }
     }
 }

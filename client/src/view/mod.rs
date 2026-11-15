@@ -2,7 +2,7 @@
 //! state: buttons and fields send messages, which `app.rs` and `update.rs` handle.
 
 mod chat;
-mod pages;
+pub(crate) mod pages;
 mod popups;
 
 use std::collections::HashMap;

@@ -19,6 +19,9 @@ use crate::theme;
 pub const DM_TICK: Duration = Duration::from_secs(5);
 /// How often the app checks whether the auth service is back while the offline banner shows.
 pub const AUTH_PROBE: Duration = Duration::from_secs(10);
+/// How long the save bar stays red after a close was refused, and how often it is redrawn meanwhile.
+pub const UNSAVED_FLASH: Duration = Duration::from_millis(1200);
+const FLASH_STEP: Duration = Duration::from_millis(80);
 pub const MESSAGES_ID: &str = "messages";
 pub const SEARCH_ID: &str = "search";
 pub const COMPOSER_ID: &str = "composer";
@@ -145,6 +148,8 @@ pub struct Account {
     /// The profile picture as base64 PNG, or empty for none, and the last error saving one.
     pub avatar: String,
     pub avatar_error: Option<String>,
+    /// A picture picked or removed but not saved yet: the new base64 PNG, or empty to remove.
+    pub avatar_draft: Option<String>,
 }
 
 /// How a person looks in lists and messages: their picture (base64 PNG, or empty) and banner colour.
@@ -320,6 +325,8 @@ pub struct App {
     pub collapsed_categories: HashSet<i64>,
     pub menu: Option<Menu>,
     pub card: Option<CardView>,
+    /// When a close was refused over unsaved changes, so the save bar flashes.
+    pub unsaved_flash: Option<std::time::Instant>,
     /// Profile pictures and banners of the people on the server, by account id, fetched from the
     /// auth service. `profile_pending` holds the ids being fetched now.
     pub profiles: HashMap<String, ProfileLook>,
@@ -350,6 +357,13 @@ pub enum Message {
     CursorMoved(Point),
     MouseReleased,
     Escape,
+    FlashTick,
+    /// The tray icon was clicked, or its Show or Hide item chosen: show or hide the window.
+    TrayToggle,
+    /// The window is now shown (true) or hidden (false), so the tray item can say which.
+    TrayVisible(bool),
+    /// "Quit" was chosen from the tray icon.
+    TrayQuit,
     WinMinimize,
     WinMaxToggle,
     WinClose,
@@ -613,6 +627,7 @@ impl App {
             collapsed_categories: HashSet::new(),
             menu: None,
             card: None,
+            unsaved_flash: None,
             profiles: HashMap::new(),
             profile_pending: HashSet::new(),
             picker: None,
@@ -1439,7 +1454,8 @@ impl App {
             Message::Escape => self.on_escape(),
             Message::WinMinimize => self.win(|id| window::minimize(id, true)),
             Message::WinMaxToggle => self.win(window::toggle_maximize),
-            Message::WinClose => self.win(window::close),
+            // The X hides the window to the tray, the same as Hide; Quit in the tray closes the app.
+            Message::WinClose => self.hide_window(),
             Message::WinDrag => self.win(window::drag),
             Message::Resize(direction) => self.win(|id| window::drag_resize(id, direction)),
             _ => self.update_rest(message),
@@ -1604,6 +1620,10 @@ impl App {
         if self.is_logged_in() {
             subs.push(iced::time::every(DM_TICK).map(|_| Message::Tick));
         }
+        subs.push(Subscription::run(crate::tray::tray_stream));
+        if self.unsaved_flash.is_some() {
+            subs.push(iced::time::every(FLASH_STEP).map(|_| Message::FlashTick));
+        }
         if self.auth_down {
             subs.push(iced::time::every(AUTH_PROBE).map(|_| Message::AuthProbe));
         }
@@ -1618,6 +1638,37 @@ impl App {
         match self.server.member_ids.get(name) {
             Some(id) => self.profile_look(id),
             None => ("", ""),
+        }
+    }
+}
+
+impl App {
+    /// True while the save bar should be red: a close was refused in the last moment.
+    pub fn unsaved_flash_on(&self) -> bool {
+        self.unsaved_flash.is_some_and(|t| t.elapsed() < UNSAVED_FLASH)
+    }
+
+    /// True when the settings page on screen has changes that are not saved yet.
+    pub fn settings_unsaved(&self) -> bool {
+        match self.page {
+            Page::User => match self.user_section {
+                UserSection::Account => {
+                    let acc = &self.account;
+                    acc.draft_name.is_some() || acc.draft_username.is_some() || acc.draft_email.is_some() || acc.draft_theme.is_some()
+                }
+                UserSection::Profile => {
+                    let acc = &self.account;
+                    acc.about_bio != acc.bio || acc.about_banner != acc.banner || acc.avatar_draft.is_some()
+                }
+            },
+            Page::Server => {
+                let section = if self.is_owner() { self.server_section } else { ServerSection::Roles };
+                match section {
+                    ServerSection::Profile => crate::view::pages::server_profile_dirty(self),
+                    ServerSection::Roles => self.role_form.as_ref().is_some_and(|d| crate::view::pages::role_changed(self, d)),
+                }
+            }
+            _ => false,
         }
     }
 }

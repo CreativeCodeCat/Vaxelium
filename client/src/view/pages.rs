@@ -306,13 +306,15 @@ fn setting_row<'a>(label: &str, desc: Option<&str>, value: Element<'a, Message>,
 
 /// The profile picture. Saved as soon as it is picked, like a server icon.
 fn avatar_editor<'a>(acc: &'a crate::app::Account, name: &str, pal: Pal) -> Element<'a, Message> {
+    // Shows the draft while one is pending, so the change can be seen before it is saved.
+    let shown = acc.avatar_draft.as_deref().unwrap_or(&acc.avatar);
     let mut buttons = row![solid("Change picture", Message::AvatarPick, pal.accent, pal.on_color, None)].spacing(12).align_y(iced::alignment::Vertical::Center);
-    if !acc.avatar.is_empty() {
+    if !shown.is_empty() {
         buttons = buttons.push(link("Remove", Message::AvatarRemove, pal.link));
     }
     let mut column_items: Vec<Element<'a, Message>> = vec![
         text("PROFILE PICTURE").size(12).color(pal.text_muted).into(),
-        row![super::avatar(&acc.avatar, &acc.about_banner, name, 72.0, &pal), buttons].spacing(16).align_y(iced::alignment::Vertical::Center).into(),
+        row![super::avatar(shown, &acc.about_banner, name, 72.0, &pal), buttons].spacing(16).align_y(iced::alignment::Vertical::Center).into(),
     ];
     if let Some(err) = &acc.avatar_error {
         column_items.push(text(err.clone()).size(13).color(pal.red).into());
@@ -480,7 +482,7 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
         }
         UserSection::Profile => {
             // The bar appears only when the bio or banner differ from what is saved.
-            let dirty = acc.about_bio != acc.bio || acc.about_banner != acc.banner;
+            let dirty = acc.about_bio != acc.bio || acc.about_banner != acc.banner || acc.avatar_draft.is_some();
             let name = app.user.clone().unwrap_or_default();
             (settings_column(vec![page_title("Profile", pal), avatar_editor(acc, &name, pal), about_editor(acc, pal)]), dirty)
         }
@@ -492,7 +494,7 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
             UserSection::Account => (Message::AccountReset, Message::AccountSave),
             UserSection::Profile => (Message::AboutReset, Message::AboutSave),
         };
-        layers.push(unsaved_bar(pal, reset, save, "Careful – you have unsaved changes!"));
+        layers.push(unsaved_bar(app, pal, reset, save, "Careful – you have unsaved changes!"));
     }
     if let Some(which) = acc.editing {
         layers.push(account_edit_dialog(app, which, pal));
@@ -500,9 +502,19 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     iced::widget::stack(layers).into()
 }
 
+/// Blends `a` towards `b` by `t` (0 is `a`, 1 is `b`).
+fn mix(a: Color, b: Color, t: f32) -> Color {
+    Color { r: a.r + (b.r - a.r) * t, g: a.g + (b.g - a.g) * t, b: a.b + (b.b - a.b) * t, a: a.a }
+}
+
 /// The bar that appears when there are changes to save. It floats over the bottom of the page,
 /// centred, at most 640 pixels wide, as it did in the old client.
-fn unsaved_bar<'a>(pal: Pal, reset: Message, save: Message, title: &str) -> Element<'a, Message> {
+fn unsaved_bar<'a>(app: &App, pal: Pal, reset: Message, save: Message, title: &str) -> Element<'a, Message> {
+    // Red while a close was refused, so the user sees they have not saved.
+    let flash = app.unsaved_flash_on();
+    // A hint, not an alarm: the background warms slightly and the edge takes the red.
+    let bg = if flash { mix(pal.rail_bg, pal.red, 0.22) } else { pal.rail_bg };
+    let edge = if flash { pal.red } else { bg };
     let card = container(row![
         text(title.to_string()).size(14).color(pal.text_strong).width(Length::Fill),
         link("Reset", reset, pal.link),
@@ -512,7 +524,11 @@ fn unsaved_bar<'a>(pal: Pal, reset: Message, save: Message, title: &str) -> Elem
     .align_y(iced::alignment::Vertical::Center))
     .padding(crate::util::pad2(12.0, 16.0))
     .max_width(640.0)
-    .style(move |_: &Theme| round(pal.rail_bg, 8.0));
+    .style(move |_: &Theme| container::Style {
+        background: Some(Background::Color(bg)),
+        border: border::rounded(8.0).color(edge).width(1.0),
+        ..container::Style::default()
+    });
     container(card)
         .width(Length::Fill)
         .height(Length::Fill)
@@ -610,7 +626,7 @@ pub fn server_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     };
     let page = settings_frame(server_nav(&name, app.is_owner(), section, pal), content, Message::ServerSettingsClose, pal);
     if dirty {
-        iced::widget::stack![page, unsaved_bar(pal, reset, save, "Careful – you have unsaved changes!")].into()
+        iced::widget::stack![page, unsaved_bar(app, pal, reset, save, "Careful – you have unsaved changes!")].into()
     } else {
         page.into()
     }
@@ -652,10 +668,17 @@ fn nav_item<'a>(label: &str, section: ServerSection, active: ServerSection, pal:
 }
 
 /// The Server Profile section: the name, description and picture. Also says whether it has unsaved changes.
+/// True when the server profile form has changes not yet saved.
+pub(crate) fn server_profile_dirty(app: &App) -> bool {
+    let form = &app.server_form;
+    let name = app.selected_name().unwrap_or_else(|| "Server".into());
+    (!form.name.trim().is_empty() && form.name.trim() != name) || form.description.trim() != app.server.description
+}
+
 fn profile_items(app: &App, pal: Pal) -> (Vec<Element<'_, Message>>, bool) {
     let form = &app.server_form;
     let name = app.selected_name().unwrap_or_else(|| "Server".into());
-    let dirty = (!form.name.trim().is_empty() && form.name.trim() != name) || form.description.trim() != app.server.description;
+    let dirty = server_profile_dirty(app);
     let icon: Element<'_, Message> = server_icon(app.server.icon.as_deref(), &name, 64.0, &pal, 8.0);
     let mut items: Vec<Element<'_, Message>> = vec![
         page_title("Server Profile", pal),
@@ -711,7 +734,7 @@ const PERMISSIONS: [(&str, &str, u32); 4] = [
 
 /// The Roles section, laid out like Discord's: the roles on the left, and the chosen role's settings on the right.
 /// True when the editor's draft differs from the role as the server has it, so there is something to save.
-fn role_changed(app: &App, draft: &RoleDraft) -> bool {
+pub(crate) fn role_changed(app: &App, draft: &RoleDraft) -> bool {
     if !draft.id.map_or(true, |id| app.outranks_role(id)) {
         return false;
     }

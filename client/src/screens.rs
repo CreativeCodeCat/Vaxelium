@@ -497,3 +497,13 @@ fn profile_unsaved_bar_screen() {
     app.account.about_bio = "I Use Arch BTW, btw".into();
     save_at(&app, "profile-unsaved", 1100.0, 700.0);
 }
+
+#[test]
+fn unsaved_bar_flash_screen() {
+    let mut app = chat_app();
+    app.page = Page::User;
+    app.user_section = crate::app::UserSection::Profile;
+    app.account.about_bio = "unsaved bio".into();
+    app.unsaved_flash = Some(std::time::Instant::now());
+    save_at(&app, "unsaved-bar-flash", 1100.0, 700.0);
+}

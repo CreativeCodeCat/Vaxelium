@@ -573,3 +573,40 @@ fn fetched_profile_looks_are_kept_for_members_and_messages() {
     assert_eq!(app.profile_look("id-bob"), ("", "#2ecc71"));
     assert_eq!(app.profile_look("id-nobody"), ("", ""), "someone not fetched has no picture");
 }
+
+#[test]
+fn a_picked_picture_is_a_draft_until_saved_or_reset() {
+    let mut app = app();
+    let _ = app.update(Message::AvatarPicked(Ok(Some("aGVsbG8=".into()))));
+    assert_eq!(app.account.avatar_draft.as_deref(), Some("aGVsbG8="));
+    assert!(app.account.avatar.is_empty(), "nothing is saved yet");
+    let _ = app.update(Message::AboutReset);
+    assert!(app.account.avatar_draft.is_none(), "Reset drops the draft");
+    let _ = app.update(Message::AvatarRemove);
+    assert_eq!(app.account.avatar_draft.as_deref(), Some(""), "a removal is a draft too");
+}
+
+#[test]
+fn closing_settings_with_unsaved_changes_is_refused_and_flashes() {
+    let mut app = app();
+    app.page = crate::app::Page::User;
+    app.user_section = crate::app::UserSection::Profile;
+    app.account.about_bio = "changed".into();
+    let _ = app.update(Message::UserSettingsClose);
+    assert!(matches!(app.page, crate::app::Page::User), "the page stays open");
+    assert!(app.unsaved_flash_on(), "the save bar flashes");
+    let _ = app.update(Message::AboutReset);
+    let _ = app.update(Message::UserSettingsClose);
+    assert!(matches!(app.page, crate::app::Page::None), "after Reset the page closes");
+}
+
+#[test]
+fn escape_over_unsaved_settings_flashes_instead_of_closing() {
+    let mut app = app();
+    app.page = crate::app::Page::User;
+    app.user_section = crate::app::UserSection::Account;
+    app.account.draft_name = Some("New name".into());
+    let _ = app.on_escape();
+    assert!(matches!(app.page, crate::app::Page::User));
+    assert!(app.unsaved_flash_on());
+}
