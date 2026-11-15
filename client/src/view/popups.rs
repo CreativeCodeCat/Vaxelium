@@ -525,6 +525,20 @@ pub fn resize_edges<'a>() -> Element<'a, Message> {
     .into()
 }
 
+/// Lines that start with "- " or "* " become bullet points in a bio.
+fn with_bullets(body: &str) -> String {
+    body.lines()
+        .map(|line| {
+            let trimmed = line.trim_start();
+            match trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")) {
+                Some(rest) => format!("• {rest}"),
+                None => line.to_string(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// The profile card, when one is open: a banner, the name, the bio and the member's roles here.
 pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     let view = app.card.as_ref()?;
@@ -556,7 +570,28 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     // The picture overlaps the bottom of the banner, in a ring of the card's colour, as on Discord. The
     // base layer is as tall as the whole header, since an overlay is clipped to the base's height.
     let picture_el = super::avatar(&picture, &banner_hex, &name, 88.0, &pal);
-    let ring = container(picture_el).padding(4).style(move |_: &Theme| container::Style {
+    // A dot shows the member's presence at the picture's bottom right, as in the member list. Your own
+    // card shows your status; an offline member has no dot.
+    let presence = if own {
+        Some(app.effective_status())
+    } else {
+        app.server.member_ids.get(&name).and_then(|id| app.server.member_status.get(id)).copied()
+    };
+    let picture_with_dot: Element<'_, Message> = match presence.and_then(|p| super::chat::status_color(p, &pal)) {
+        Some(color) => {
+            let dot = container(space())
+                .width(Length::Fixed(18.0))
+                .height(Length::Fixed(18.0))
+                .style(move |_: &Theme| container::Style {
+                    background: Some(Background::Color(color)),
+                    border: border::rounded(9.0).color(pal.sidebar_bg).width(3.0),
+                    ..container::Style::default()
+                });
+            iced::widget::stack![picture_el, container(dot).padding(crate::util::pad(70.0, 0.0, 0.0, 70.0))].into()
+        }
+        None => picture_el.into(),
+    };
+    let ring = container(picture_with_dot).padding(4).style(move |_: &Theme| container::Style {
         background: Some(Background::Color(pal.sidebar_bg)),
         border: border::rounded(48.0),
         ..container::Style::default()
@@ -580,7 +615,7 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     items.push(container(text("ABOUT ME").size(11).color(pal.text_muted)).padding(crate::util::pad(12.0, 14.0, 4.0, 14.0)).into());
     let bio: Element<'_, Message> = match (card, &view.error, view.loading) {
         (Some(c), _, _) if c.bio.is_empty() => text("No bio yet.").size(13).color(pal.text_muted).into(),
-        (Some(c), _, _) => super::linked_text(&c.bio, 13.0, pal.text, pal),
+        (Some(c), _, _) => super::linked_text(&with_bullets(&c.bio), 13.0, pal.text, pal),
         (None, _, true) => text("Loading…").size(13).color(pal.text_muted).into(),
         (None, Some(err), _) => text(format!("Profile unavailable: {err}")).size(13).color(pal.text_muted).into(),
         (None, None, false) => text("Profile unavailable.").size(13).color(pal.text_muted).into(),
@@ -793,5 +828,15 @@ mod placement_tests {
         assert_eq!(keep_on_screen(Point::new(100.0, 50.0), Size::new(200.0, 300.0), window), Point::new(100.0, 50.0));
         // A menu taller than the window stays at the top margin rather than going off the top.
         assert_eq!(keep_on_screen(Point::new(10.0, 10.0), Size::new(200.0, 900.0), window).y, 8.0);
+    }
+}
+
+#[cfg(test)]
+mod bio_tests {
+    use super::with_bullets;
+
+    #[test]
+    fn dash_and_star_lines_become_bullets_and_others_stay() {
+        assert_eq!(with_bullets("Hi\n- one\n  * two\nlast"), "Hi\n• one\n• two\nlast");
     }
 }

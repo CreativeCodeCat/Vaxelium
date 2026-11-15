@@ -1026,7 +1026,7 @@ fn status_label(status: common::PresenceStatus) -> &'static str {
 }
 
 /// The dot that shows a status beside a name. Invisible members have none.
-fn status_color(status: common::PresenceStatus, pal: &Pal) -> Option<Color> {
+pub(crate) fn status_color(status: common::PresenceStatus, pal: &Pal) -> Option<Color> {
     use common::PresenceStatus::*;
     match status {
         Online => Some(pal.green),
