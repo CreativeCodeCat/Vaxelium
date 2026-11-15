@@ -373,6 +373,9 @@ fn category_of(app: &App, channel: i64) -> Option<i64> {
     app.server.categories.iter().find(|c| c.channels.iter().any(|ch| ch.id == channel)).map(|c| c.id)
 }
 
+/// The height of the user bar at the bottom of the sidebar.
+pub const USER_BAR_HEIGHT: f32 = 56.0;
+
 fn user_bar(app: &App, pal: Pal) -> Element<'_, Message> {
     let user = app.user.clone().unwrap_or_default();
     let own_status = app.effective_status();
@@ -388,7 +391,7 @@ fn user_bar(app: &App, pal: Pal) -> Element<'_, Message> {
         // Your name opens your own profile card, where your status bubble is edited.
         button(text(user.clone()).size(14).color(pal.text_strong))
             .padding(0)
-            .on_press(Message::CardOpen { id: app.user_id.clone(), name: user.clone() })
+            .on_press(Message::CardOpenAbove { id: app.user_id.clone(), name: user.clone() })
             .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() }),
         // Your own status. Click it to change it.
         button(text(status_label(own_status)).size(11).color(pal.text_muted))
@@ -419,7 +422,7 @@ fn user_bar(app: &App, pal: Pal) -> Element<'_, Message> {
     .align_y(iced::alignment::Vertical::Center);
     container(content)
         .padding(crate::util::pad2(4.0, 8.0))
-        .height(Length::Fixed(56.0))
+        .height(Length::Fixed(USER_BAR_HEIGHT))
         .width(Length::Fill)
         .align_y(iced::alignment::Vertical::Center)
         .style(move |_: &Theme| round(pal.user_bar_bg, 8.0))
