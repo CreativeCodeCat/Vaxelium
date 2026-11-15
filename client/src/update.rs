@@ -589,6 +589,7 @@ impl App {
             }
             Message::CardStatusDone(result) => match result {
                 Ok(text) => {
+                    self.backend.set_profile_status_everywhere(&text);
                     self.card_status_draft = None;
                     if let Some(look) = self.profiles.get_mut(&self.user_id) {
                         look.status = text.clone();
@@ -628,9 +629,6 @@ impl App {
             }
             Message::SetMemberBadge { user, badge, on } => {
                 let _ = self.backend.send_main(ClientMsg::SetMemberBadge { user, badge, on });
-            }
-            Message::RefreshConversation(id) => {
-                self.fetch_person(&id);
             }
             Message::CardMessageSend => {
                 let text = std::mem::take(&mut self.card_message).trim().to_string();

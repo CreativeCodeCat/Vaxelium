@@ -684,7 +684,8 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     if let Some(c) = card {
         items.push(container(text(format!("@{}", c.username)).size(13).color(pal.text_muted)).padding(crate::util::pad(0.0, 14.0, 8.0, 14.0)).into());
         // The servers you and this member both are in, by name.
-        if !c.mutual.is_empty() {
+        // Shared servers only make sense on someone else's card: on your own, every server is shared.
+        if !own && !c.mutual.is_empty() {
             let names: Vec<String> = c
                 .mutual
                 .iter()
@@ -888,16 +889,21 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
         );
     }
 
-    let body = container(Column::with_children(items))
+    // Beside the click, to its left, kept on screen. The card is never taller than the window allows: it
+    // moves up if there is little room below, and then scrolls if it is still too tall.
+    const MIN_CARD_HEIGHT: f32 = 320.0;
+    let window_h = app.window_size.height;
+    let x = (view.at.x - 316.0).max(8.0);
+    let y = (view.at.y - 40.0).max(8.0).min((window_h - MIN_CARD_HEIGHT - 8.0).max(8.0));
+    let max_card_height = if view.above { (view.at.y - 16.0).max(MIN_CARD_HEIGHT) } else { (window_h - y - 16.0).max(MIN_CARD_HEIGHT) };
+    let body = container(scrollable(Column::with_children(items)).height(Length::Shrink))
         .width(Length::Fixed(300.0))
+        .max_height(max_card_height)
         .style(move |_: &Theme| container::Style {
             background: Some(Background::Color(pal.sidebar_bg)),
             border: border::rounded(8.0).color(pal.hover_bg).width(1.0),
             ..container::Style::default()
         });
-    // Beside the click, to its left, kept on screen.
-    let x = (view.at.x - 316.0).max(8.0);
-    let y = (view.at.y - 40.0).max(8.0);
     let card_layer: Element<'_, Message> = if view.above {
         // Opened from the user bar: the card's bottom edge sits just above the bar, whatever its height.
         anchored_above(body.into(), iced::Point::new(x, view.at.y), app.window_size.height, Message::CardClose)
