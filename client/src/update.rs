@@ -601,8 +601,17 @@ impl App {
             },
             Message::CardOpen { id, name } => return self.open_card(id, name, self.cursor, false),
             Message::CardMessageInput(text) => self.card_message = text,
-            Message::CardRolesToggle => self.card_roles_open = !self.card_roles_open,
-            Message::CardBadgesToggle => self.card_badges_open = !self.card_badges_open,
+            Message::CardRolesToggle => {
+                // Opens at the + that was clicked. Only one of the roles and badges lists is open at a time.
+                self.card_pick_at = self.cursor;
+                self.card_badges_open = false;
+                self.card_roles_open = !self.card_roles_open;
+            }
+            Message::CardBadgesToggle => {
+                self.card_pick_at = self.cursor;
+                self.card_roles_open = false;
+                self.card_badges_open = !self.card_badges_open;
+            }
             Message::CardListSearch(text) => self.card_list_search = text,
             Message::BadgeName(name) => self.badge_name = name,
             Message::BadgeColor(color) => self.badge_color = color,
