@@ -509,3 +509,37 @@ fn unsaved_bar_flash_screen() {
     app.unsaved_flash = Some(std::time::Instant::now());
     save_at(&app, "unsaved-bar-flash", 1100.0, 700.0);
 }
+
+/// How many message hovers a pointer sweep over the chat produces. Used to check that an open
+/// profile card does not stop messages from being hovered.
+#[cfg(test)]
+fn hovers_during_sweep(app: &App) -> usize {
+    use iced::{mouse, Event, Point};
+    let mut ui = simulate(app);
+    for y in (60..660).step_by(12) {
+        for x in (300..700).step_by(12) {
+            let p = Point::new(x as f32, y as f32);
+            ui.point_at(p);
+            ui.simulate([Event::Mouse(mouse::Event::CursorMoved { position: p })]);
+        }
+    }
+    ui.into_messages().filter(|m| matches!(m, Message::Hover(Some(_)))).count()
+}
+
+#[test]
+fn messages_stay_hoverable_while_a_profile_card_is_open() {
+    let mut app = chat_app();
+    let closed = hovers_during_sweep(&app);
+    app.card = Some(crate::app::CardView {
+        id: "u2".into(),
+        name: "bob".into(),
+        at: iced::Point::new(500.0, 300.0),
+        loading: false,
+        card: None,
+        error: None,
+    });
+    let open = hovers_during_sweep(&app);
+    eprintln!("hovers closed={closed} open={open}");
+    assert!(closed > 0, "the sweep should hover messages at all");
+    assert_eq!(open, closed);
+}

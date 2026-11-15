@@ -380,8 +380,14 @@ fn user_bar(app: &App, pal: Pal) -> Element<'_, Message> {
         text("Online").size(11).color(pal.text_muted),
     ]
     .width(Length::Fill);
+    // Shows the same picture and banner as your entry in the member list, which are known as soon as
+    // the server is connected. The account's own copy is only loaded when the settings are opened.
+    let (picture, banner) = match app.profiles.get(&app.user_id) {
+        Some(look) => (look.avatar.as_str(), look.banner.as_str()),
+        None => (app.account.avatar.as_str(), app.account.banner.as_str()),
+    };
     let content = row![
-        super::avatar(&app.account.avatar, &app.account.banner, &user, 32.0, &pal),
+        super::avatar(picture, banner, &user, 32.0, &pal),
         who,
         icons::icon(icons::HEADSET, 16.0, pal.text_muted),
         icons::icon(icons::MIC, 16.0, pal.text_muted),
@@ -749,23 +755,38 @@ fn fit_name(name: &str, room: f32, size: f32) -> String {
 /// A message's text. `@role` pings for roles anyone may ping are shown in the role's colour, in bold.
 fn message_text<'a>(app: &App, body: &str, pal: Pal) -> Element<'a, Message> {
     let pings = app.role_pings(body);
-    if pings.is_empty() {
+    let links = super::link_ranges(body);
+    if pings.is_empty() && links.is_empty() {
         return text(body.to_string()).size(15).color(pal.text).width(Length::Shrink).into();
     }
     let bold = iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT };
-    let mut spans: Vec<iced::widget::text::Span<'static, ()>> = Vec::new();
+    // Pings and links in the order they appear. A link that overlaps a ping is shown as plain text.
+    let mut pieces: Vec<(std::ops::Range<usize>, Option<Option<Color>>)> = pings
+        .iter()
+        .map(|p| (p.range.clone(), Some(p.color)))
+        .chain(links.into_iter().map(|r| (r, None)))
+        .collect();
+    pieces.sort_by_key(|(r, _)| r.start);
+    let mut spans: Vec<iced::widget::text::Span<'static, String>> = Vec::new();
     let mut at = 0;
-    for ping in pings {
-        if ping.range.start > at {
-            spans.push(span(body[at..ping.range.start].to_string()).color(pal.text));
+    for (range, ping) in pieces {
+        if range.start < at {
+            continue;
         }
-        spans.push(span(body[ping.range.clone()].to_string()).color(ping.color.unwrap_or(pal.text_strong)).font(bold));
-        at = ping.range.end;
+        if range.start > at {
+            spans.push(span(body[at..range.start].to_string()).color(pal.text));
+        }
+        let part = body[range.clone()].to_string();
+        spans.push(match ping {
+            Some(color) => span(part).color(color.unwrap_or(pal.text_strong)).font(bold),
+            None => span(part.clone()).color(pal.link).underline(true).link(part),
+        });
+        at = range.end;
     }
     if at < body.len() {
         spans.push(span(body[at..].to_string()).color(pal.text));
     }
-    rich_text(spans).size(15).width(Length::Shrink).into()
+    rich_text(spans).size(15).width(Length::Shrink).on_link_click(Message::OpenLink).into()
 }
 
 /// The colour of a message's author name: their highest role's colour, or the strong text colour
@@ -957,6 +978,12 @@ fn mention_menu<'a>(app: &App, pal: Pal) -> Option<Element<'a, Message>> {
 
 /// The message box at the bottom. Its placeholder names the channel or the person.
 fn composer(app: &App, pal: Pal) -> Element<'_, Message> {
+    if !app.may_send_here() {
+        return container(text("You can't send messages in this channel").size(14).color(pal.text_muted))
+            .padding(crate::util::pad(0.0, 16.0, 20.0, 16.0))
+            .width(Length::Fill)
+            .into();
+    }
     let label = if app.current_person().is_some() || is_dm_channel(&app.server.channel) {
         app.channel_label()
     } else {

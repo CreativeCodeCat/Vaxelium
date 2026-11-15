@@ -275,6 +275,65 @@ pub fn picker_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
 
 /// The dialogs: delete a message, and joining a server.
 pub fn dialog_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
+    if app.admin_grant_pending {
+        let items: Vec<Element<'_, Message>> = vec![
+            text("Give Administrator?").size(20).color(pal.text_strong).into(),
+            text("Administrators have every permission, including ones switched off in this role or anywhere else. Only give it to people you fully trust.")
+                .size(14)
+                .color(pal.text)
+                .into(),
+            row![
+                space().width(Length::Fill),
+                link("Cancel", Message::AdminGrantCancel, pal.text_muted),
+                solid("Turn on", Message::AdminGrantConfirm, pal.red, pal.on_color, None),
+            ]
+            .spacing(10)
+            .align_y(iced::alignment::Vertical::Center)
+            .into(),
+        ];
+        return Some(modal(items, pal, Message::AdminGrantCancel));
+    }
+    if app.role_save_warning {
+        if let Some(draft) = &app.role_form {
+            let lost = crate::view::pages::lockout_risk(app, draft);
+            let mut paragraphs: Vec<Element<'_, Message>> = vec![text("Save this role?").size(20).color(pal.text_strong).into()];
+            if crate::view::pages::grants_administrator(app, draft) {
+                paragraphs.push(
+                    text("This gives Administrator, which has every permission, including ones switched off. Only give it to people you fully trust.")
+                        .size(14)
+                        .color(pal.text)
+                        .into(),
+                );
+            }
+            if !lost.is_empty() {
+                let which = if lost.len() == 1 { lost[0] } else { "them" };
+                paragraphs.push(
+                    text(format!(
+                        "This takes {} away from {}. No other role has {which}. At least one role must have {which} or you can be locked out.",
+                        lost.join(" and "),
+                        draft.name.trim(),
+                    ))
+                    .size(14)
+                    .color(pal.text)
+                    .into(),
+                );
+            }
+            let items: Vec<Element<'_, Message>> = paragraphs.into_iter().chain(std::iter::once(
+                row![
+                    space().width(Length::Fill),
+                    link("Cancel", Message::RoleSaveCancel, pal.text_muted),
+                    solid("Save anyway", Message::RoleSaveConfirm, pal.red, pal.on_color, None),
+                ]
+                .spacing(10)
+                .align_y(iced::alignment::Vertical::Center)
+                .into(),
+            )).collect();
+            return Some(modal(items, pal, Message::RoleSaveCancel));
+        }
+    }
+    if let Some(channel) = app.channel_access {
+        return Some(channel_access_dialog(app, channel, pal));
+    }
     if app.account.verify_open {
         let acc = &app.account;
         let address = app.account.email.clone().unwrap_or_else(|| "your address".into());
@@ -449,7 +508,7 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     items.push(container(text("ABOUT ME").size(11).color(pal.text_muted)).padding(crate::util::pad(12.0, 14.0, 4.0, 14.0)).into());
     let bio: Element<'_, Message> = match (card, &view.error, view.loading) {
         (Some(c), _, _) if c.bio.is_empty() => text("No bio yet.").size(13).color(pal.text_muted).into(),
-        (Some(c), _, _) => text(c.bio.clone()).size(13).color(pal.text).into(),
+        (Some(c), _, _) => super::linked_text(&c.bio, 13.0, pal.text, pal),
         (None, _, true) => text("Loading…").size(13).color(pal.text_muted).into(),
         (None, Some(err), _) => text(format!("Profile unavailable: {err}")).size(13).color(pal.text_muted).into(),
         (None, None, false) => text("Profile unavailable.").size(13).color(pal.text_muted).into(),
@@ -508,4 +567,66 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     let x = (view.at.x - 316.0).max(8.0);
     let y = (view.at.y - 40.0).max(8.0);
     Some(anchored(body.into(), iced::Point::new(x, y), Message::CardClose))
+}
+
+/// The permissions of one channel: what each role may do there, with the server-wide setting as the default.
+fn channel_access_dialog(app: &App, channel: i64, pal: Pal) -> Element<'_, Message> {
+    let name = app.server.channels.iter().find(|c| c.id == channel).map(|c| c.name.clone()).unwrap_or_default();
+    let mut items: Vec<Element<'_, Message>> = vec![
+        text(format!("Permissions for #{name}")).size(20).color(pal.text_strong).into(),
+        text("Inherit keeps the role's server-wide setting. Deny wins over Allow when a member has several roles.")
+            .size(13)
+            .color(pal.text_muted)
+            .into(),
+    ];
+    for role in &app.server.roles {
+        let current = app.server.overrides.iter().find(|o| o.channel_id == channel && o.role == role.id);
+        let (view, send) = current.map_or((None, None), |o| (o.view, o.send));
+        let role_id = role.id;
+        items.push(
+            column![
+                text(role.name.clone()).size(14).color(pal.text),
+                access_choice("View", view, move |v| Message::ChannelAccessSet { channel, role: role_id, view: v, send }, pal),
+                access_choice("Send", send, move |s| Message::ChannelAccessSet { channel, role: role_id, view, send: s }, pal),
+            ]
+            .spacing(6)
+            .into(),
+        );
+    }
+    items.push(
+        row![space().width(Length::Fill), link("Done", Message::ChannelAccessClose, pal.text_muted)]
+            .align_y(iced::alignment::Vertical::Center)
+            .into(),
+    );
+    modal(items, pal, Message::ChannelAccessClose)
+}
+
+/// One setting of a channel exception: Inherit, Allow or Deny.
+fn access_choice<'a>(label: &str, current: Option<bool>, on_pick: impl Fn(Option<bool>) -> Message, pal: Pal) -> Element<'a, Message> {
+    let choice = |text_: &str, value: Option<bool>| -> Element<'a, Message> {
+        let selected = current == value;
+        button(text(text_.to_string()).size(12).color(if selected { pal.text_strong } else { pal.text_muted }))
+            .padding(crate::util::pad2(4.0, 10.0))
+            .on_press(on_pick(value))
+            .style(move |_: &Theme, status: button::Status| {
+                let bg = if selected {
+                    pal.selected_bg
+                } else if matches!(status, button::Status::Hovered) {
+                    pal.hover_bg
+                } else {
+                    Color::TRANSPARENT
+                };
+                button::Style { background: Some(Background::Color(bg)), text_color: pal.text, border: border::rounded(4.0), ..button::Style::default() }
+            })
+            .into()
+    };
+    row![
+        text(label.to_string()).size(13).color(pal.text_muted).width(Length::Fixed(44.0)),
+        choice("Inherit", None),
+        choice("Allow", Some(true)),
+        choice("Deny", Some(false)),
+    ]
+    .spacing(4)
+    .align_y(iced::alignment::Vertical::Center)
+    .into()
 }

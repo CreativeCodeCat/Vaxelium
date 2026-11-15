@@ -33,6 +33,8 @@ pub const NEW_DM_ID: &str = "new-dm";
 pub const EDIT_ID: &str = "edit-box";
 /// The width of a member's right-click menu. It is always this wide.
 pub const MEMBER_MENU_WIDTH: f32 = 220.0;
+/// The longest bio, in characters. Line breaks count.
+pub const BIO_MAX: usize = 190;
 pub const PANEL_MIN: f32 = 250.0;
 pub const PANEL_MAX: f32 = 420.0;
 
@@ -283,6 +285,12 @@ pub struct App {
     pub server_form: ServerForm,
     /// The role being edited on the roles page, if one is open.
     pub role_form: Option<RoleDraft>,
+    /// The name of a role just created from the editor, so the editor can select it once it arrives.
+    pub role_created_name: Option<String>,
+    /// Saving the open role would take the last role's channel permissions away. Asks first.
+    pub role_save_warning: bool,
+    /// Administrator was switched on in the open role. Asks before it counts.
+    pub admin_grant_pending: bool,
     /// The section of the server settings page that is showing.
     pub server_section: ServerSection,
     /// The tab open in user settings.
@@ -293,6 +301,8 @@ pub struct App {
     pub role_error: Option<String>,
     /// The editor state for the description box. `server_form.description` follows its text.
     pub description_editor: iced::widget::text_editor::Content,
+    /// The bio being edited on the Profile tab. Its text is kept in `account.about_bio`.
+    pub bio_editor: iced::widget::text_editor::Content,
 
     pub main: MainConn,
     pub server: ServerView,
@@ -317,6 +327,8 @@ pub struct App {
     pub dnd: Option<Dnd>,
     /// The channel waiting for its delete confirmation.
     pub pending_channel_delete: Option<(i64, String)>,
+    /// The channel whose permissions are being edited.
+    pub channel_access: Option<i64>,
     /// The role waiting for confirmation before it is deleted.
     pub pending_role_delete: Option<(i64, String)>,
     /// The Roles checklist in a member's menu is open.
@@ -413,6 +425,14 @@ pub enum Message {
     DeleteChannelAsk(i64, String),
     DeleteChannelConfirm,
     DeleteChannelCancel,
+    RoleSaveConfirm,
+    RoleSaveCancel,
+    AdminGrantConfirm,
+    AdminGrantCancel,
+    ChannelAccessOpen(i64),
+    ChannelAccessClose,
+    /// Set a role's exception for a channel. `None` for both removes it.
+    ChannelAccessSet { channel: i64, role: i64, view: Option<bool>, send: Option<bool> },
     CreateOpen,
     CategoryOpen,
     NewCategory(String),
@@ -504,7 +524,10 @@ pub enum Message {
     CardOpen { id: String, name: String },
     CardLoaded(String, Result<crate::backend::Card, CmdError>),
     CardClose,
-    AboutInput(String),
+    /// A web link was clicked. Only http and https links are opened.
+    OpenLink(String),
+    /// An edit to the bio, which may run over several lines.
+    BioEdit(iced::widget::text_editor::Action),
     AboutBanner(String),
     AboutSave,
     AboutDone(Result<(String, String), CmdError>),
@@ -607,7 +630,11 @@ impl App {
             user_section: UserSection::default(),
             role_tab: RoleTab::default(),
             role_error: None,
+            role_created_name: None,
+            role_save_warning: false,
+            admin_grant_pending: false,
             description_editor: iced::widget::text_editor::Content::new(),
+            bio_editor: iced::widget::text_editor::Content::new(),
             main: MainConn::default(),
             server: ServerView::default(),
             messages: HashMap::new(),
@@ -625,6 +652,7 @@ impl App {
             rename_channel: None,
             dnd: None,
             pending_channel_delete: None,
+            channel_access: None,
             pending_role_delete: None,
             roles_menu_open: false,
             new_category: String::new(),
@@ -973,8 +1001,18 @@ impl App {
                     self.save_prefs();
                 }
             }
+            ServerMsg::ChannelOverrides { overrides } => {
+                self.server.overrides = overrides;
+            }
             ServerMsg::Roles { roles } => {
                 self.server.roles = roles;
+                // A role made from the editor is selected, so saving does not leave the page.
+                if let Some(name) = self.role_created_name.take() {
+                    let created = self.server.roles.iter().find(|r| r.name == name).map(|r| r.id);
+                    if let (Some(id), Some(draft)) = (created, self.role_form.as_mut().filter(|d| d.id.is_none())) {
+                        draft.id = Some(id);
+                    }
+                }
                 if self.remember_protected() {
                     self.save_prefs();
                 }
@@ -1283,6 +1321,7 @@ impl App {
                 }
                 if !is_dm_channel(&name) {
                     if self.can(perm::MANAGE_CHANNELS) {
+                        items.push(item("Permissions", None, false, Message::ChannelAccessOpen(id)));
                         items.push(item("Rename channel", None, false, Message::RenameStart(id, name.clone())));
                         items.push(item("Delete channel", Some(crate::icons::TRASH), true, Message::DeleteChannelAsk(id, name.clone())));
                     }
