@@ -61,6 +61,8 @@ pub struct Card {
     pub bio: String,
     pub banner: String,
     pub avatar: String,
+    /// When the account was created, in Unix seconds (0 when unknown).
+    pub created: u64,
 }
 
 /// The outcome of restoring a saved login at startup.
@@ -420,7 +422,7 @@ impl Backend {
     /// Someone's public profile card, by their account id.
     pub fn profile_card(&self, id: &str) -> Result<Card, CmdError> {
         match self.auth(AuthRequest::ProfileCard { id: id.to_string() })? {
-            AuthReply::ProfileCard { name, username, bio, banner, avatar } => Ok(Card { name, username, bio, banner, avatar }),
+            AuthReply::ProfileCard { name, username, bio, banner, avatar, created } => Ok(Card { name, username, bio, banner, avatar, created }),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
         }

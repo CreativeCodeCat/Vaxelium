@@ -165,7 +165,7 @@ fn body(app: &App, pal: Pal) -> Element<'_, Message> {
             let main: Element<'_, Message> = if app.home && app.chat_ready() {
                 chat::home(app, pal)
             } else if app.chat_ready() {
-                chat::channel(app, pal)
+                if app.members_view { chat::members_page(app, pal) } else { chat::channel(app, pal) }
             } else {
                 pages::server_status(app, pal)
             };

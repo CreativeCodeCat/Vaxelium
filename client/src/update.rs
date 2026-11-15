@@ -231,6 +231,10 @@ impl App {
                 self.members_hidden = !self.members_hidden;
                 self.menu = None;
             }
+            Message::MembersView(show) => {
+                self.members_view = show;
+                self.menu = None;
+            }
             Message::MarkRead(id) => {
                 self.unread.remove(&id);
                 self.pinged.remove(&id);
@@ -531,7 +535,7 @@ impl App {
             }
             Message::CardLoaded(id, result) => {
                 if let Ok(card) = &result {
-                    self.profiles.insert(id.clone(), crate::app::ProfileLook { avatar: card.avatar.clone(), banner: card.banner.clone() });
+                    self.profiles.insert(id.clone(), crate::app::ProfileLook { avatar: card.avatar.clone(), banner: card.banner.clone(), created: card.created });
                 }
                 if let Some(view) = self.card.as_mut().filter(|v| v.id == id) {
                     view.loading = false;
@@ -548,7 +552,7 @@ impl App {
                 for (id, card) in found {
                     self.profile_pending.remove(&id);
                     if let Some(card) = card {
-                        self.profiles.insert(id, crate::app::ProfileLook { avatar: card.avatar, banner: card.banner });
+                        self.profiles.insert(id, crate::app::ProfileLook { avatar: card.avatar, banner: card.banner, created: card.created });
                     }
                 }
             }
@@ -571,7 +575,8 @@ impl App {
             }
             Message::AvatarDone(result) => match result {
                 Ok(avatar) => {
-                    self.profiles.insert(self.user_id.clone(), crate::app::ProfileLook { avatar: avatar.clone(), banner: self.account.banner.clone() });
+                    let created = self.profiles.get(&self.user_id).map(|p| p.created).unwrap_or(0);
+                    self.profiles.insert(self.user_id.clone(), crate::app::ProfileLook { avatar: avatar.clone(), banner: self.account.banner.clone(), created });
                     self.account.avatar = avatar;
                     self.account.avatar_draft = None;
                     self.account.avatar_error = None;
