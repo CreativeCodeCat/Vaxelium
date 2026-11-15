@@ -758,7 +758,7 @@ impl App {
                 self.role_form = None;
                 self.role_error = None;
                 // The owner starts on the profile; everyone else who can open the page starts on roles.
-                self.server_section = if self.is_owner() { crate::app::ServerSection::Profile } else { crate::app::ServerSection::Roles };
+                self.server_section = if self.can(common::perm::MANAGE_SERVER) { crate::app::ServerSection::Profile } else { crate::app::ServerSection::Roles };
                 self.page = Page::Server;
             }
             Message::ServerSettingsClose => return self.close_settings(),

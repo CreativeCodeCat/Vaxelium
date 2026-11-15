@@ -600,3 +600,29 @@ fn choosing_a_status_in_the_menu_sends_it() {
     }
     assert!(!picked.is_empty(), "clicking a status in the menu should choose it");
 }
+
+#[test]
+fn a_manage_server_role_alone_shows_server_settings() {
+    let mut app = chat_app();
+    // alice is not the owner. Her only role is one with Manage server and nothing else.
+    app.server.owner_id = Some("someone-else".into());
+    app.server.roles.push(common::RoleInfo {
+        id: 9,
+        name: "Editor".into(),
+        color: String::new(),
+        permissions: common::perm::MANAGE_SERVER,
+        position: 1,
+        mentionable: false,
+        hoisted: false,
+    });
+    app.server.member_roles.insert("u1".into(), vec![9]);
+    let labels: Vec<String> = app
+        .server_menu_items()
+        .into_iter()
+        .filter_map(|item| match item {
+            crate::app::MenuItem::Action { label, .. } => Some(label),
+            _ => None,
+        })
+        .collect();
+    assert!(labels.iter().any(|l| l == "Server settings"), "items: {labels:?}");
+}
