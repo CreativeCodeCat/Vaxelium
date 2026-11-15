@@ -338,7 +338,7 @@ fn user_bar(app: &App, pal: Pal) -> Element<'_, Message> {
     ]
     .width(Length::Fill);
     let content = row![
-        letter_badge(&user, 32.0, &pal),
+        super::avatar(&app.account.avatar, &app.account.banner, &user, 32.0, &pal),
         who,
         icons::icon(icons::HEADSET, 16.0, pal.text_muted),
         icons::icon(icons::MIC, 16.0, pal.text_muted),
@@ -801,7 +801,8 @@ fn chat_message<'a>(app: &'a App, pal: Pal, m: ChatMessage, grouped: bool, now: 
     let avatar: Element<'a, Message> = if grouped {
         space().width(Length::Fixed(40.0)).into()
     } else {
-        letter_badge(&m.author, 40.0, &pal)
+        let (picture, banner) = app.profile_look(&m.author_id);
+        super::avatar(picture, banner, &m.author, 40.0, &pal)
     };
     let mut line = row![avatar, content].spacing(14).width(Length::Fill);
     if hovered && !editing && m.id != 0 {
@@ -970,17 +971,17 @@ fn members(app: &App, pal: Pal) -> Element<'_, Message> {
         let color = if online { if *name == app.user.clone().unwrap_or_default() { pal.text_strong } else { pal.text } } else { pal.text_muted };
         // A member's highest role colours their name.
         let color = app.server.member_ids.get(name).and_then(|id| app.member_color(id)).unwrap_or(color);
-        let mut r = row![letter_badge(name, 32.0, &pal), text(name.clone()).size(15).color(color).width(Length::Fill)]
+        let (picture, banner) = app.member_id_look(name);
+        let mut r = row![super::avatar(picture, banner, name, 32.0, &pal), text(name.clone()).size(15).color(color).width(Length::Fill)]
             .spacing(8)
             .align_y(iced::alignment::Vertical::Center);
         if owner.as_deref() == Some(name.as_str()) {
             r = r.push(svg(svg::Handle::from_path(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/assets/crown.svg"))).width(Length::Fixed(12.0)).height(Length::Fixed(9.0)));
         }
+        // A left click opens the member's profile card; a right click opens the menu.
+        let id = app.server.member_ids.get(name).cloned().unwrap_or_default();
         mouse_area(container(r).padding(crate::util::pad2(4.0, 8.0)).width(Length::Fill).style(move |_: &Theme| round(Color::TRANSPARENT, 4.0)))
-            .on_press(Message::OpenMenu(crate::app::MenuKind::User {
-                name: name.clone(),
-                can_message: *name != app.user.clone().unwrap_or_default(),
-            }))
+            .on_press(Message::CardOpen { id, name: name.clone() })
             .on_right_press(Message::OpenMenu(crate::app::MenuKind::User {
                 name: name.clone(),
                 can_message: *name != app.user.clone().unwrap_or_default(),

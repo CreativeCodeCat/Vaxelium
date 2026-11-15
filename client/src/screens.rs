@@ -443,3 +443,57 @@ fn long_server_name_header_screen() {
     app.server.name = app.prefs.servers[0].name.clone();
     save_at(&app, "long-server-name-header", 1100.0, 500.0);
 }
+
+#[test]
+fn member_profile_card_screen() {
+    let mut app = chat_app();
+    with_roles(&mut app);
+    app.server.member_ids.insert("bob".into(), "id-bob".into());
+    app.server.member_roles.insert("id-bob".into(), vec![1, 2]);
+    app.card = Some(crate::app::CardView {
+        id: "id-bob".into(),
+        name: "bob".into(),
+        at: iced::Point::new(700.0, 180.0),
+        loading: false,
+        card: Some(crate::backend::Card {
+            name: "bob".into(),
+            username: "bob".into(),
+            bio: "I Use Arch BTW. Maintainer of the Discord bot.".into(),
+            banner: "#5865f2".into(),
+            avatar: String::new(),
+        }),
+        error: None,
+    });
+    save_at(&app, "member-profile-card", 1100.0, 700.0);
+}
+
+#[test]
+fn account_about_editor_screen() {
+    let mut app = chat_app();
+    app.page = Page::User;
+    app.account.about_bio = "I Use Arch BTW".into();
+    app.account.about_banner = "#2ecc71".into();
+    save_at(&app, "account-about", 1100.0, 800.0);
+}
+
+#[test]
+fn profile_tab_screen() {
+    let mut app = chat_app();
+    app.page = Page::User;
+    app.user_section = crate::app::UserSection::Profile;
+    app.account.bio = "I Use Arch BTW".into();
+    app.account.banner = "#2ecc71".into();
+    app.account.about_bio = app.account.bio.clone();
+    app.account.about_banner = app.account.banner.clone();
+    save_at(&app, "profile-tab", 1100.0, 700.0);
+}
+
+#[test]
+fn profile_unsaved_bar_screen() {
+    let mut app = chat_app();
+    app.page = Page::User;
+    app.user_section = crate::app::UserSection::Profile;
+    app.account.bio = "I Use Arch BTW".into();
+    app.account.about_bio = "I Use Arch BTW, btw".into();
+    save_at(&app, "profile-unsaved", 1100.0, 700.0);
+}

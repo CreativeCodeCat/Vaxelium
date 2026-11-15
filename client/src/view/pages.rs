@@ -3,8 +3,8 @@
 use iced::widget::{button, column, container, mouse_area, row, scrollable, space, svg, text, text_editor, text_input, toggler, Column};
 use iced::{border, Background, Color, Element, Length, Padding, Theme};
 
-use super::{divider, letter_badge, link, muted_text, round, server_icon, solid};
-use crate::app::{App, Field, Message, RoleDraft, RoleTab, ServerSection, ADD_ADDR_ID};
+use super::{divider, link, muted_text, round, server_icon, solid};
+use crate::app::{App, Field, Message, RoleDraft, RoleTab, ServerSection, UserSection, ADD_ADDR_ID};
 use common::{RoleInfo, EVERYONE_ROLE};
 use crate::icons;
 use crate::theme::Pal;
@@ -249,13 +249,30 @@ fn close_button<'a>(close: Message, pal: Pal) -> Element<'a, Message> {
 }
 
 /// The left column of a settings page: its name, and the section that is open.
-fn settings_nav<'a>(name: &str, section: &str, pal: Pal) -> Element<'a, Message> {
-    container(column![
-        text(name.to_uppercase()).size(12).color(pal.text_muted),
-        container(text(section.to_string()).size(15).color(pal.text_strong))
-            .padding(crate::util::pad2(6.0, 10.0))
+/// The tabs of user settings: Account and Profile.
+fn user_nav<'a>(active: UserSection, pal: Pal) -> Element<'a, Message> {
+    let tab = |label: &'static str, section: UserSection| -> Element<'a, Message> {
+        let selected = section == active;
+        let color = if selected { pal.text_strong } else { pal.text_muted };
+        button(text(label).size(15).color(color))
             .width(Length::Fill)
-            .style(move |_: &Theme| round(pal.selected_bg, 4.0)),
+            .padding(crate::util::pad2(6.0, 10.0))
+            .on_press(Message::UserSectionPick(section))
+            .style(move |_: &Theme, status: button::Status| {
+                let bg = if selected {
+                    pal.selected_bg
+                } else if matches!(status, button::Status::Hovered) {
+                    pal.hover_bg
+                } else {
+                    Color::TRANSPARENT
+                };
+                button::Style { background: Some(Background::Color(bg)), text_color: color, border: border::rounded(4.0), ..button::Style::default() }
+            })
+            .into()
+    };
+    container(column![
+        text("USER SETTINGS").size(12).color(pal.text_muted),
+        Column::new().spacing(4).push(tab("Account", UserSection::Account)).push(tab("Profile", UserSection::Profile)),
     ]
     .spacing(8))
     .padding(crate::util::pad2(24.0, 12.0))
@@ -285,6 +302,59 @@ fn setting_row<'a>(label: &str, desc: Option<&str>, value: Element<'a, Message>,
         r = r.push(a);
     }
     container(r).padding(crate::util::pad2(8.0, 0.0)).width(Length::Fill).into()
+}
+
+/// The profile picture. Saved as soon as it is picked, like a server icon.
+fn avatar_editor<'a>(acc: &'a crate::app::Account, name: &str, pal: Pal) -> Element<'a, Message> {
+    let mut buttons = row![solid("Change picture", Message::AvatarPick, pal.accent, pal.on_color, None)].spacing(12).align_y(iced::alignment::Vertical::Center);
+    if !acc.avatar.is_empty() {
+        buttons = buttons.push(link("Remove", Message::AvatarRemove, pal.link));
+    }
+    let mut column_items: Vec<Element<'a, Message>> = vec![
+        text("PROFILE PICTURE").size(12).color(pal.text_muted).into(),
+        row![super::avatar(&acc.avatar, &acc.about_banner, name, 72.0, &pal), buttons].spacing(16).align_y(iced::alignment::Vertical::Center).into(),
+    ];
+    if let Some(err) = &acc.avatar_error {
+        column_items.push(text(err.clone()).size(13).color(pal.red).into());
+    }
+    Column::with_children(column_items).spacing(8).into()
+}
+
+/// The bio and profile banner colour, shown on the profile card. Always an editor; the save bar
+/// appears under it when something has changed.
+fn about_editor<'a>(acc: &'a crate::app::Account, pal: Pal) -> Element<'a, Message> {
+    let mut rows: Vec<Element<'a, Message>> = vec![
+        text("ABOUT ME").size(12).color(pal.text_muted).into(),
+        text_input("A short bio (190 characters at most)", &acc.about_bio)
+            .on_input(Message::AboutInput)
+            .padding(10)
+            .style(input_style(pal))
+            .into(),
+        text("BANNER COLOUR").size(12).color(pal.text_muted).into(),
+    ];
+    let picked = acc.about_banner.to_lowercase();
+    let mut swatches = row![].spacing(8).align_y(iced::alignment::Vertical::Center);
+    for hex in ROLE_COLORS.iter().take(10) {
+        let color = crate::util::hex_color(hex).unwrap_or(Color::BLACK);
+        let on = picked == *hex;
+        swatches = swatches.push(
+            button(space().width(Length::Fixed(24.0)).height(Length::Fixed(24.0)))
+                .padding(0)
+                .on_press(Message::AboutBanner(hex.to_string()))
+                .style(move |_: &Theme, _: button::Status| {
+                    let mut ring = border::rounded(12.0);
+                    ring.color = if on { pal.text_strong } else { Color::TRANSPARENT };
+                    ring.width = if on { 2.0 } else { 0.0 };
+                    button::Style { background: Some(Background::Color(color)), border: ring, ..button::Style::default() }
+                }),
+        );
+    }
+    swatches = swatches.push(link(if picked.is_empty() { "Default ✓" } else { "Default" }, Message::AboutBanner(String::new()), pal.link));
+    rows.push(swatches.into());
+    if let Some(err) = &acc.about_error {
+        rows.push(text(err.clone()).size(13).color(pal.red).into());
+    }
+    container(Column::with_children(rows).spacing(8)).padding(crate::util::pad2(8.0, 0.0)).width(Length::Fill).into()
 }
 
 fn small_button<'a>(label: &str, msg: Message, pal: Pal) -> Element<'a, Message> {
@@ -357,7 +427,7 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     let mut main: Vec<Element<'_, Message>> = vec![
         page_title("Account", pal),
         row![
-            letter_badge(&user, 72.0, &pal),
+            super::avatar(&acc.avatar, &acc.banner, &user, 72.0, &pal),
             column![
                 text(shown_name.clone()).size(20).color(pal.text_strong),
                 text("Signed in on this computer").size(13).color(pal.green),
@@ -403,12 +473,26 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     if let Some(error) = &acc.save_error {
         main.push(text(error.clone()).size(13).color(pal.red).into());
     }
-    let content = settings_column(main);
-    let dirty = acc.draft_name.is_some() || acc.draft_username.is_some() || acc.draft_email.is_some() || acc.draft_theme.is_some();
-    let page = settings_frame(settings_nav("User settings", "Account", pal), content, Message::UserSettingsClose, pal);
+    let (content, dirty) = match app.user_section {
+        UserSection::Account => {
+            let dirty = acc.draft_name.is_some() || acc.draft_username.is_some() || acc.draft_email.is_some() || acc.draft_theme.is_some();
+            (settings_column(main), dirty)
+        }
+        UserSection::Profile => {
+            // The bar appears only when the bio or banner differ from what is saved.
+            let dirty = acc.about_bio != acc.bio || acc.about_banner != acc.banner;
+            let name = app.user.clone().unwrap_or_default();
+            (settings_column(vec![page_title("Profile", pal), avatar_editor(acc, &name, pal), about_editor(acc, pal)]), dirty)
+        }
+    };
+    let page = settings_frame(user_nav(app.user_section, pal), content, Message::UserSettingsClose, pal);
     let mut layers: Vec<Element<'_, Message>> = vec![page];
     if dirty {
-        layers.push(unsaved_bar(pal, Message::AccountReset, Message::AccountSave, "Careful – you have unsaved changes!"));
+        let (reset, save) = match app.user_section {
+            UserSection::Account => (Message::AccountReset, Message::AccountSave),
+            UserSection::Profile => (Message::AboutReset, Message::AboutSave),
+        };
+        layers.push(unsaved_bar(pal, reset, save, "Careful – you have unsaved changes!"));
     }
     if let Some(which) = acc.editing {
         layers.push(account_edit_dialog(app, which, pal));

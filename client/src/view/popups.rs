@@ -419,3 +419,93 @@ pub fn resize_edges<'a>() -> Element<'a, Message> {
     ]
     .into()
 }
+
+/// The profile card, when one is open: a banner, the name, the bio and the member's roles here.
+pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
+    let view = app.card.as_ref()?;
+    let card = view.card.as_ref();
+    let name = card.map_or(view.name.clone(), |c| c.name.clone());
+    let banner = card.and_then(|c| crate::util::hex_color(&c.banner)).unwrap_or(pal.accent);
+    let banner_block = container(space())
+        .width(Length::Fill)
+        .height(Length::Fixed(56.0))
+        .style(move |_: &Theme| container::Style {
+            background: Some(Background::Color(banner)),
+            border: border::rounded(0.0),
+            ..container::Style::default()
+        });
+    let picture = card.map_or(String::new(), |c| c.avatar.clone());
+    let banner_hex = card.map_or(String::new(), |c| c.banner.clone());
+    let badge = container(super::avatar(&picture, &banner_hex, &name, 64.0, &pal)).padding(crate::util::pad(8.0, 0.0, 0.0, 14.0));
+    let mut items: Vec<Element<'_, Message>> = vec![
+        banner_block.into(),
+        badge.into(),
+        container(text(name.clone()).size(18).color(pal.text_strong)).padding(crate::util::pad(12.0, 14.0, 0.0, 14.0)).into(),
+    ];
+    if let Some(c) = card {
+        items.push(container(text(format!("@{}", c.username)).size(13).color(pal.text_muted)).padding(crate::util::pad(0.0, 14.0, 12.0, 14.0)).into());
+    }
+    items.push(super::divider(pal.selected_bg));
+    items.push(container(text("ABOUT ME").size(11).color(pal.text_muted)).padding(crate::util::pad(12.0, 14.0, 4.0, 14.0)).into());
+    let bio: Element<'_, Message> = match (card, &view.error, view.loading) {
+        (Some(c), _, _) if c.bio.is_empty() => text("No bio yet.").size(13).color(pal.text_muted).into(),
+        (Some(c), _, _) => text(c.bio.clone()).size(13).color(pal.text).into(),
+        (None, _, true) => text("Loading…").size(13).color(pal.text_muted).into(),
+        (None, Some(err), _) => text(format!("Profile unavailable: {err}")).size(13).color(pal.text_muted).into(),
+        (None, None, false) => text("Profile unavailable.").size(13).color(pal.text_muted).into(),
+    };
+    items.push(container(bio).padding(crate::util::pad(0.0, 14.0, 8.0, 14.0)).into());
+
+    // The roles this member holds on this server, highest first, in their colours.
+    let held = app.server.member_ids.get(&name).and_then(|id| app.server.member_roles.get(id));
+    let roles: Vec<&common::RoleInfo> = app
+        .server
+        .roles
+        .iter()
+        .filter(|r| r.id != common::EVERYONE_ROLE && held.is_some_and(|h| h.contains(&r.id)))
+        .collect();
+    if !roles.is_empty() {
+        items.push(container(text("ROLES").size(11).color(pal.text_muted)).padding(crate::util::pad(12.0, 14.0, 4.0, 14.0)).into());
+        let chips: Vec<Element<'_, Message>> = roles
+            .into_iter()
+            .map(|r| {
+                let color = crate::util::hex_color(&r.color).unwrap_or(pal.text_strong);
+                let dot = container(space()).width(Length::Fixed(10.0)).height(Length::Fixed(10.0)).style(move |_: &Theme| container::Style {
+                    background: Some(Background::Color(color)),
+                    border: border::rounded(5.0),
+                    ..container::Style::default()
+                });
+                container(row![dot, text(r.name.clone()).size(12).color(pal.text)].spacing(6).align_y(iced::alignment::Vertical::Center))
+                    .padding(crate::util::pad2(3.0, 8.0))
+                    .style(move |_: &Theme| container::Style {
+                        background: Some(Background::Color(pal.input_bg)),
+                        border: border::rounded(10.0),
+                        ..container::Style::default()
+                    })
+                    .into()
+            })
+            .collect();
+        items.push(container(row(chips).spacing(6).wrap()).padding(crate::util::pad(0.0, 14.0, 10.0, 14.0)).into());
+    }
+
+    if name != app.user.clone().unwrap_or_default() {
+        items.push(super::divider(pal.selected_bg));
+        items.push(
+            container(solid("Message", Message::MessageUser(name.clone()), pal.accent, pal.on_color, None))
+                .padding(crate::util::pad(8.0, 14.0, 12.0, 14.0))
+                .into(),
+        );
+    }
+
+    let body = container(Column::with_children(items))
+        .width(Length::Fixed(300.0))
+        .style(move |_: &Theme| container::Style {
+            background: Some(Background::Color(pal.sidebar_bg)),
+            border: border::rounded(8.0).color(pal.hover_bg).width(1.0),
+            ..container::Style::default()
+        });
+    // Beside the click, to its left, kept on screen.
+    let x = (view.at.x - 316.0).max(8.0);
+    let y = (view.at.y - 40.0).max(8.0);
+    Some(anchored(body.into(), iced::Point::new(x, y), Message::CardClose))
+}

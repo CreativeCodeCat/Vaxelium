@@ -45,6 +45,11 @@ pub fn icon<'a, M: 'a>(svg_text: &'static str, size: f32, color: Color) -> Eleme
 }
 
 /// Lets the owner pick a picture. Returns it as a base64 PNG of 128x128, or None if cancelled.
+/// Picks a picture for a profile. Shrunk to the same 128x128 PNG as a server icon.
+pub fn pick_avatar() -> Result<Option<String>, CmdError> {
+    pick_server_icon()
+}
+
 pub fn pick_server_icon() -> Result<Option<String>, CmdError> {
     let Some(path) = rfd::FileDialog::new().add_filter("Images", &["png", "jpg", "jpeg"]).pick_file() else {
         return Ok(None);

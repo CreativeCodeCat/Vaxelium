@@ -282,6 +282,7 @@ impl App {
             }
             Message::MessageUser(name) => {
                 self.menu = None;
+                self.card = None;
                 let blocked = self.server.member_ids.get(&name).is_some_and(|id| self.is_blocked(id));
                 if blocked {
                     self.status = format!("You have blocked {name}. Unblock them from the member list to message them.");
@@ -408,6 +409,9 @@ impl App {
                     self.account.email = p.email;
                     self.account.verified = p.verified;
                     self.account.can_verify = p.can_verify;
+                    self.account.bio = p.bio;
+                    self.account.banner = p.banner;
+                    self.account.avatar = p.avatar;
                     self.account.email_error = None;
                     self.auth_down = false;
                     self.auth_banner_closed = false;
@@ -516,6 +520,80 @@ impl App {
                     }
                 }
             }
+            Message::CardOpen { id, name } => {
+                self.card = Some(crate::app::CardView { id: id.clone(), name, at: self.cursor, loading: true, card: None, error: None });
+                let backend = self.backend.clone();
+                return Task::perform(offload(move || {
+                    let result = backend.profile_card(&id);
+                    (id, result)
+                }), |(id, result)| Message::CardLoaded(id, result));
+            }
+            Message::CardLoaded(id, result) => {
+                if let Ok(card) = &result {
+                    self.profiles.insert(id.clone(), crate::app::ProfileLook { avatar: card.avatar.clone(), banner: card.banner.clone() });
+                }
+                if let Some(view) = self.card.as_mut().filter(|v| v.id == id) {
+                    view.loading = false;
+                    match result {
+                        Ok(card) => view.card = Some(card),
+                        Err(e) => view.error = Some(e.message),
+                    }
+                }
+            }
+            Message::CardClose => self.card = None,
+            Message::AboutInput(v) => self.account.about_bio = v.chars().take(190).collect(),
+            Message::AboutBanner(hex) => self.account.about_banner = hex,
+            Message::ProfilesLoaded(found) => {
+                for (id, card) in found {
+                    self.profile_pending.remove(&id);
+                    if let Some(card) = card {
+                        self.profiles.insert(id, crate::app::ProfileLook { avatar: card.avatar, banner: card.banner });
+                    }
+                }
+            }
+            Message::AvatarPick => {
+                self.account.avatar_error = None;
+                return Task::perform(offload(crate::icons::pick_avatar), Message::AvatarPicked);
+            }
+            Message::AvatarPicked(result) => match result {
+                Ok(Some(png)) => return self.save_avatar(Some(png)),
+                Ok(None) => {}
+                Err(e) => self.account.avatar_error = Some(e.message),
+            },
+            Message::AvatarRemove => return self.save_avatar(None),
+            Message::AvatarDone(result) => match result {
+                Ok(avatar) => {
+                    self.profiles.insert(self.user_id.clone(), crate::app::ProfileLook { avatar: avatar.clone(), banner: self.account.banner.clone() });
+                    self.account.avatar = avatar;
+                    self.account.avatar_error = None;
+                }
+                Err(e) => self.account.avatar_error = Some(e.message),
+            },
+            Message::AboutReset => {
+                self.account.about_bio = self.account.bio.clone();
+                self.account.about_banner = self.account.banner.clone();
+                self.account.about_error = None;
+            }
+            Message::AboutSave => {
+                if self.account.about_busy {
+                    return Task::none();
+                }
+                self.account.about_busy = true;
+                self.account.about_error = None;
+                let (bio, banner) = (self.account.about_bio.trim().to_string(), self.account.about_banner.clone());
+                let backend = self.backend.clone();
+                return Task::perform(offload(move || backend.set_about(bio, banner)), Message::AboutDone);
+            }
+            Message::AboutDone(result) => {
+                self.account.about_busy = false;
+                match result {
+                    Ok((bio, banner)) => {
+                        self.account.bio = bio;
+                        self.account.banner = banner;
+                    }
+                    Err(e) => self.account.about_error = Some(e.message),
+                }
+            }
             Message::VerifyCancel => {
                 self.account.verify_open = false;
                 self.account.verify_code.clear();
@@ -539,6 +617,15 @@ impl App {
                 self.role_form = None;
                 self.role_error = None;
                 self.page = Page::None;
+            }
+            Message::UserSectionPick(section) => {
+                self.user_section = section;
+                // The Profile tab is always an editor, so it starts from what is saved.
+                if section == crate::app::UserSection::Profile {
+                    self.account.about_bio = self.account.bio.clone();
+                    self.account.about_banner = self.account.banner.clone();
+                    self.account.about_error = None;
+                }
             }
             Message::ServerSectionPick(section) => {
                 self.role_form = None;
@@ -715,6 +802,8 @@ impl App {
     pub fn on_escape(&mut self) -> Task<Message> {
         if self.search_open {
             self.search_open = false;
+        } else if self.card.is_some() {
+            self.card = None;
         } else if self.menu.is_some() || self.picker.is_some() {
             self.menu = None;
             self.picker = None;
@@ -843,3 +932,11 @@ impl App {
     }
 }
 
+impl App {
+    /// Saves the profile picture (or removes it) and reports the result as `AvatarDone`.
+    fn save_avatar(&mut self, png: Option<String>) -> Task<Message> {
+        self.account.avatar_error = None;
+        let backend = self.backend.clone();
+        Task::perform(offload(move || backend.set_avatar(png)), Message::AvatarDone)
+    }
+}
