@@ -334,7 +334,19 @@ impl App {
             }
 
             // ----- composer and messages -----
-            Message::InputChanged(v) => self.input = v,
+            Message::InputChanged(v) => {
+                let typing = !v.trim().is_empty() && self.server.channel_id != 0;
+                self.input = v;
+                let due = self.last_typing_sent.is_none_or(|at| at.elapsed() >= crate::app::TYPING_SEND_EVERY);
+                if typing && due {
+                    self.last_typing_sent = Some(std::time::Instant::now());
+                    let _ = self.backend.send_main(ClientMsg::Typing);
+                }
+            }
+            Message::SetStatus(status) => {
+                self.menu = None;
+                let _ = self.backend.send_main(ClientMsg::SetStatus { status });
+            }
             Message::MentionPick(name) => {
                 // Replace the @ word being typed with the picked name, and leave a space after it.
                 let start = self.input.char_indices().rev().find(|(_, c)| c.is_whitespace()).map_or(0, |(i, c)| i + c.len_utf8());

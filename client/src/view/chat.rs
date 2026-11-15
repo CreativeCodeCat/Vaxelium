@@ -375,9 +375,14 @@ fn category_of(app: &App, channel: i64) -> Option<i64> {
 
 fn user_bar(app: &App, pal: Pal) -> Element<'_, Message> {
     let user = app.user.clone().unwrap_or_default();
+    let own_status = app.server.member_status.get(&app.user_id).copied().unwrap_or_default();
     let who = column![
         text(user.clone()).size(14).color(pal.text_strong),
-        text("Online").size(11).color(pal.text_muted),
+        // Your own status. Click it to change it.
+        button(text(status_label(own_status)).size(11).color(pal.text_muted))
+            .padding(0)
+            .on_press(Message::OpenMenu(crate::app::MenuKind::Status))
+            .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() }),
     ]
     .width(Length::Fill);
     // Shows the same picture and banner as your entry in the member list, which are known as soon as
@@ -977,6 +982,47 @@ fn mention_menu<'a>(app: &App, pal: Pal) -> Option<Element<'a, Message>> {
 }
 
 /// The message box at the bottom. Its placeholder names the channel or the person.
+/// The label for a status, as shown on the user bar and in the status menu.
+fn status_label(status: common::PresenceStatus) -> &'static str {
+    use common::PresenceStatus::*;
+    match status {
+        Online => "Online",
+        Idle => "Idle",
+        DoNotDisturb => "Do not disturb",
+        Invisible => "Invisible",
+    }
+}
+
+/// The dot that shows a status beside a name. Invisible members have none.
+fn status_color(status: common::PresenceStatus, pal: &Pal) -> Option<Color> {
+    use common::PresenceStatus::*;
+    match status {
+        Online => Some(pal.green),
+        Idle => Some(Color::from_rgb8(0xf0, 0xb4, 0x32)),
+        DoNotDisturb => Some(pal.red),
+        Invisible => None,
+    }
+}
+
+/// "alice is typing…" for the people who have typed in this channel recently. None when nobody has.
+fn typing_line(app: &App) -> Option<String> {
+    let now = std::time::Instant::now();
+    let names: Vec<&str> = app
+        .server
+        .typing
+        .get(&app.server.channel_id)?
+        .iter()
+        .filter(|(_, _, at)| now.duration_since(*at) < crate::app::TYPING_FOR)
+        .map(|(_, name, _)| name.as_str())
+        .collect();
+    match names.as_slice() {
+        [] => None,
+        [one] => Some(format!("{one} is typing…")),
+        [a, b] => Some(format!("{a} and {b} are typing…")),
+        _ => Some("Several people are typing…".into()),
+    }
+}
+
 fn composer(app: &App, pal: Pal) -> Element<'_, Message> {
     if !app.may_send_here() {
         return container(text("You can't send messages in this channel").size(14).color(pal.text_muted))
@@ -1025,6 +1071,10 @@ fn composer(app: &App, pal: Pal) -> Element<'_, Message> {
     let mut col = col
         .push(row![icons::icon(icons::PLUS, 18.0, pal.text_muted), box_].spacing(12).align_y(iced::alignment::Vertical::Center))
         .padding(crate::util::pad(0.0, 16.0, 20.0, 16.0));
+    // Who is typing in this channel, while their notices are fresh.
+    if let Some(line) = typing_line(app) {
+        col = col.push(container(text(line).size(12).color(pal.text_muted)).padding(crate::util::pad(4.0, 0.0, 0.0, 16.0)));
+    }
     if app.status.starts_with("Error") {
         col = col.push(text(app.status.clone()).size(12).color(pal.red));
     }
@@ -1042,7 +1092,22 @@ fn members(app: &App, pal: Pal) -> Element<'_, Message> {
         // A member's highest role colours their name.
         let color = app.server.member_ids.get(name).and_then(|id| app.member_color(id)).unwrap_or(color);
         let (picture, banner) = app.member_id_look(name);
-        let mut r = row![super::avatar(picture, banner, name, 32.0, &pal), text(name.clone()).size(15).color(color).width(Length::Fill)]
+        let status = app.server.member_ids.get(name).and_then(|id| app.server.member_status.get(id)).copied().unwrap_or_default();
+        // The status shows as a dot on the bottom-right of the picture, ringed in the sidebar colour.
+        let picture_el = super::avatar(picture, banner, name, 32.0, &pal);
+        let badge: Element<'_, Message> = match status_color(status, &pal).filter(|_| online) {
+            Some(dot) => {
+                let ring = container(space().width(Length::Fixed(10.0)).height(Length::Fixed(10.0))).style(move |_: &Theme| container::Style {
+                    background: Some(Background::Color(dot)),
+                    border: border::rounded(5.0).color(pal.sidebar_bg).width(2.0),
+                    ..container::Style::default()
+                });
+                let corner = container(ring).width(Length::Fill).height(Length::Fill).align_x(iced::alignment::Horizontal::Right).align_y(iced::alignment::Vertical::Bottom);
+                container(iced::widget::stack![picture_el, corner]).width(Length::Fixed(32.0)).height(Length::Fixed(32.0)).into()
+            }
+            None => picture_el,
+        };
+        let mut r = row![badge, text(name.clone()).size(15).color(color).width(Length::Fill)]
             .spacing(8)
             .align_y(iced::alignment::Vertical::Center);
         if owner.as_deref() == Some(name.as_str()) {
