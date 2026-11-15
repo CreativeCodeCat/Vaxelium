@@ -529,9 +529,9 @@ fn a_member_card_loads_for_the_member_clicked() {
     let mut app = app();
     welcome(&mut app);
     app.card = Some(CardView { id: "id-bob".into(), name: "bob".into(), at: iced::Point::new(300.0, 200.0), loading: true, card: None, error: None });
-    let _ = app.update(Message::CardLoaded("id-other".into(), Ok(Card { name: "x".into(), username: "x".into(), bio: String::new(), banner: String::new(), avatar: String::new(), created: 0 })));
+    let _ = app.update(Message::CardLoaded("id-other".into(), Ok(Card { name: "x".into(), username: "x".into(), bio: String::new(), banner: String::new(), avatar: String::new(), status: String::new(), created: 0 })));
     assert!(app.card.as_ref().is_some_and(|c| c.loading), "a reply for another member is ignored");
-    let _ = app.update(Message::CardLoaded("id-bob".into(), Ok(Card { name: "bob".into(), username: "bob".into(), bio: "hi".into(), banner: String::new(), avatar: String::new(), created: 0 })));
+    let _ = app.update(Message::CardLoaded("id-bob".into(), Ok(Card { name: "bob".into(), username: "bob".into(), bio: "hi".into(), banner: String::new(), avatar: String::new(), status: String::new(), created: 0 })));
     assert!(app.card.as_ref().is_some_and(|c| !c.loading && c.card.is_some()));
     let _ = app.update(Message::CardLoaded("id-bob".into(), Err(CmdError::new("nope"))));
     let _ = app.update(Message::CardClose);
@@ -566,7 +566,7 @@ fn fetched_profile_looks_are_kept_for_members_and_messages() {
     welcome(&mut app);
     app.server.member_ids.insert("bob".into(), "id-bob".into());
     app.profile_pending.insert("id-bob".into());
-    let card = Card { name: "bob".into(), username: "bob".into(), bio: String::new(), banner: "#2ecc71".into(), avatar: String::new(), created: 0 };
+    let card = Card { name: "bob".into(), username: "bob".into(), bio: String::new(), banner: "#2ecc71".into(), avatar: String::new(), status: String::new(), created: 0 };
     let _ = app.update(Message::ProfilesLoaded(vec![("id-bob".into(), Some(card))]));
     assert!(!app.profile_pending.contains("id-bob"));
     assert_eq!(app.member_id_look("bob"), ("", "#2ecc71"));

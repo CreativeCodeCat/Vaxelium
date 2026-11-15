@@ -377,7 +377,11 @@ fn user_bar(app: &App, pal: Pal) -> Element<'_, Message> {
     let user = app.user.clone().unwrap_or_default();
     let own_status = app.effective_status();
     let who = column![
-        text(user.clone()).size(14).color(pal.text_strong),
+        // Your name opens your own profile card, where your status bubble is edited.
+        button(text(user.clone()).size(14).color(pal.text_strong))
+            .padding(0)
+            .on_press(Message::CardOpen { id: app.user_id.clone(), name: user.clone() })
+            .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() }),
         // Your own status. Click it to change it.
         button(text(status_label(own_status)).size(11).color(pal.text_muted))
             .padding(0)
@@ -833,7 +837,8 @@ fn chat_message<'a>(app: &'a App, pal: Pal, m: ChatMessage, grouped: bool, now: 
                 // Names are white unless the author has a role with a colour. Read from the current roles, so
                 // a change to them shows on every message at once.
                 mouse_area(text(m.author.clone()).size(15).color(author_color(app, &m, &pal)))
-                    .on_press(Message::OpenMenu(crate::app::MenuKind::User {
+                    .on_press(Message::CardOpen { id: m.author_id.clone(), name: m.author.clone() })
+                    .on_right_press(Message::OpenMenu(crate::app::MenuKind::User {
                         name: m.author.clone(),
                         can_message: m.author != app.user.clone().unwrap_or_default(),
                     })),
@@ -1121,7 +1126,15 @@ fn members(app: &App, pal: Pal) -> Element<'_, Message> {
             }
             None => picture_el,
         };
-        let mut r = row![badge, text(name.clone()).size(15).color(color).width(Length::Fill)]
+        // The status text, when they have set one, under the name.
+        let status_text = app.server.member_ids.get(name).and_then(|id| app.profiles.get(id)).map(|look| look.status.clone()).unwrap_or_default();
+        let mut names = Column::new().push(text(name.clone()).size(15).color(color));
+        if !status_text.is_empty() {
+            // One line, cut short with an ellipsis when the member list is too narrow for it.
+            let room = (app.panel_width("members") - 80.0).max(0.0);
+            names = names.push(text(fit_name(&status_text, room, 12.0)).size(12).color(pal.text_muted).wrapping(iced::widget::text::Wrapping::None));
+        }
+        let mut r = row![badge, names.width(Length::Fill)]
             .spacing(8)
             .align_y(iced::alignment::Vertical::Center);
         if owner.as_deref() == Some(name.as_str()) {

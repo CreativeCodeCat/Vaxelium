@@ -61,6 +61,8 @@ pub struct Card {
     pub bio: String,
     pub banner: String,
     pub avatar: String,
+    /// The status text in the bubble on the card. Empty when none is set.
+    pub status: String,
     /// When the account was created, in Unix seconds (0 when unknown).
     pub created: u64,
 }
@@ -418,6 +420,16 @@ impl Backend {
         }
     }
 
+    /// Sets the status text on the profile card. Returns the text now saved (empty when cleared).
+    pub fn set_status_text(&self, text: String) -> Result<String, CmdError> {
+        let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
+        match self.auth(AuthRequest::SetStatusText { token, text })? {
+            AuthReply::StatusTextSaved { text } => Ok(text),
+            AuthReply::Error { text } => Err(CmdError::new(text)),
+            _ => Err(CmdError::new("Unexpected reply from the auth service.")),
+        }
+    }
+
     /// Sets or removes the profile picture. Returns the picture now saved (empty when removed).
     pub fn set_avatar(&self, png_base64: Option<String>) -> Result<String, CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
@@ -431,7 +443,9 @@ impl Backend {
     /// Someone's public profile card, by their account id.
     pub fn profile_card(&self, id: &str) -> Result<Card, CmdError> {
         match self.auth(AuthRequest::ProfileCard { id: id.to_string() })? {
-            AuthReply::ProfileCard { name, username, bio, banner, avatar, created } => Ok(Card { name, username, bio, banner, avatar, created }),
+            AuthReply::ProfileCard { name, username, bio, banner, avatar, created, status } => {
+                Ok(Card { name, username, bio, banner, avatar, status, created })
+            }
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
         }

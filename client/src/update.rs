@@ -436,7 +436,8 @@ impl App {
                 Ok(p) => {
                     // Keep the picture and banner the member list and messages use in step with the account.
                     let created = self.profiles.get(&self.user_id).map_or(0, |look| look.created);
-                    self.profiles.insert(self.user_id.clone(), crate::app::ProfileLook { avatar: p.avatar.clone(), banner: p.banner.clone(), created });
+                    let status = self.profiles.get(&self.user_id).map(|look| look.status.clone()).unwrap_or_default();
+                    self.profiles.insert(self.user_id.clone(), crate::app::ProfileLook { avatar: p.avatar.clone(), banner: p.banner.clone(), created, status });
                     self.user = Some(p.name);
                     self.account.username = Some(p.username);
                     self.account.email = p.email;
@@ -553,6 +554,42 @@ impl App {
                     }
                 }
             }
+            Message::CardStatusStart => {
+                let current = self.card.as_ref().and_then(|v| v.card.as_ref()).map(|c| c.status.clone()).unwrap_or_default();
+                self.card_status_draft = Some(current);
+                self.card_status_error = None;
+            }
+            Message::CardStatusInput(text) => {
+                self.card_status_draft = Some(text.chars().take(common::MAX_STATUS_TEXT_LEN).collect());
+            }
+            Message::CardStatusCancel => {
+                self.card_status_draft = None;
+                self.card_status_error = None;
+            }
+            Message::CardStatusSave => {
+                let text = self.card_status_draft.clone().unwrap_or_default().trim().to_string();
+                self.card_status_error = None;
+                let backend = self.backend.clone();
+                return Task::perform(offload(move || backend.set_status_text(text)), Message::CardStatusDone);
+            }
+            Message::CardStatusClear => {
+                self.card_status_draft = Some(String::new());
+                self.card_status_error = None;
+                let backend = self.backend.clone();
+                return Task::perform(offload(move || backend.set_status_text(String::new())), Message::CardStatusDone);
+            }
+            Message::CardStatusDone(result) => match result {
+                Ok(text) => {
+                    self.card_status_draft = None;
+                    if let Some(look) = self.profiles.get_mut(&self.user_id) {
+                        look.status = text.clone();
+                    }
+                    if let Some(card) = self.card.as_mut().and_then(|v| v.card.as_mut()) {
+                        card.status = text;
+                    }
+                }
+                Err(e) => self.card_status_error = Some(e.message),
+            },
             Message::CardOpen { id, name } => {
                 self.card = Some(crate::app::CardView { id: id.clone(), name, at: self.cursor, loading: true, card: None, error: None });
                 let backend = self.backend.clone();
@@ -563,7 +600,7 @@ impl App {
             }
             Message::CardLoaded(id, result) => {
                 if let Ok(card) = &result {
-                    self.profiles.insert(id.clone(), crate::app::ProfileLook { avatar: card.avatar.clone(), banner: card.banner.clone(), created: card.created });
+                    self.profiles.insert(id.clone(), crate::app::ProfileLook { avatar: card.avatar.clone(), banner: card.banner.clone(), created: card.created, status: card.status.clone() });
                 }
                 if let Some(view) = self.card.as_mut().filter(|v| v.id == id) {
                     view.loading = false;
@@ -573,7 +610,11 @@ impl App {
                     }
                 }
             }
-            Message::CardClose => self.card = None,
+            Message::CardClose => {
+                self.card = None;
+                self.card_status_draft = None;
+                self.card_status_error = None;
+            }
             Message::OpenLink(url) => {
                 if url.starts_with("https://") || url.starts_with("http://") {
                     crate::util::open_url(&url);
@@ -594,7 +635,7 @@ impl App {
                 for (id, card) in found {
                     self.profile_pending.remove(&id);
                     if let Some(card) = card {
-                        self.profiles.insert(id, crate::app::ProfileLook { avatar: card.avatar, banner: card.banner, created: card.created });
+                        self.profiles.insert(id, crate::app::ProfileLook { avatar: card.avatar, banner: card.banner, created: card.created, status: card.status });
                     }
                 }
             }
@@ -618,7 +659,8 @@ impl App {
             Message::AvatarDone(result) => match result {
                 Ok(avatar) => {
                     let created = self.profiles.get(&self.user_id).map(|p| p.created).unwrap_or(0);
-                    self.profiles.insert(self.user_id.clone(), crate::app::ProfileLook { avatar: avatar.clone(), banner: self.account.banner.clone(), created });
+                    let status = self.profiles.get(&self.user_id).map(|look| look.status.clone()).unwrap_or_default();
+                    self.profiles.insert(self.user_id.clone(), crate::app::ProfileLook { avatar: avatar.clone(), banner: self.account.banner.clone(), created, status });
                     self.account.avatar = avatar;
                     self.account.avatar_draft = None;
                     self.account.avatar_error = None;
