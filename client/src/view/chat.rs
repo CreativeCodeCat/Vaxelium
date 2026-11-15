@@ -2,7 +2,7 @@
 //! composer, the member list and the message search.
 
 use common::ChatMessage;
-use iced::widget::{button, column, container, mouse_area, row, scrollable, space, svg, text, text_input, Column};
+use iced::widget::{button, column, container, mouse_area, rich_text, row, scrollable, span, space, svg, text, text_input, tooltip, Column};
 use iced::{border, Background, Color, Element, Length, Theme};
 
 use super::{bar, divider, ghost, letter_badge, muted_text, panel, round, server_icon};
@@ -56,7 +56,8 @@ pub fn rail(app: &App, pal: Pal) -> Element<'_, Message> {
         let active = app.selected == Some(i) && !app.home;
         let radius = if active { 16.0 } else { 24.0 };
         let picture = server_icon(server.icon.as_deref(), &server.name, 48.0, &pal, radius);
-        items.push(rail_button(picture, Message::SelectServer(i), active, pal, Some(Message::OpenMenu(crate::app::MenuKind::Rail(i)))));
+        let button = rail_button(picture, Message::SelectServer(i), active, pal, Some(Message::OpenMenu(crate::app::MenuKind::Rail(i))));
+        items.push(name_bubble(button, &server.name, server.linked, pal));
     }
     items.push(rail_button(
         text("+").size(24).color(pal.green).into(),
@@ -79,6 +80,25 @@ pub fn rail(app: &App, pal: Pal) -> Element<'_, Message> {
         .padding(crate::util::pad2(12.0, 0.0))
         .style(move |_: &Theme| round(pal.rail_bg, 0.0))
         .into()
+}
+
+/// Shows a server's name in a bubble to the right of its rail button while the pointer is over it.
+/// A house before the name marks a server that other servers know about.
+fn name_bubble<'a>(button: Element<'a, Message>, name: &str, linked: bool, pal: Pal) -> Element<'a, Message> {
+    let mut parts = row![].spacing(8).align_y(iced::alignment::Vertical::Center);
+    if linked {
+        parts = parts.push(svg(svg::Handle::from_path(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/assets/house.svg"))).width(Length::Fixed(14.0)).height(Length::Fixed(14.0)));
+    }
+    parts = parts.push(text(name.to_string()).size(14).color(pal.text_strong));
+    let content: Element<'a, Message> = parts.into();
+    let bubble = container(content)
+        .padding(crate::util::pad2(6.0, 10.0))
+        .style(move |_: &Theme| container::Style {
+            background: Some(Background::Color(pal.sidebar_bg)),
+            border: border::rounded(6.0).color(pal.hover_bg).width(1.0),
+            ..container::Style::default()
+        });
+    tooltip(button, bubble, tooltip::Position::Right).gap(10).into()
 }
 
 fn rail_button<'a>(content: Element<'a, Message>, msg: Message, active: bool, pal: Pal, right: Option<Message>) -> Element<'a, Message> {
@@ -234,15 +254,25 @@ fn sidebar(app: &App, pal: Pal) -> Element<'_, Message> {
             .into(),
         );
     }
+    // The house beside the name marks a server that other servers know about.
+    let linked = app.selected.and_then(|i| app.prefs.servers.get(i)).is_some_and(|s| s.linked);
+    // The house sits before the name; the drop-down stays at the right edge.
+    let mut header_row = row![].spacing(8).align_y(iced::alignment::Vertical::Center);
+    if linked {
+        header_row = header_row.push(svg(svg::Handle::from_path(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/assets/house.svg"))).width(Length::Fixed(14.0)).height(Length::Fixed(14.0)));
+    }
+    // The drop-down always shows; a long name is cut short with an ellipsis to make room for it.
+    // Room is what the sidebar has, less the padding, the drop-down, the house when shown, and the gaps.
+    let reserved = 28.0 + 14.0 + 8.0 + if linked { 14.0 + 8.0 } else { 0.0 } + 8.0;
+    let room = (app.panel_width("channels") - reserved).max(0.0);
+    let full = app.selected_name().unwrap_or_else(|| "Vaxelium".into());
+    let shown = fit_name(&full, room, 16.0);
+    let header_row = header_row
+        .push(container(text(shown).size(16).color(pal.text_strong).wrapping(iced::widget::text::Wrapping::None)).width(Length::Fill).clip(true))
+        .push(icons::icon(icons::CHEVRON_DOWN, 14.0, pal.text));
     let header_btn = mouse_area(
-        container(
-            row![
-                text(app.selected_name().unwrap_or_else(|| "Vaxelium".into())).size(16).color(pal.text_strong).width(Length::Fill),
-                icons::icon(icons::CHEVRON_DOWN, 14.0, pal.text),
-            ]
-            .spacing(8)
-            .align_y(iced::alignment::Vertical::Center),
-        )
+        container(header_row)
+        .width(Length::Fill)
         .padding(crate::util::pad2(0.0, 14.0))
         .height(Length::Fixed(48.0))
         .align_y(iced::alignment::Vertical::Center)
@@ -265,13 +295,16 @@ fn channel_row<'a>(app: &App, pal: Pal, channel: &common::ChannelRef) -> Element
     let name = channel.name.as_str();
     let selected = channel.id == app.server.channel_id;
     let unread = app.unread.contains(&channel.id);
+    let pinged = app.pinged.contains(&channel.id);
     let color = if selected || unread { pal.text_strong } else { pal.text_muted };
     let bg = if selected { pal.selected_bg } else { Color::TRANSPARENT };
     let mut inner = row![text(format!("# {name}")).size(15).color(color).width(Length::Fill)]
         .spacing(6)
         .align_y(iced::alignment::Vertical::Center);
+    // A ping for one of your roles is red, so it stands out from ordinary unread messages.
     if unread && !selected {
-        inner = inner.push(container(space()).width(Length::Fixed(8.0)).height(Length::Fixed(8.0)).style(move |_: &Theme| round(pal.text_strong, 4.0)));
+        let dot = if pinged { pal.red } else { pal.text_strong };
+        inner = inner.push(container(space()).width(Length::Fixed(8.0)).height(Length::Fixed(8.0)).style(move |_: &Theme| round(dot, 4.0)));
     }
     // While another channel is dragged over this one, it is highlighted: the drop goes before it.
     let target = crate::app::DropTarget::Channel { id: channel.id, category: category_of(app, channel.id) };
@@ -655,6 +688,43 @@ fn entry_visible(channel: &str, e: &Entry, search: &Search) -> bool {
 }
 
 /// One chat message. Hovering shows its toolbar; right-clicking opens its menu.
+/// The name, cut short with an ellipsis when it would be wider than `room` pixels at `size`.
+/// Letters are estimated at two thirds of the font size, a little wide on purpose so the name never
+/// reaches the drop-down.
+fn fit_name(name: &str, room: f32, size: f32) -> String {
+    let per_char = size * 0.62;
+    let max_chars = (room / per_char).floor() as usize;
+    if name.chars().count() <= max_chars {
+        return name.to_string();
+    }
+    let keep = max_chars.saturating_sub(1);
+    let mut cut: String = name.chars().take(keep).collect();
+    cut.push('…');
+    cut
+}
+
+/// A message's text. `@role` pings for roles anyone may ping are shown in the role's colour, in bold.
+fn message_text<'a>(app: &App, body: &str, pal: Pal) -> Element<'a, Message> {
+    let pings = app.role_pings(body);
+    if pings.is_empty() {
+        return text(body.to_string()).size(15).color(pal.text).width(Length::Shrink).into();
+    }
+    let bold = iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT };
+    let mut spans: Vec<iced::widget::text::Span<'static, ()>> = Vec::new();
+    let mut at = 0;
+    for ping in pings {
+        if ping.range.start > at {
+            spans.push(span(body[at..ping.range.start].to_string()).color(pal.text));
+        }
+        spans.push(span(body[ping.range.clone()].to_string()).color(ping.color.unwrap_or(pal.text_strong)).font(bold));
+        at = ping.range.end;
+    }
+    if at < body.len() {
+        spans.push(span(body[at..].to_string()).color(pal.text));
+    }
+    rich_text(spans).size(15).width(Length::Shrink).into()
+}
+
 /// The colour of a message's author name: their highest role's colour, or the strong text colour
 /// (white on the dark themes) when that role has no colour or they have no role.
 fn author_color(app: &App, m: &ChatMessage, pal: &Pal) -> Color {
@@ -680,7 +750,7 @@ fn chat_message<'a>(app: &'a App, pal: Pal, m: ChatMessage, grouped: bool, now: 
         .spacing(4)
         .into()
     } else {
-        let mut line = row![text(m.text.clone()).size(15).color(pal.text).width(Length::Shrink)].spacing(6);
+        let mut line = row![message_text(app, &m.text, pal)].spacing(6);
         if m.edited {
             line = line.push(text("(edited)").size(11).color(pal.text_muted));
         }
@@ -772,6 +842,75 @@ fn toolbar<'a>(app: &'a App, pal: Pal, id: i64, can_delete: bool) -> Element<'a,
         .into()
 }
 
+/// The menu of roles and members that an `@` in the message box can ping. None when no `@` word is
+/// being typed, or nothing matches it.
+fn mention_menu<'a>(app: &App, pal: Pal) -> Option<Element<'a, Message>> {
+    let query = app.mention_query()?.to_lowercase();
+    let roles: Vec<&common::RoleInfo> = app
+        .server
+        .roles
+        .iter()
+        .filter(|r| r.mentionable && r.id != common::EVERYONE_ROLE && r.name.to_lowercase().contains(&query))
+        .collect();
+    let members: Vec<&String> = app
+        .server
+        .online
+        .iter()
+        .chain(app.server.offline.iter())
+        .filter(|n| n.to_lowercase().contains(&query))
+        .take(8)
+        .collect();
+    if roles.is_empty() && members.is_empty() {
+        return None;
+    }
+    let heading = |t: &str| container(text(t.to_uppercase()).size(11).color(pal.text_muted)).padding(crate::util::pad(4.0, 12.0, 6.0, 12.0));
+    let entry = |name: String, icon: Element<'a, Message>, color: Color, hint: &'static str| -> Element<'a, Message> {
+        let label = row![
+            text(format!("@{name}")).size(14).color(color).width(Length::Fill),
+            text(hint).size(12).color(pal.text_muted),
+        ]
+        .spacing(8)
+        .align_y(iced::alignment::Vertical::Center);
+        button(row![container(icon).width(Length::Fixed(24.0)), label].spacing(10).align_y(iced::alignment::Vertical::Center))
+            .padding(crate::util::pad2(6.0, 12.0))
+            .width(Length::Fill)
+            .on_press(Message::MentionPick(name))
+            .style(move |_: &Theme, status: button::Status| {
+                let bg = match status {
+                    button::Status::Hovered => Some(Background::Color(pal.hover_bg)),
+                    _ => None,
+                };
+                button::Style { background: bg, text_color: pal.text, border: border::rounded(0.0), ..button::Style::default() }
+            })
+            .into()
+    };
+    let mut items: Vec<Element<'a, Message>> = Vec::new();
+    if !roles.is_empty() {
+        items.push(heading("Roles").into());
+        for role in roles {
+            let color = crate::util::hex_color(&role.color).unwrap_or(pal.text_strong);
+            let dot = container(space()).width(Length::Fixed(10.0)).height(Length::Fixed(10.0)).style(move |_: &Theme| round(color, 5.0));
+            items.push(entry(role.name.clone(), dot.into(), color, "role"));
+        }
+    }
+    if !members.is_empty() {
+        items.push(heading("Members").into());
+        for name in members {
+            items.push(entry(name.clone(), letter_badge(name, 20.0, &pal), pal.text, "member"));
+        }
+    }
+    Some(
+        container(Column::with_children(items).padding(crate::util::pad2(4.0, 0.0)))
+            .width(Length::Fixed(300.0))
+            .style(move |_: &Theme| container::Style {
+                background: Some(Background::Color(pal.sidebar_bg)),
+                border: border::rounded(8.0).color(pal.hover_bg).width(1.0),
+                ..container::Style::default()
+            })
+            .into(),
+    )
+}
+
 /// The message box at the bottom. Its placeholder names the channel or the person.
 fn composer(app: &App, pal: Pal) -> Element<'_, Message> {
     let label = if app.current_person().is_some() || is_dm_channel(&app.server.channel) {
@@ -807,7 +946,13 @@ fn composer(app: &App, pal: Pal) -> Element<'_, Message> {
         .padding(crate::util::pad2(0.0, 12.0))
         .width(Length::Fill)
         .style(move |_: &Theme| round(pal.input_bg, 8.0));
-    let mut col = column![row![icons::icon(icons::PLUS, 18.0, pal.text_muted), box_].spacing(12).align_y(iced::alignment::Vertical::Center)]
+    let mut col = Column::new();
+    // The @ menu opens above the message box while an @ word is being typed.
+    if let Some(menu) = mention_menu(app, pal) {
+        col = col.push(container(menu).padding(crate::util::pad(0.0, 16.0, 6.0, 16.0)));
+    }
+    let mut col = col
+        .push(row![icons::icon(icons::PLUS, 18.0, pal.text_muted), box_].spacing(12).align_y(iced::alignment::Vertical::Center))
         .padding(crate::util::pad(0.0, 16.0, 20.0, 16.0));
     if app.status.starts_with("Error") {
         col = col.push(text(app.status.clone()).size(12).color(pal.red));
@@ -842,23 +987,17 @@ fn members(app: &App, pal: Pal) -> Element<'_, Message> {
             }))
             .into()
     };
-    let online: Vec<&String> = server.online.iter().filter(|n| Some(*n) != owner.as_ref()).collect();
-    let offline: Vec<&String> = server.offline.iter().filter(|n| Some(*n) != owner.as_ref()).collect();
+    let online: Vec<&String> = server.online.iter().collect();
+    let offline: Vec<&String> = server.offline.iter().collect();
     let head = |t: String| container(text(t).size(11).color(pal.text_muted)).padding(crate::util::pad(0.0, 12.0, 4.0, 12.0));
     let mut items: Vec<Element<'_, Message>> = Vec::new();
-    if let Some(o) = &owner {
-        items.push(head(format!("OWNER — 1")).into());
-        items.push(row_for(o, server.online.contains(o)));
-        items.push(space().height(Length::Fixed(12.0)).into());
-    }
-    // Online members are grouped under their highest role, highest role first. Members with no role
-    // are listed under ONLINE.
+    // Roles set to display separately get their own group, under their highest such role, highest
+    // role first. Everyone else online is listed under ONLINE.
     let mut plain: Vec<&String> = Vec::new();
-    // @everyone is held by all, so it does not group anyone.
     let mut groups: Vec<(&common::RoleInfo, Vec<&String>)> =
-        server.roles.iter().filter(|r| r.id != common::EVERYONE_ROLE).map(|r| (r, Vec::new())).collect();
+        server.roles.iter().filter(|r| r.hoisted && r.id != common::EVERYONE_ROLE).map(|r| (r, Vec::new())).collect();
     for n in &online {
-        match app.top_role_by_name(n) {
+        match app.top_hoisted_role_by_name(n) {
             Some(top) => {
                 if let Some((_, members)) = groups.iter_mut().find(|(r, _)| r.id == top.id) {
                     members.push(n);

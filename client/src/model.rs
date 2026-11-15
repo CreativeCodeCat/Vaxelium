@@ -186,10 +186,47 @@ impl App {
         self.server.roles.iter().find(|r| held.contains(&r.id))
     }
 
-    /// The highest role a member has, by display name.
-    pub fn top_role_by_name(&self, name: &str) -> Option<&common::RoleInfo> {
-        let id = self.server.member_ids.get(name)?;
-        self.top_role(id)
+    /// The highest role a member holds that is shown in its own group in the member list.
+    pub fn top_hoisted_role_by_name(&self, name: &str) -> Option<&common::RoleInfo> {
+        let held = self.server.member_roles.get(self.server.member_ids.get(name)?)?;
+        self.server.roles.iter().find(|r| r.hoisted && held.contains(&r.id))
+    }
+
+    /// The `@name` pings in a message, for roles anyone may ping: where each is, which role, and its colour.
+    pub fn role_pings(&self, text: &str) -> Vec<RolePing> {
+        let mut found = Vec::new();
+        for role in self.server.roles.iter().filter(|r| r.mentionable && r.id != common::EVERYONE_ROLE) {
+            if !crate::search::mention_in(text, &role.name) {
+                continue;
+            }
+            let needle = format!("@{}", role.name);
+            let color = crate::util::hex_color(&role.color);
+            let mut from = 0;
+            while let Some(at) = text[from..].find(&needle) {
+                let start = from + at;
+                let end = start + needle.len();
+                let next = text[end..].chars().next();
+                if !next.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '-') {
+                    found.push(RolePing { range: start..end, role: role.id, color });
+                }
+                from = end;
+            }
+        }
+        found.sort_by_key(|ping| ping.range.start);
+        found
+    }
+
+    /// The text after the `@` being typed at the end of the message box, or None when the last word is
+    /// not an `@` word.
+    pub fn mention_query(&self) -> Option<String> {
+        let word = self.input.rsplit(char::is_whitespace).next()?;
+        word.strip_prefix('@').map(str::to_string)
+    }
+
+    /// True when a message pings a role this viewer holds.
+    pub fn pings_me(&self, text: &str) -> bool {
+        let held = self.server.member_roles.get(&self.user_id);
+        self.role_pings(text).iter().any(|p| held.is_some_and(|h| h.contains(&p.role)))
     }
 
     /// The name of a direct message's other member, from this server's list or another server's.
@@ -417,3 +454,10 @@ impl App {
 /// Added to the ids of direct messages from the second server on, so each message id is unique in
 /// the merged timeline. Real ids stay far below this.
 pub const VIRTUAL_BASE: i64 = 1_000_000_000_000;
+
+/// An `@role` ping in a message.
+pub struct RolePing {
+    pub range: std::ops::Range<usize>,
+    pub role: i64,
+    pub color: Option<iced::Color>,
+}

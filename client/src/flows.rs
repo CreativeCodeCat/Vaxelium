@@ -14,7 +14,7 @@ fn app() -> App {
     let (tx, _rx) = mpsc::channel();
     let backend = Backend::new(tx, std::env::temp_dir().join("vaxelium-flows"));
     let mut prefs = Prefs::default();
-    prefs.servers = vec![ServerPref { name: "Home".into(), addr: "127.0.0.1:7878".into(), icon: None, id: None, ignored: Vec::new(), protected: Vec::new() }];
+    prefs.servers = vec![ServerPref { name: "Home".into(), addr: "127.0.0.1:7878".into(), icon: None, id: None, ignored: Vec::new(), protected: Vec::new(), linked: false }];
     let mut app = App::new(backend, prefs, Vec::new(), HashMap::new());
     app.user = Some("alice".into());
     app.selected = Some(0);
@@ -311,6 +311,8 @@ fn roles_grant_permissions_to_their_holders() {
         color: "#ff0000".into(),
         permissions: common::perm::MANAGE_MESSAGES,
         position: 1,
+        mentionable: false,
+        hoisted: false,
     };
     let _ = app.update(net(ServerMsg::Roles { roles: vec![mods] }));
     let _ = app.update(net(ServerMsg::Presence {
@@ -329,8 +331,9 @@ fn roles_grant_permissions_to_their_holders() {
     assert!(app.can(common::perm::MANAGE_MESSAGES));
     assert!(!app.can(common::perm::MANAGE_CHANNELS));
     assert!(!app.outranks_role(5));
-    assert_eq!(app.top_role_by_name("bob").map(|r| r.name.as_str()), Some("Mods"));
-    assert!(app.top_role_by_name("alice").is_none());
+    let top = |name: &str| app.server.member_ids.get(name).and_then(|id| app.top_role(id)).map(|r| r.name.clone());
+    assert_eq!(top("bob").as_deref(), Some("Mods"));
+    assert!(top("alice").is_none());
 }
 
 #[test]
@@ -386,6 +389,8 @@ fn the_owner_and_bypass_holders_cannot_be_ignored_or_blocked() {
             color: String::new(),
             permissions: common::perm::BYPASS_IGNORE,
             position: 1,
+            mentionable: false,
+            hoisted: false,
         }],
     }));
     let _ = app.update(net(ServerMsg::Presence {
@@ -419,6 +424,7 @@ fn bypass_protects_only_on_the_server_that_grants_it() {
         id: None,
         ignored: Vec::new(),
         protected: Vec::new(),
+        linked: false,
     });
     welcome(&mut app);
     let addr = app.prefs.servers[0].addr.clone();
@@ -429,6 +435,8 @@ fn bypass_protects_only_on_the_server_that_grants_it() {
             color: String::new(),
             permissions: common::perm::BYPASS_IGNORE,
             position: 1,
+            mentionable: false,
+            hoisted: false,
         }],
     }));
     let _ = app.update(net(ServerMsg::Presence {
@@ -469,4 +477,47 @@ fn losing_the_auth_service_shows_the_banner() {
     let mut wrong = app();
     let _ = wrong.update(Message::VerifyDone(Err(CmdError::new("Wrong code."))));
     assert!(!wrong.auth_down, "an ordinary error does not show the banner");
+}
+
+#[test]
+fn a_ping_marks_the_channel_only_for_members_of_that_role() {
+    let mut app = app();
+    welcome(&mut app);
+    app.server.roles = vec![common::RoleInfo {
+        id: 5,
+        name: "Mods".into(),
+        color: "#ff0000".into(),
+        permissions: 0,
+        position: 1,
+        mentionable: true,
+        hoisted: true,
+    }];
+    app.server.member_roles.insert("id-alice".into(), vec![5]);
+    let _ = app.update(net(ServerMsg::Message { message: chat(2, 2, "bob", "hey @Mods look", 1_700_000_100) }));
+    assert!(app.pinged.contains(&2), "a ping for a role alice holds is marked");
+
+    let _ = app.update(net(ServerMsg::Message { message: chat(3, 3, "bob", "hey Mods, no at sign", 1_700_000_101) }));
+    assert!(!app.pinged.contains(&3), "a name without @ is not a ping");
+
+    app.server.member_roles.insert("id-alice".into(), vec![]);
+    let _ = app.update(net(ServerMsg::Message { message: chat(4, 4, "bob", "hey @Mods", 1_700_000_102) }));
+    assert!(!app.pinged.contains(&4), "a role alice does not hold is not marked");
+
+    app.server.roles[0].mentionable = false;
+    app.server.member_roles.insert("id-alice".into(), vec![5]);
+    let _ = app.update(net(ServerMsg::Message { message: chat(5, 5, "bob", "hey @Mods", 1_700_000_103) }));
+    assert!(!app.pinged.contains(&5), "a role that cannot be pinged is not marked");
+}
+
+#[test]
+fn picking_from_the_at_menu_replaces_the_word_being_typed() {
+    let mut app = app();
+    welcome(&mut app);
+    app.input = "hello there @Mo".into();
+    assert_eq!(app.mention_query().as_deref(), Some("Mo"));
+    let _ = app.update(Message::MentionPick("Mods".into()));
+    assert_eq!(app.input, "hello there @Mods ");
+    assert_eq!(app.mention_query(), None, "after a space the menu closes");
+    app.input = "email me@example".into();
+    assert_eq!(app.mention_query(), None, "an @ inside a word is not a mention");
 }

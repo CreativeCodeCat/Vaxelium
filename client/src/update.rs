@@ -232,6 +232,7 @@ impl App {
             }
             Message::MarkRead(id) => {
                 self.unread.remove(&id);
+                self.pinged.remove(&id);
                 self.read_marks.remove(&id);
                 self.menu = None;
             }
@@ -320,6 +321,15 @@ impl App {
 
             // ----- composer and messages -----
             Message::InputChanged(v) => self.input = v,
+            Message::MentionPick(name) => {
+                // Replace the @ word being typed with the picked name, and leave a space after it.
+                let start = self.input.char_indices().rev().find(|(_, c)| c.is_whitespace()).map_or(0, |(i, c)| i + c.len_utf8());
+                self.input.truncate(start);
+                self.input.push('@');
+                self.input.push_str(&name);
+                self.input.push(' ');
+                return operation::focus(COMPOSER_ID);
+            }
             Message::Send => {
                 let text = self.input.trim().to_string();
                 self.input.clear();
@@ -550,6 +560,8 @@ impl App {
                         name: role.name.clone(),
                         color: role.color.clone(),
                         permissions: role.permissions,
+                        mentionable: role.mentionable,
+                        hoisted: role.hoisted,
                     },
                     None => crate::app::RoleDraft::default(),
                 });
@@ -563,6 +575,16 @@ impl App {
             Message::RoleDraftColor(v) => {
                 if let Some(draft) = self.role_form.as_mut() {
                     draft.color = v;
+                }
+            }
+            Message::RoleDraftMentionable(on) => {
+                if let Some(draft) = self.role_form.as_mut() {
+                    draft.mentionable = on;
+                }
+            }
+            Message::RoleDraftHoisted(on) => {
+                if let Some(draft) = self.role_form.as_mut() {
+                    draft.hoisted = on;
                 }
             }
             Message::RoleDraftPerm(bit, on) => {
@@ -588,6 +610,8 @@ impl App {
                             name: role.name,
                             color: role.color,
                             permissions: role.permissions,
+                            mentionable: role.mentionable,
+                            hoisted: role.hoisted,
                         },
                         None => crate::app::RoleDraft::default(),
                     };
@@ -599,8 +623,21 @@ impl App {
                     let name = draft.name.trim().to_string();
                     let color = draft.color.trim().to_string();
                     let msg = match draft.id {
-                        Some(role) => ClientMsg::UpdateRole { role, name, color, permissions: draft.permissions },
-                        None => ClientMsg::CreateRole { name, color, permissions: draft.permissions },
+                        Some(role) => ClientMsg::UpdateRole {
+                            role,
+                            name,
+                            color,
+                            permissions: draft.permissions,
+                            mentionable: draft.mentionable,
+                            hoisted: draft.hoisted,
+                        },
+                        None => ClientMsg::CreateRole {
+                            name,
+                            color,
+                            permissions: draft.permissions,
+                            mentionable: draft.mentionable,
+                            hoisted: draft.hoisted,
+                        },
                     };
                     let _ = self.backend.send_main(msg);
                 }
