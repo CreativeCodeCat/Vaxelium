@@ -56,6 +56,8 @@ pub struct ServerView {
     pub roles: Vec<common::RoleInfo>,
     /// Each member's role ids, by account id.
     pub member_roles: HashMap<String, Vec<i64>>,
+    /// The channel exceptions for roles (see `common::ChannelOverride`).
+    pub overrides: Vec<common::ChannelOverride>,
     /// When each member first joined this server, by account id, in Unix seconds (0 when unknown).
     pub member_joined: HashMap<String, u64>,
 }
@@ -140,11 +142,18 @@ impl App {
         // @everyone is held by everyone, so its permissions apply first.
         let held = self.server.member_roles.get(&self.user_id);
         let everyone = self.server.roles.iter().find(|r| r.id == common::EVERYONE_ROLE).map_or(0, |r| r.permissions);
-        self.server
+        let bits = self
+            .server
             .roles
             .iter()
             .filter(|r| r.id != common::EVERYONE_ROLE && held.is_some_and(|h| h.contains(&r.id)))
-            .fold(everyone, |bits, r| bits | r.permissions)
+            .fold(everyone, |bits, r| bits | r.permissions);
+        // An administrator has every permission, including ones switched off.
+        if bits & perm::ADMINISTRATOR != 0 {
+            perm::ALL
+        } else {
+            bits
+        }
     }
 
     /// The colour of a member's name: the highest role they have that has a colour, or else
@@ -163,6 +172,26 @@ impl App {
     /// True when this account has the permission (see `common::perm`).
     pub fn can(&self, permission: u32) -> bool {
         self.my_permissions() & permission == permission
+    }
+
+    /// Whether this account may send in the open channel. Direct messages are always open to their
+    /// members. Managers may send anywhere. Otherwise a channel's exception for one of the account's
+    /// roles decides, with a denial winning, and the roles' server-wide permission applies when there is none.
+    pub fn may_send_here(&self) -> bool {
+        if is_dm_channel(&self.server.channel) || self.can(perm::MANAGE_CHANNELS) {
+            return true;
+        }
+        let held = self.server.member_roles.get(&self.user_id);
+        let mine = |role: i64| role == common::EVERYONE_ROLE || held.is_some_and(|h| h.contains(&role));
+        let mut allowed = false;
+        for o in self.server.overrides.iter().filter(|o| o.channel_id == self.server.channel_id && mine(o.role)) {
+            match o.send {
+                Some(false) => return false,
+                Some(true) => allowed = true,
+                None => {}
+            }
+        }
+        allowed || self.can(perm::SEND_MESSAGES)
     }
 
     /// The index, in the role order, of this account's highest role.

@@ -44,6 +44,17 @@ pub fn joined_label(ts: u64) -> String {
     local(ts).format("%-d %B %Y").to_string()
 }
 
+/// Opens a web address in the browser. Nothing is run through a shell, so the address is passed as it is.
+pub fn open_url(url: &str) {
+    #[cfg(target_os = "windows")]
+    let result = std::process::Command::new("cmd").args(["/C", "start", "", url]).spawn();
+    #[cfg(target_os = "macos")]
+    let result = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let result = std::process::Command::new("xdg-open").arg(url).spawn();
+    let _ = result;
+}
+
 /// The local time for a Unix timestamp in seconds.
 fn local(ts: u64) -> DateTime<Local> {
     Local.timestamp_opt(ts as i64, 0).earliest().unwrap_or_else(|| Local.timestamp_opt(0, 0).unwrap())

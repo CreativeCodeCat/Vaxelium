@@ -326,13 +326,16 @@ fn avatar_editor<'a>(acc: &'a crate::app::Account, name: &str, pal: Pal) -> Elem
 
 /// The bio and profile banner colour, shown on the profile card. Always an editor; the save bar
 /// appears under it when something has changed.
-fn about_editor<'a>(acc: &'a crate::app::Account, pal: Pal) -> Element<'a, Message> {
+fn about_editor<'a>(app: &'a App, pal: Pal) -> Element<'a, Message> {
+    let acc = &app.account;
     let mut rows: Vec<Element<'a, Message>> = vec![
         text("ABOUT ME").size(12).color(pal.text_muted).into(),
-        text_input("A short bio (190 characters at most)", &acc.about_bio)
-            .on_input(Message::AboutInput)
+        iced::widget::text_editor(&app.bio_editor)
+            .placeholder("A short bio (190 characters at most)")
+            .on_action(Message::BioEdit)
+            .height(Length::Fixed(96.0))
             .padding(10)
-            .style(input_style(pal))
+            .style(editor_style(pal))
             .into(),
         text("BANNER COLOUR").size(12).color(pal.text_muted).into(),
     ];
@@ -486,7 +489,7 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
             // The bar appears only when the bio or banner differ from what is saved.
             let dirty = acc.about_bio != acc.bio || acc.about_banner != acc.banner || acc.avatar_draft.is_some();
             let name = app.user.clone().unwrap_or_default();
-            (settings_column(vec![page_title("Profile", pal), avatar_editor(acc, &name, pal), about_editor(acc, pal)]), dirty)
+            (settings_column(vec![page_title("Profile", pal), avatar_editor(acc, &name, pal), about_editor(app, pal)]), dirty)
         }
     };
     let page = settings_frame(user_nav(app.user_section, pal), content, Message::UserSettingsClose, pal);
@@ -727,11 +730,14 @@ const ROLE_COLORS: [&str; 20] = [
 ];
 
 /// The permissions a role can grant: the label, what it lets a member do, and its bit.
-const PERMISSIONS: [(&str, &str, u32); 4] = [
-    ("Manage channels", "Allows members to create, rename, move and delete channels and categories.", common::perm::MANAGE_CHANNELS),
+const PERMISSIONS: [(&str, &str, u32); 7] = [
+    ("Administrator", "Has every permission, even ones switched off. Turning it on asks first.", common::perm::ADMINISTRATOR),
     ("Manage roles", "Allows members to create and edit roles below their own, and give them to members below them.", common::perm::MANAGE_ROLES),
+    ("Manage channels", "Allows members to create, rename, move and delete channels and categories.", common::perm::MANAGE_CHANNELS),
     ("Manage messages", "Allows members to delete other members' messages.", common::perm::MANAGE_MESSAGES),
     ("Bypass ignore", "Members with this cannot be ignored or blocked by anyone.", common::perm::BYPASS_IGNORE),
+    ("View channels", "Lets members see the channels. A channel can hide them from this role.", common::perm::VIEW_CHANNEL),
+    ("Message channels", "Lets members send messages. A channel can stop this role from sending.", common::perm::SEND_MESSAGES),
 ];
 
 /// The Roles section, laid out like Discord's: the roles on the left, and the chosen role's settings on the right.
@@ -870,7 +876,9 @@ fn roles_section(app: &App, pal: Pal) -> (Element<'_, Message>, bool) {
         .into(),
     };
     let body = scrollable(container(editor).padding(crate::util::pad(24.0, 32.0, 96.0, 32.0)).max_width(640.0).width(Length::Fill)).height(Length::Fill).width(Length::Fill);
-    (row![roles_list, body].height(Length::Fill).into(), dirty)
+    // A thin vertical line between the list of roles and the editor.
+    let rule = container(space().width(Length::Fixed(1.0)).height(Length::Fill)).height(Length::Fill).style(move |_: &Theme| round(pal.hover_bg, 0.0));
+    (row![roles_list, rule, body].height(Length::Fill).into(), dirty)
 }
 
 /// How many members hold a role.
@@ -1115,6 +1123,47 @@ fn flag_row<'a>(label: &'a str, hint: &'a str, on: bool, on_toggle: Option<fn(bo
     .into()
 }
 
+/// The channel permissions that saving `draft` would take away from the last role holding them. A
+/// non-@everyone role that gives one up while no other role has it leaves nobody with it, which can
+/// lock people out. Empty when the save is safe.
+pub(crate) fn lockout_risk(app: &App, draft: &RoleDraft) -> Vec<&'static str> {
+    let Some(id) = draft.id else { return Vec::new() };
+    if id == common::EVERYONE_ROLE {
+        return Vec::new();
+    }
+    let Some(current) = app.server.roles.iter().find(|r| r.id == id) else { return Vec::new() };
+    let mut lost = Vec::new();
+    for (bit, label) in [(common::perm::VIEW_CHANNEL, "View channels"), (common::perm::SEND_MESSAGES, "Message channels")] {
+        let removed = current.permissions & bit != 0 && draft.permissions & bit == 0;
+        let others_hold = app.server.roles.iter().any(|r| r.id != common::EVERYONE_ROLE && r.id != id && r.permissions & (bit | common::perm::ADMINISTRATOR) != 0);
+        if removed && !others_hold {
+            lost.push(label);
+        }
+    }
+    lost
+}
+
+/// True when saving `draft` turns Administrator on for a role that did not have it, or creates a
+/// role with it. The save asks again then, as the switch did.
+pub(crate) fn grants_administrator(app: &App, draft: &RoleDraft) -> bool {
+    if draft.permissions & common::perm::ADMINISTRATOR == 0 {
+        return false;
+    }
+    match draft.id {
+        None => true,
+        Some(id) => !app.server.roles.iter().any(|r| r.id == id && r.permissions & common::perm::ADMINISTRATOR != 0),
+    }
+}
+
+/// True when a permission must stay on for @everyone: it is one of the two channel permissions, the
+/// role being edited is @everyone, and no other role has it. Mirrors the server's rule.
+pub(crate) fn everyone_keeps(app: &App, role: Option<i64>, bit: u32) -> bool {
+    let kept = common::perm::VIEW_CHANNEL | common::perm::SEND_MESSAGES;
+    role == Some(common::EVERYONE_ROLE)
+        && kept & bit != 0
+        && !app.server.roles.iter().any(|r| r.id != common::EVERYONE_ROLE && r.permissions & (bit | common::perm::ADMINISTRATOR) != 0)
+}
+
 fn permissions_tab<'a>(app: &'a App, draft: &'a RoleDraft, editable: bool, pal: Pal) -> Vec<Element<'a, Message>> {
     let mut items: Vec<Element<'a, Message>> = Vec::new();
     for (index, (label, hint, bit)) in PERMISSIONS.into_iter().enumerate() {
@@ -1124,9 +1173,18 @@ fn permissions_tab<'a>(app: &'a App, draft: &'a RoleDraft, editable: bool, pal: 
         let on = draft.permissions & bit == bit;
         let mut toggle = toggler(on);
         // Only someone with the permission can grant it, and only where the role is editable.
-        if editable && app.can(bit) {
+        let everyone_admin = draft.id == Some(common::EVERYONE_ROLE) && bit == common::perm::ADMINISTRATOR;
+        let locked = everyone_keeps(app, draft.id, bit) || everyone_admin;
+        if editable && app.can(bit) && !locked {
             toggle = toggle.on_toggle(move |v| Message::RoleDraftPerm(bit, v));
         }
+        let hint = if everyone_admin {
+            "@everyone cannot be an administrator.".to_string()
+        } else if locked {
+            format!("{hint} Stays on until another role has it.")
+        } else {
+            hint.to_string()
+        };
         items.push(
             row![
                 column![text(label).size(15).color(pal.text_strong), muted_text(hint, 12.0, pal.text_muted)].spacing(4).width(Length::Fill),

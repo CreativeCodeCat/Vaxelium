@@ -175,6 +175,14 @@ impl App {
                 }
             }
             Message::DeleteChannelCancel => self.pending_channel_delete = None,
+            Message::ChannelAccessOpen(id) => {
+                self.menu = None;
+                self.channel_access = Some(id);
+            }
+            Message::ChannelAccessClose => self.channel_access = None,
+            Message::ChannelAccessSet { channel, role, view, send } => {
+                let _ = self.backend.send_main(ClientMsg::SetChannelOverride { channel, role, view, send });
+            }
             Message::CreateOpen => {
                 self.create_open = true;
                 self.menu = None;
@@ -409,6 +417,9 @@ impl App {
             Message::UserSettingsClose => return self.close_settings(),
             Message::ProfileLoaded(result) => match result {
                 Ok(p) => {
+                    // Keep the picture and banner the member list and messages use in step with the account.
+                    let created = self.profiles.get(&self.user_id).map_or(0, |look| look.created);
+                    self.profiles.insert(self.user_id.clone(), crate::app::ProfileLook { avatar: p.avatar.clone(), banner: p.banner.clone(), created });
                     self.user = Some(p.name);
                     self.account.username = Some(p.username);
                     self.account.email = p.email;
@@ -546,7 +557,21 @@ impl App {
                 }
             }
             Message::CardClose => self.card = None,
-            Message::AboutInput(v) => self.account.about_bio = v.chars().take(190).collect(),
+            Message::OpenLink(url) => {
+                if url.starts_with("https://") || url.starts_with("http://") {
+                    crate::util::open_url(&url);
+                }
+            }
+            Message::BioEdit(action) => {
+                self.bio_editor.perform(action);
+                // The bio is at most 190 characters, counting line breaks.
+                let mut text = self.bio_editor.text();
+                if text.chars().count() > crate::app::BIO_MAX {
+                    text = text.chars().take(crate::app::BIO_MAX).collect();
+                    self.bio_editor = iced::widget::text_editor::Content::with_text(&text);
+                }
+                self.account.about_bio = text;
+            }
             Message::AboutBanner(hex) => self.account.about_banner = hex,
             Message::ProfilesLoaded(found) => {
                 for (id, card) in found {
@@ -585,6 +610,7 @@ impl App {
             },
             Message::AboutReset => {
                 self.account.about_bio = self.account.bio.clone();
+                self.reset_bio_editor();
                 self.account.about_banner = self.account.banner.clone();
                 self.account.avatar_draft = None;
                 self.account.about_error = None;
@@ -609,6 +635,9 @@ impl App {
                 self.account.about_busy = false;
                 match result {
                     Ok((bio, banner)) => {
+                        if let Some(look) = self.profiles.get_mut(&self.user_id) {
+                            look.banner = banner.clone();
+                        }
                         self.account.bio = bio;
                         self.account.banner = banner;
                     }
@@ -658,6 +687,7 @@ impl App {
                 // The Profile tab is always an editor, so it starts from what is saved.
                 if section == crate::app::UserSection::Profile {
                     self.account.about_bio = self.account.bio.clone();
+                    self.reset_bio_editor();
                     self.account.about_banner = self.account.banner.clone();
                     self.account.about_error = None;
                 }
@@ -710,7 +740,13 @@ impl App {
                 }
             }
             Message::RoleDraftPerm(bit, on) => {
-                if let Some(draft) = self.role_form.as_mut() {
+                // Turning Administrator on asks first, through the dialog.
+                if bit == common::perm::ADMINISTRATOR && on {
+                    self.admin_grant_pending = true;
+                    return Task::none();
+                }
+                let locked = self.role_form.as_ref().is_some_and(|d| crate::view::pages::everyone_keeps(self, d.id, bit));
+                if let Some(draft) = self.role_form.as_mut().filter(|_| !locked) {
                     if on {
                         draft.permissions |= bit;
                     } else {
@@ -740,30 +776,29 @@ impl App {
                 }
             }
             Message::RoleSave => {
-                if let Some(draft) = self.role_form.take() {
-                    self.role_error = None;
-                    let name = draft.name.trim().to_string();
-                    let color = draft.color.trim().to_string();
-                    let msg = match draft.id {
-                        Some(role) => ClientMsg::UpdateRole {
-                            role,
-                            name,
-                            color,
-                            permissions: draft.permissions,
-                            mentionable: draft.mentionable,
-                            hoisted: draft.hoisted,
-                        },
-                        None => ClientMsg::CreateRole {
-                            name,
-                            color,
-                            permissions: draft.permissions,
-                            mentionable: draft.mentionable,
-                            hoisted: draft.hoisted,
-                        },
-                    };
-                    let _ = self.backend.send_main(msg);
+                if let Some(draft) = self.role_form.clone() {
+                    let risky = !crate::view::pages::lockout_risk(self, &draft).is_empty() || crate::view::pages::grants_administrator(self, &draft);
+                    if risky {
+                        self.role_save_warning = true;
+                    } else {
+                        self.send_role_save(draft);
+                    }
                 }
             }
+            Message::RoleSaveConfirm => {
+                self.role_save_warning = false;
+                if let Some(draft) = self.role_form.clone() {
+                    self.send_role_save(draft);
+                }
+            }
+            Message::RoleSaveCancel => self.role_save_warning = false,
+            Message::AdminGrantConfirm => {
+                self.admin_grant_pending = false;
+                if let Some(draft) = self.role_form.as_mut() {
+                    draft.permissions |= common::perm::ADMINISTRATOR;
+                }
+            }
+            Message::AdminGrantCancel => self.admin_grant_pending = false,
             Message::RoleDeleteAsk(role, name) => {
                 self.pending_role_delete = Some((role, name));
             }
@@ -864,6 +899,39 @@ impl App {
             self.page = Page::None;
         }
         Task::none()
+    }
+
+    /// Starts the bio editor from the bio being edited.
+    fn reset_bio_editor(&mut self) {
+        self.bio_editor = iced::widget::text_editor::Content::with_text(&self.account.about_bio);
+    }
+
+    /// Sends a role save. The editor stays open with what was saved, so the page does not change.
+    fn send_role_save(&mut self, draft: crate::app::RoleDraft) {
+        self.role_error = None;
+        let name = draft.name.trim().to_string();
+        let color = draft.color.trim().to_string();
+        if draft.id.is_none() {
+            self.role_created_name = Some(name.clone());
+        }
+        let msg = match draft.id {
+            Some(role) => ClientMsg::UpdateRole {
+                role,
+                name,
+                color,
+                permissions: draft.permissions,
+                mentionable: draft.mentionable,
+                hoisted: draft.hoisted,
+            },
+            None => ClientMsg::CreateRole {
+                name,
+                color,
+                permissions: draft.permissions,
+                mentionable: draft.mentionable,
+                hoisted: draft.hoisted,
+            },
+        };
+        let _ = self.backend.send_main(msg);
     }
 
     /// Closes a settings page. Refused while it has unsaved changes: the save bar flashes red instead.

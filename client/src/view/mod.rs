@@ -114,6 +114,54 @@ pub fn bar<'a>(width: f32, height: f32, color: Color) -> Element<'a, Message> {
 }
 
 /// A horizontal divider line.
+/// Where each web link in `body` is: an `http://` or `https://` address, up to the next space.
+/// Punctuation that ends a sentence is left out of the link.
+pub fn link_ranges(body: &str) -> Vec<std::ops::Range<usize>> {
+    let mut found = Vec::new();
+    for (start, _) in body.match_indices("http") {
+        let rest = &body[start..];
+        if !(rest.starts_with("http://") || rest.starts_with("https://")) {
+            continue;
+        }
+        // Only at the start of the text or after a space or an opening bracket, so a link inside another one is not found twice.
+        let after_opener = body[..start].ends_with(|c: char| c.is_whitespace() || matches!(c, '(' | '[' | '<' | '"' | '\''));
+        if start > 0 && !after_opener {
+            continue;
+        }
+        let mut end = start + rest.find(char::is_whitespace).unwrap_or(rest.len());
+        while end > start && matches!(body.as_bytes()[end - 1], b'.' | b',' | b')' | b'!' | b'?' | b';' | b':' | b'"' | b'\'') {
+            end -= 1;
+        }
+        if end - start > "https://".len() {
+            found.push(start..end);
+        }
+    }
+    found
+}
+
+/// Text in which web links are underlined and open when clicked.
+pub fn linked_text<'a>(body: &str, size: f32, color: Color, pal: Pal) -> Element<'a, Message> {
+    use iced::widget::text::Span;
+    let links = link_ranges(body);
+    if links.is_empty() {
+        return text(body.to_string()).size(size).color(color).into();
+    }
+    let mut spans: Vec<Span<'static, String>> = Vec::new();
+    let mut at = 0;
+    for range in links {
+        if range.start > at {
+            spans.push(iced::widget::span(body[at..range.start].to_string()).color(color));
+        }
+        let url = body[range.clone()].to_string();
+        spans.push(iced::widget::span(url.clone()).color(pal.link).underline(true).link(url));
+        at = range.end;
+    }
+    if at < body.len() {
+        spans.push(iced::widget::span(body[at..].to_string()).color(color));
+    }
+    iced::widget::rich_text(spans).size(size).on_link_click(Message::OpenLink).into()
+}
+
 pub fn divider<'a>(color: Color) -> Element<'a, Message> {
     container(space()).width(Length::Fill).height(Length::Fixed(1.0)).style(move |_: &Theme| round(color, 0.0)).into()
 }
@@ -279,4 +327,22 @@ pub(super) fn decode_icon(b64: &str) -> Option<iced::widget::image::Handle> {
 /// The cursor for something that can be dragged.
 pub fn drag_cursor() -> mouse::Interaction {
     mouse::Interaction::ResizingHorizontally
+}
+
+#[cfg(test)]
+mod link_tests {
+    use super::link_ranges;
+
+    #[test]
+    fn finds_web_links_and_leaves_out_trailing_punctuation() {
+        let body = "see https://example.com/a, or (http://x.org/b). not a link: ftp://no ahttps://no";
+        let found: Vec<&str> = link_ranges(body).into_iter().map(|r| &body[r]).collect();
+        assert_eq!(found, vec!["https://example.com/a", "http://x.org/b"]);
+    }
+
+    #[test]
+    fn a_link_inside_another_is_not_found_twice() {
+        let body = "https://a.example/http://b.example";
+        assert_eq!(link_ranges(body).len(), 1);
+    }
 }

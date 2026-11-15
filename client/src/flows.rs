@@ -542,7 +542,7 @@ fn a_member_card_loads_for_the_member_clicked() {
 fn bio_is_limited_to_190_characters() {
     let mut app = app();
     let _ = app.update(Message::UserSectionPick(crate::app::UserSection::Profile));
-    let _ = app.update(Message::AboutInput("a".repeat(300)));
+    let _ = app.update(Message::BioEdit(iced::widget::text_editor::Action::Edit(iced::widget::text_editor::Edit::Paste(std::sync::Arc::new("a".repeat(300))))));
     assert_eq!(app.account.about_bio.chars().count(), 190);
 }
 
