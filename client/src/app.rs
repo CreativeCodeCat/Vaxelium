@@ -291,6 +291,10 @@ pub struct App {
     pub cursor: Point,
     /// The window's size, kept up to date so menus can be kept on screen.
     pub window_size: iced::Size,
+    /// The message typed in a member's card, carried into the conversation when it opens.
+    pub card_message: String,
+    /// A message sent from a member's card, waiting for its conversation to open before it is sent.
+    pub pending_card_send: Option<String>,
 
     pub user: Option<String>,
     pub user_id: String,
@@ -563,6 +567,12 @@ pub enum Message {
     CardOpen { id: String, name: String },
     /// Opens a profile card above the user bar (your own name there).
     CardOpenAbove { id: String, name: String },
+    /// Typing in the message box on a member's card.
+    CardMessageInput(String),
+    /// Pressing Enter in the message box: opens the conversation with the text ready to send.
+    CardMessageSend,
+    /// Reads a conversation again from its server, by the other person's account id.
+    RefreshConversation(String),
     CardLoaded(String, Result<crate::backend::Card, CmdError>),
     CardClose,
     /// Start, change or cancel editing your own status text on your profile card.
@@ -668,6 +678,8 @@ impl App {
             window: None,
             cursor: Point::ORIGIN,
             window_size: crate::main_window_settings().size,
+            card_message: String::new(),
+            pending_card_send: None,
             user: None,
             user_id: String::new(),
             auth_down: false,
@@ -952,6 +964,20 @@ impl App {
                 self.server.channel = channel.name.clone();
                 self.members_view = false;
                 self.server.channel_id = channel.id;
+                // A message sent from a member's card goes out as soon as their conversation is open. Then the
+                // conversation is read again from the server it lives on, as opening it by hand does, so the
+                // new message shows. That read comes a moment later, so the message is stored first.
+                let mut after_send = Task::none();
+                if is_dm_channel(&channel.name) {
+                    if let Some(text) = self.pending_card_send.take() {
+                        let _ = self.backend.send_main(ClientMsg::Say { text });
+                        if let Some(person) = self.current_person() {
+                            after_send = Task::perform(offload(|| std::thread::sleep(Duration::from_millis(400))), move |_| {
+                                Message::RefreshConversation(person.clone())
+                            });
+                        }
+                    }
+                }
                 if !is_dm_channel(&channel.name) {
                     if let Some(addr) = self.main.addr.clone() {
                         self.prefs.last_channels.insert(addr, channel.name);
@@ -962,6 +988,7 @@ impl App {
                 return Task::batch([
                     operation::snap_to_end(MESSAGES_ID),
                     iced::widget::operation::focus(COMPOSER_ID),
+                    after_send,
                 ]);
             }
             ServerMsg::Message { message } => {

@@ -42,7 +42,7 @@ fn editor_style(pal: Pal) -> impl Fn(&Theme, text_editor::Status) -> text_editor
     }
 }
 
-fn input_style(pal: Pal) -> impl Fn(&Theme, text_input::Status) -> text_input::Style {
+pub fn input_style(pal: Pal) -> impl Fn(&Theme, text_input::Status) -> text_input::Style {
     move |_: &Theme, _| text_input::Style {
         background: Background::Color(pal.input_bg),
         border: border::rounded(6.0),
