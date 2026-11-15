@@ -650,6 +650,23 @@ fn filters_panel<'a>(items: Vec<Element<'a, Message>>, pal: Pal) -> Element<'a, 
 // ----- center: messages and composer -----
 
 fn center<'a>(app: &'a App, pal: Pal, search: &Search) -> Element<'a, Message> {
+    // No channel is open: the member can see none, so say so instead of a channel that is not there.
+    // Only once the channel list has loaded, so it does not show while the server is still answering.
+    if app.main.joined_initial && app.server.channel.is_empty() && app.current_person().is_none() {
+        return container(
+            column![
+                text("You can't see any channels on this server.").size(20).color(pal.text_strong),
+                muted_text("Ask an admin to give you access to a channel.", 14.0, pal.text_muted),
+            ]
+            .spacing(6)
+            .align_x(iced::alignment::Horizontal::Center),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(iced::alignment::Horizontal::Center)
+        .align_y(iced::alignment::Vertical::Center)
+        .into();
+    }
     let entries = app.current_entries();
     column![
         messages(app, pal, entries, search),
@@ -1056,19 +1073,16 @@ fn typing_line(app: &App) -> Option<String> {
 }
 
 fn composer(app: &App, pal: Pal) -> Element<'_, Message> {
-    if !app.may_send_here() {
-        return container(text("You can't send messages in this channel").size(14).color(pal.text_muted))
-            .padding(crate::util::pad(0.0, 16.0, 20.0, 16.0))
-            .width(Length::Fill)
-            .into();
-    }
+    // Where the member may not send, the box stays but is disabled and says why.
+    let can_send = app.may_send_here();
     let label = if app.current_person().is_some() || is_dm_channel(&app.server.channel) {
         app.channel_label()
     } else {
         format!("#{}", app.server.channel)
     };
-    let placeholder = format!("Message {label}");
-    let field = row![
+    let placeholder = if can_send { format!("Message {label}") } else { "You do not have permission to send messages in this channel.".to_string() };
+    // Where the member may not send, the message is plain text: a text field would set its own pointer.
+    let input: Element<'_, Message> = if can_send {
         text_input(&placeholder, &app.input)
             .id(COMPOSER_ID)
             .on_input(Message::InputChanged)
@@ -1083,25 +1097,44 @@ fn composer(app: &App, pal: Pal) -> Element<'_, Message> {
                 value: pal.text,
                 selection: pal.accent,
             })
-            .width(Length::Fill),
-        icons::icon(icons::GIFT, 18.0, pal.text_muted),
-        icons::icon(icons::APPS, 18.0, pal.text_muted),
-        icons::icon(icons::STICKER, 18.0, pal.text_muted),
-        icons::icon(icons::EMOJI, 18.0, pal.text_muted),
-    ]
-    .spacing(8)
-    .align_y(iced::alignment::Vertical::Center);
+            .width(Length::Fill)
+            .into()
+    } else {
+        container(text(placeholder.clone()).size(15).color(pal.text_muted))
+            .padding(10)
+            .width(Length::Fill)
+            .into()
+    };
+    // The gift, apps, sticker and emoji icons are only for members who can send.
+    let mut field = row![input].spacing(8).align_y(iced::alignment::Vertical::Center);
+    if can_send {
+        field = field
+            .push(icons::icon(icons::GIFT, 18.0, pal.text_muted))
+            .push(icons::icon(icons::APPS, 18.0, pal.text_muted))
+            .push(icons::icon(icons::STICKER, 18.0, pal.text_muted))
+            .push(icons::icon(icons::EMOJI, 18.0, pal.text_muted));
+    }
     let box_ = container(field)
         .padding(crate::util::pad2(0.0, 12.0))
         .width(Length::Fill)
         .style(move |_: &Theme| round(pal.input_bg, 8.0));
+    // Where the member may not send, the pointer shows that it is disabled.
+    let box_: Element<'_, Message> = if can_send {
+        box_.into()
+    } else {
+        mouse_area(box_).interaction(iced::mouse::Interaction::NotAllowed).into()
+    };
     let mut col = Column::new();
     // The @ menu opens above the message box while an @ word is being typed.
-    if let Some(menu) = mention_menu(app, pal) {
+    if let Some(menu) = if can_send { mention_menu(app, pal) } else { None } {
         col = col.push(container(menu).padding(crate::util::pad(0.0, 16.0, 6.0, 16.0)));
     }
     let mut col = col
-        .push(row![icons::icon(icons::PLUS, 18.0, pal.text_muted), box_].spacing(12).align_y(iced::alignment::Vertical::Center))
+        .push(if can_send {
+            row![icons::icon(icons::PLUS, 18.0, pal.text_muted), box_].spacing(12).align_y(iced::alignment::Vertical::Center)
+        } else {
+            row![box_].align_y(iced::alignment::Vertical::Center)
+        })
         .padding(crate::util::pad(0.0, 16.0, 20.0, 16.0));
     // Who is typing in this channel, while their notices are fresh.
     if let Some(line) = typing_line(app) {
@@ -1141,18 +1174,29 @@ fn members(app: &App, pal: Pal) -> Element<'_, Message> {
         };
         // The status text, when they have set one, under the name.
         let status_text = app.server.member_ids.get(name).and_then(|id| app.profiles.get(id)).map(|look| look.status.clone()).unwrap_or_default();
-        let mut names = Column::new().push(text(name.clone()).size(15).color(color));
+        // The crown, when this member owns the server, sits right after the name.
+        let mut name_line = row![text(name.clone()).size(15).color(color)].spacing(6).align_y(iced::alignment::Vertical::Center);
+        if owner.as_deref() == Some(name.as_str()) {
+            // The crown says who owns the server. Hovering it names the role.
+            let crown = svg(svg::Handle::from_path(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/assets/crown.svg"))).width(Length::Fixed(16.0)).height(Length::Fixed(12.0));
+            let bubble = container(text("Server Owner").size(12).color(pal.text_strong))
+                .padding(crate::util::pad2(4.0, 8.0))
+                .style(move |_: &Theme| container::Style {
+                    background: Some(Background::Color(pal.sidebar_bg)),
+                    border: border::rounded(6.0).color(pal.hover_bg).width(1.0),
+                    ..container::Style::default()
+                });
+            name_line = name_line.push(tooltip(crown, bubble, tooltip::Position::Top).gap(6));
+        }
+        let mut names = Column::new().push(name_line);
         if !status_text.is_empty() {
             // One line, cut short with an ellipsis when the member list is too narrow for it.
             let room = (app.panel_width("members") - 80.0).max(0.0);
             names = names.push(text(fit_name(&status_text, room, 12.0)).size(12).color(pal.text_muted).wrapping(iced::widget::text::Wrapping::None));
         }
-        let mut r = row![badge, names.width(Length::Fill)]
+        let r = row![badge, names.width(Length::Fill)]
             .spacing(8)
             .align_y(iced::alignment::Vertical::Center);
-        if owner.as_deref() == Some(name.as_str()) {
-            r = r.push(svg(svg::Handle::from_path(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/assets/crown.svg"))).width(Length::Fixed(12.0)).height(Length::Fixed(9.0)));
-        }
         // A left click opens the member's profile card; a right click opens the menu.
         let id = app.server.member_ids.get(name).cloned().unwrap_or_default();
         mouse_area(container(r).padding(crate::util::pad2(4.0, 8.0)).width(Length::Fill).style(move |_: &Theme| round(Color::TRANSPARENT, 4.0)))

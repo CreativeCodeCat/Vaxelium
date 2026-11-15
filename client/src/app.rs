@@ -1077,17 +1077,29 @@ impl App {
             }
             ServerMsg::Channels { channels } => {
                 self.server.channels = channels;
+                // A channel that is no longer visible to this member is closed. The best channel left is opened,
+                // or the member is told there is none.
+                // The open channel is checked by name too, since a channel restored from the last session has no id yet.
+                let open_name = self.server.channel.clone();
+                let open_visible = self.server.channels.iter().any(|c| c.name == open_name);
+                let open_server_channel = !open_name.is_empty() && !is_dm_channel(&open_name);
+                if open_server_channel && !open_visible {
+                    self.server.channel_id = 0;
+                    self.server.channel = String::new();
+                    self.main.joined_initial = false;
+                }
                 // Open a channel that exists: the last one used here, else general, else the first.
                 // Nothing is created: a channel is only made when it is asked for by name.
-                if !self.main.joined_initial && self.chat_ready() {
+                if (!self.main.joined_initial || (self.server.channel_id == 0 && !is_dm_channel(&self.server.channel))) && self.chat_ready() {
                     self.main.joined_initial = true;
                     let last = self.main.addr.as_ref().and_then(|a| self.prefs.last_channels.get(a).cloned());
                     let pick = last
                         .filter(|l| self.server.channels.iter().any(|c| &c.name == l))
                         .or_else(|| self.server.channels.iter().find(|c| c.name == "general").map(|c| c.name.clone()))
                         .or_else(|| self.server.channels.first().map(|c| c.name.clone()));
-                    if let Some(name) = pick {
-                        send_main(self, ClientMsg::Join { channel: name });
+                    match pick {
+                        Some(name) => send_main(self, ClientMsg::Join { channel: name }),
+                        None => self.status = "You can't see any channels on this server.".into(),
                     }
                 }
             }
