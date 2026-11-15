@@ -5,7 +5,7 @@ use iced::widget::{button, checkbox, column, container, mouse_area, row, scrolla
 use iced::{border, window, Background, Color, Element, Length, Padding, Theme};
 
 use super::chat::emoji;
-use super::pages::modal;
+use super::pages::{input_style, modal};
 use super::{link, solid};
 use crate::app::{App, Menu, MenuItem, Message, Picker};
 use crate::icons;
@@ -531,9 +531,9 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     let card = view.card.as_ref();
     let name = card.map_or(view.name.clone(), |c| c.name.clone());
     let banner = card.and_then(|c| crate::util::hex_color(&c.banner)).unwrap_or(pal.accent);
-    // Your own card is taller, with a larger picture under the banner.
+    // Every card has the same tall banner and large picture, so your card and other members' match.
     let own = view.id == app.user_id;
-    let banner_height = if own { 96.0 } else { 56.0 };
+    let banner_height = 96.0;
     // The banner follows the card's rounded top corners.
     let banner_block = container(space())
         .width(Length::Fill)
@@ -551,20 +551,24 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     // The status bubble. On your own card it can be edited, with the pencil and the trash, and it sits
     // under the name. On other members' cards it sits beside the avatar.
     let status = card.map(|c| c.status.clone()).unwrap_or_default();
-    let mut items: Vec<Element<'_, Message>> = vec![banner_block.into()];
-    let name_size = if own { 20.0 } else { 18.0 };
-    if own {
-        let big = container(super::avatar(&picture, &banner_hex, &name, 84.0, &pal)).padding(crate::util::pad(8.0, 0.0, 0.0, 14.0));
-        items.push(big.into());
-    } else {
-        let badge = container(super::avatar(&picture, &banner_hex, &name, 64.0, &pal)).padding(crate::util::pad(8.0, 0.0, 0.0, 14.0));
-        let badge_row: Element<'_, Message> = if !status.is_empty() {
-            row![badge, container(status_bubble(&status, pal)).padding(crate::util::pad(0.0, 8.0, 0.0, 0.0))].align_y(iced::alignment::Vertical::Center).into()
-        } else {
-            badge.into()
-        };
-        items.push(badge_row);
+    let mut items: Vec<Element<'_, Message>> = Vec::new();
+    let name_size = 20.0;
+    // The picture overlaps the bottom of the banner, in a ring of the card's colour, as on Discord. The
+    // base layer is as tall as the whole header, since an overlay is clipped to the base's height.
+    let picture_el = super::avatar(&picture, &banner_hex, &name, 88.0, &pal);
+    let ring = container(picture_el).padding(4).style(move |_: &Theme| container::Style {
+        background: Some(Background::Color(pal.sidebar_bg)),
+        border: border::rounded(48.0),
+        ..container::Style::default()
+    });
+    // Other members' status bubble sits beside the picture, at its bottom edge.
+    let mut overlay_row = row![ring].align_y(iced::alignment::Vertical::Bottom);
+    if !own && !status.is_empty() {
+        overlay_row = overlay_row.push(container(status_bubble(&status, pal)).padding(crate::util::pad(0.0, 0.0, 8.0, 10.0)));
     }
+    let base = column![banner_block, space().height(Length::Fixed(48.0))].width(Length::Fill);
+    let head = iced::widget::stack![base, container(overlay_row).padding(crate::util::pad(48.0, 0.0, 0.0, 14.0))];
+    items.push(container(head).width(Length::Fill).height(Length::Fixed(144.0)).into());
     items.push(container(text(name.clone()).size(name_size).color(pal.text_strong)).padding(crate::util::pad(12.0, 14.0, 0.0, 14.0)).into());
     if let Some(c) = card {
         items.push(container(text(format!("@{}", c.username)).size(13).color(pal.text_muted)).padding(crate::util::pad(0.0, 14.0, 12.0, 14.0)).into());
@@ -623,11 +627,19 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
                 .into(),
         );
     } else {
+        // A message box, as on Discord: pressing it opens a conversation with this member.
         items.push(super::divider(pal.selected_bg));
         items.push(
-            container(solid("Message", Message::MessageUser(name.clone()), pal.accent, pal.on_color, None))
-                .padding(crate::util::pad(8.0, 14.0, 12.0, 14.0))
-                .into(),
+            container(
+                text_input(&format!("Message @{name}"), &app.card_message)
+                    .on_input(Message::CardMessageInput)
+                    .on_submit(Message::CardMessageSend)
+                    .padding(10)
+                    .size(13)
+                    .style(input_style(pal)),
+            )
+            .padding(crate::util::pad(10.0, 14.0, 14.0, 14.0))
+            .into(),
         );
     }
 

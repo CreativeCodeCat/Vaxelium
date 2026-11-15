@@ -302,7 +302,15 @@ impl App {
                     return Task::none();
                 }
                 self.home = true;
-                let _ = self.backend.send_main(ClientMsg::OpenDm { name });
+                // An existing conversation opens straight away, so it loads without a click. Its messages
+                // are then sent as soon as it has loaded.
+                let existing = self.server.member_ids.get(&name).cloned().filter(|id| !self.person_targets(id).is_empty());
+                match existing {
+                    Some(id) => self.open_person(&id),
+                    None => {
+                        let _ = self.backend.send_main(ClientMsg::OpenDm { name });
+                    }
+                }
             }
             Message::IgnoreToggle(id) => {
                 self.menu = None;
@@ -592,6 +600,19 @@ impl App {
                 Err(e) => self.card_status_error = Some(e.message),
             },
             Message::CardOpen { id, name } => return self.open_card(id, name, self.cursor, false),
+            Message::CardMessageInput(text) => self.card_message = text,
+            Message::RefreshConversation(id) => {
+                self.fetch_person(&id);
+            }
+            Message::CardMessageSend => {
+                let text = std::mem::take(&mut self.card_message).trim().to_string();
+                let name = self.card.as_ref().map(|v| v.name.clone()).unwrap_or_default();
+                if text.is_empty() || name.is_empty() {
+                    return Task::none();
+                }
+                self.pending_card_send = Some(text);
+                return Task::done(Message::MessageUser(name));
+            }
             Message::CardOpenAbove { id, name } => {
                 // The top edge of the user bar, at the cursor's column, so the card sits just above it.
                 let at = iced::Point::new(self.cursor.x, self.window_size.height - crate::view::USER_BAR_HEIGHT);
@@ -976,6 +997,7 @@ impl App {
     /// Starts the bio editor from the bio being edited.
     /// Opens a profile card at a point and asks for the card's details.
     fn open_card(&mut self, id: String, name: String, at: iced::Point, above: bool) -> Task<Message> {
+        self.card_message.clear();
         self.card = Some(crate::app::CardView { id: id.clone(), name, at, loading: true, card: None, error: None, above });
         let backend = self.backend.clone();
         Task::perform(offload(move || {
