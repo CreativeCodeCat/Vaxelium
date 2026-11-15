@@ -609,7 +609,7 @@ pub fn modal<'a>(items: Vec<Element<'a, Message>>, pal: Pal, close: Message) -> 
 /// who may manage roles sees Roles only.
 pub fn server_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     let name = app.selected_name().unwrap_or_else(|| "Server".into());
-    let section = if app.is_owner() { app.server_section } else { ServerSection::Roles };
+    let section = app.shown_server_section();
     let (content, dirty): (Element<'_, Message>, bool) = match section {
         ServerSection::Profile => {
             let (items, dirty) = profile_items(app, pal);
@@ -749,6 +749,86 @@ pub(crate) fn role_changed(app: &App, draft: &RoleDraft) -> bool {
         // A new role is made with its own Create button, so it has no bar.
         None => false,
     }
+}
+
+/// The members section: every member with their status and roles, read-only.
+pub(crate) fn members_section(app: &App, pal: Pal) -> Element<'_, Message> {
+    let members: Vec<(&String, bool)> = app.server.online.iter().map(|n| (n, true)).chain(app.server.offline.iter().map(|n| (n, false))).collect();
+    let count = members.len();
+    let head = |label: &str, width: Length| text(label.to_string()).size(12).color(pal.text_muted).width(width);
+    let mut table: Vec<Element<'_, Message>> = vec![
+        row![
+            head("MEMBER", Length::FillPortion(MEMBER_PORTION)),
+            head("STATUS", Length::Fixed(STATUS_W)),
+            head("CREATED", Length::Fixed(DATE_W)),
+            head("JOINED", Length::Fixed(DATE_W)),
+            head("ROLES", Length::FillPortion(ROLES_PORTION)),
+        ]
+        .spacing(COLUMN_GAP)
+        .padding(crate::util::pad2(8.0, 14.0))
+        .into(),
+        divider(pal.hover_bg),
+    ];
+    for (name, online) in members {
+        table.push(member_row(app, name, online, pal));
+    }
+    let card = container(Column::with_children(table).width(Length::Fill)).style(move |_: &Theme| round(pal.sidebar_bg, 8.0));
+    let footer = text(format!("Showing {count} {}", if count == 1 { "member" } else { "members" })).size(13).color(pal.text_muted);
+    scrollable(
+        column![card, footer]
+            .spacing(14)
+            .padding(crate::util::pad2(24.0, 40.0))
+            .width(Length::Fill),
+    )
+    .height(Length::Fill)
+    .into()
+}
+
+// The members table columns. The name and the roles share the width that is left; the status and
+// the two dates have fixed widths, so their columns line up from row to row.
+const MEMBER_PORTION: u16 = 3;
+const ROLES_PORTION: u16 = 4;
+const STATUS_W: f32 = 96.0;
+const DATE_W: f32 = 160.0;
+const COLUMN_GAP: f32 = 12.0;
+
+/// One row of the members table: avatar and name, status, the two dates, then up to three of their roles.
+fn member_row<'a>(app: &App, name: &String, online: bool, pal: Pal) -> Element<'a, Message> {
+    let id = app.server.member_ids.get(name).cloned().unwrap_or_default();
+    let (picture, banner) = app.member_id_look(name);
+    let color = app.member_color(&id).unwrap_or(pal.text);
+    let held: &[i64] = app.server.member_roles.get(&id).map(|v| v.as_slice()).unwrap_or(&[]);
+    let roles: Vec<&RoleInfo> = app.server.roles.iter().filter(|r| r.id != EVERYONE_ROLE && held.contains(&r.id)).collect();
+    let who = row![super::avatar(picture, banner, name, 28.0, &pal), text(name.clone()).size(14).color(color)]
+        .spacing(10)
+        .align_y(iced::alignment::Vertical::Center)
+        .width(Length::FillPortion(MEMBER_PORTION));
+    let status = text(if online { "Online" } else { "Offline" })
+        .size(13)
+        .color(if online { pal.green } else { pal.text_muted })
+        .width(Length::Fixed(STATUS_W));
+    let created_at = app.profiles.get(&id).map(|p| p.created).unwrap_or(0);
+    let created = text(crate::util::joined_label(created_at)).size(13).color(pal.text_muted).width(Length::Fixed(DATE_W));
+    let joined_here = app.server.member_joined.get(&id).copied().unwrap_or(0);
+    let joined = text(crate::util::joined_label(joined_here)).size(13).color(pal.text_muted).width(Length::Fixed(DATE_W));
+    let mut chips = row![].spacing(6).align_y(iced::alignment::Vertical::Center).width(Length::FillPortion(ROLES_PORTION));
+    for role in roles.iter().take(3) {
+        let swatch = crate::util::hex_color(&role.color).unwrap_or(pal.text_muted);
+        let dot = container(space().width(Length::Fixed(8.0)).height(Length::Fixed(8.0))).style(move |_: &Theme| round(swatch, 4.0));
+        let chip = row![dot, text(role.name.clone()).size(12).color(pal.text)]
+            .spacing(6)
+            .align_y(iced::alignment::Vertical::Center);
+        chips = chips.push(container(chip).padding(crate::util::pad2(2.0, 8.0)).style(move |_: &Theme| round(pal.hover_bg, 10.0)));
+    }
+    if roles.len() > 3 {
+        chips = chips.push(text(format!("+{}", roles.len() - 3)).size(12).color(pal.text_muted));
+    }
+    row![who, status, created, joined, chips]
+        .spacing(COLUMN_GAP)
+        .padding(crate::util::pad2(8.0, 14.0))
+        .align_y(iced::alignment::Vertical::Center)
+        .width(Length::Fill)
+        .into()
 }
 
 /// The roles section. Also says whether the open role has changes that are not saved.

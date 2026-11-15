@@ -56,6 +56,8 @@ pub struct ServerView {
     pub roles: Vec<common::RoleInfo>,
     /// Each member's role ids, by account id.
     pub member_roles: HashMap<String, Vec<i64>>,
+    /// When each member first joined this server, by account id, in Unix seconds (0 when unknown).
+    pub member_joined: HashMap<String, u64>,
 }
 
 /// A background connection to another server, for its direct messages.

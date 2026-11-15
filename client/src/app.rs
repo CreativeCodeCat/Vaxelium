@@ -157,6 +157,8 @@ pub struct Account {
 pub struct ProfileLook {
     pub avatar: String,
     pub banner: String,
+    /// When the account was created, in Unix seconds (0 when unknown).
+    pub created: u64,
 }
 
 /// The profile card open over the member list. `card` is None while it loads or when it cannot be
@@ -321,6 +323,8 @@ pub struct App {
     pub roles_menu_open: bool,
     pub new_category: String,
     pub members_hidden: bool,
+    /// The main area shows the server's members in place of the channel.
+    pub members_view: bool,
     /// Categories whose channels are folded away, by category id.
     pub collapsed_categories: HashSet<i64>,
     pub menu: Option<Menu>,
@@ -422,6 +426,7 @@ pub enum Message {
     CreateChannel,
     ToggleCategory(i64),
     ToggleMembers,
+    MembersView(bool),
     MarkRead(i64),
     CopyText(String),
     SearchChanged(String),
@@ -624,6 +629,7 @@ impl App {
             roles_menu_open: false,
             new_category: String::new(),
             members_hidden: false,
+            members_view: false,
             collapsed_categories: HashSet::new(),
             menu: None,
             card: None,
@@ -663,6 +669,7 @@ impl App {
 
     /// Clears the view of the open server, keeping the list of servers.
     pub(crate) fn reset_server_view(&mut self, addr: Option<String>) {
+        self.members_view = false;
         let server = addr.as_ref().and_then(|a| self.prefs.servers.iter().find(|s| s.addr == *a)).cloned();
         let channel = addr
             .as_ref()
@@ -692,7 +699,9 @@ impl App {
     }
 
     /// Switches to a channel by its id, unless it is already open.
-    pub(crate) fn join_id(&self, id: i64) {
+    pub(crate) fn join_id(&mut self, id: i64) {
+        // Opening a channel leaves the members view.
+        self.members_view = false;
         if id != self.server.channel_id {
             send_main(self, ClientMsg::JoinChannel { id });
         }
@@ -735,6 +744,7 @@ impl App {
 
     pub(crate) fn select_server(&mut self, index: usize) -> Task<Message> {
         self.home = false;
+        self.members_view = false;
         self.page = Page::None;
         if index >= self.prefs.servers.len() {
             return Task::none();
@@ -847,6 +857,7 @@ impl App {
                 self.pinged.remove(&channel.id);
                 self.messages.insert(channel.id, history.into_iter().map(Entry::Chat).collect());
                 self.server.channel = channel.name.clone();
+                self.members_view = false;
                 self.server.channel_id = channel.id;
                 if !is_dm_channel(&channel.name) {
                     if let Some(addr) = self.main.addr.clone() {
@@ -955,6 +966,7 @@ impl App {
                 self.server.online = users.iter().filter(|u| u.online).map(|u| u.name.clone()).collect();
                 self.server.offline = users.iter().filter(|u| !u.online).map(|u| u.name.clone()).collect();
                 self.server.member_roles = users.iter().map(|u| (u.id.clone(), u.roles.clone())).collect();
+                self.server.member_joined = users.iter().map(|u| (u.id.clone(), u.joined)).collect();
                 self.server.owner = owner.as_ref().map(|o| o.name.clone());
                 self.server.owner_id = owner.map(|o| o.id);
                 if self.remember_protected() {
@@ -1172,6 +1184,7 @@ impl App {
         };
         self.pending_dm = Some((addr.to_string(), channel.to_string()));
         self.home = false;
+        self.members_view = false;
         self.selected = Some(index);
         self.remember_session();
         self.save_prefs();
@@ -1247,6 +1260,7 @@ impl App {
         self.reset_server_view(None);
         self.selected = None;
         self.home = false;
+        self.members_view = false;
         self.page = Page::None;
         self.login.password.clear();
         self.account = Account::default();
@@ -1648,6 +1662,16 @@ impl App {
         self.unsaved_flash.is_some_and(|t| t.elapsed() < UNSAVED_FLASH)
     }
 
+    /// The server settings section on screen. Only the owner may open the Server Profile, so anyone
+    /// else who opens the page sees Roles instead.
+    pub fn shown_server_section(&self) -> ServerSection {
+        if !self.is_owner() && self.server_section == ServerSection::Profile {
+            ServerSection::Roles
+        } else {
+            self.server_section
+        }
+    }
+
     /// True when the settings page on screen has changes that are not saved yet.
     pub fn settings_unsaved(&self) -> bool {
         match self.page {
@@ -1662,8 +1686,7 @@ impl App {
                 }
             },
             Page::Server => {
-                let section = if self.is_owner() { self.server_section } else { ServerSection::Roles };
-                match section {
+                match self.shown_server_section() {
                     ServerSection::Profile => crate::view::pages::server_profile_dirty(self),
                     ServerSection::Roles => self.role_form.as_ref().is_some_and(|d| crate::view::pages::role_changed(self, d)),
                 }

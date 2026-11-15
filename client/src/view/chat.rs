@@ -152,8 +152,26 @@ pub fn channel(app: &App, pal: Pal) -> Element<'_, Message> {
     row![sidebar(app, pal), splitter("channels", false), chat_main].height(Length::Fill).into()
 }
 
+/// The members of the server in the main area, in place of a channel. The sidebar stays as it is.
+pub fn members_page(app: &App, pal: Pal) -> Element<'_, Message> {
+    let title = container(
+        row![icons::icon(icons::MEMBERS, 16.0, pal.text_muted), text("Members").size(16).color(pal.text_strong)]
+            .spacing(8)
+            .align_y(iced::alignment::Vertical::Center),
+    )
+    .width(Length::Fill)
+    .height(Length::Fixed(48.0))
+    .padding(crate::util::pad2(0.0, 16.0))
+    .align_y(iced::alignment::Vertical::Center)
+    .style(move |_: &Theme| round(pal.app_bg, 0.0));
+    let chat_main = column![title, super::pages::members_section(app, pal)].width(Length::Fill).height(Length::Fill);
+    row![sidebar(app, pal), splitter("channels", false), chat_main].height(Length::Fill).into()
+}
+
 fn sidebar(app: &App, pal: Pal) -> Element<'_, Message> {
     let mut list: Vec<Element<'_, Message>> = Vec::new();
+    // A heading above every channel, in the same style as the category headings.
+    list.push(container(text("CHANNELS").size(12).color(pal.text_muted)).padding(crate::util::pad2(0.0, 4.0)).into());
     // While a channel is dragged, the zone above the channels takes it out of its category.
     let dragging_channel = matches!(app.dnd.as_ref().map(|d| (d.moved, d.item)), Some((true, crate::app::DragItem::Channel(_))));
     let zone_over = app.dnd.as_ref().and_then(|d| d.over) == Some(crate::app::DropTarget::Uncategorized);
@@ -279,9 +297,34 @@ fn sidebar(app: &App, pal: Pal) -> Element<'_, Message> {
         .style(move |_: &Theme| round(pal.sidebar_bg, 0.0)),
     )
     .on_press(Message::OpenMenu(crate::app::MenuKind::Server));
+    // Members sits above the channels and opens the member list in place of the chat.
+    let members_selected = app.members_view;
+    let members_color = if members_selected { pal.text_strong } else { pal.text_muted };
+    let members_nav = container(
+        button(
+            row![icons::icon(icons::MEMBERS, 16.0, members_color), text("Members").size(15).color(members_color)]
+                .spacing(10)
+                .align_y(iced::alignment::Vertical::Center),
+        )
+        .width(Length::Fill)
+        .padding(crate::util::pad2(6.0, 10.0))
+        .on_press(Message::MembersView(true))
+        .style(move |_: &Theme, status: button::Status| {
+            let bg = if members_selected {
+                pal.selected_bg
+            } else if matches!(status, button::Status::Hovered) {
+                pal.hover_bg
+            } else {
+                Color::TRANSPARENT
+            };
+            button::Style { background: Some(Background::Color(bg)), text_color: members_color, border: border::rounded(4.0), ..button::Style::default() }
+        }),
+    )
+    .padding(crate::util::pad2(8.0, 8.0));
     panel(
         column![
             header_btn,
+            members_nav,
             container(Column::with_children(list).spacing(1)).padding(crate::util::pad2(12.0, 8.0)).height(Length::Fill),
             user_bar(app, pal),
         ]

@@ -36,6 +36,14 @@ pub fn now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
+/// A join date such as "3 March 2024", or "Unknown" when the account's creation time is not known.
+pub fn joined_label(ts: u64) -> String {
+    if ts == 0 {
+        return "Unknown".into();
+    }
+    local(ts).format("%-d %B %Y").to_string()
+}
+
 /// The local time for a Unix timestamp in seconds.
 fn local(ts: u64) -> DateTime<Local> {
     Local.timestamp_opt(ts as i64, 0).earliest().unwrap_or_else(|| Local.timestamp_opt(0, 0).unwrap())
