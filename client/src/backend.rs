@@ -229,6 +229,15 @@ impl Backend {
         link.conn.outgoing.send(msg).map_err(|_| CmdError::new("Not connected to a server."))
     }
 
+    /// Sets this account's status on every server it is connected to.
+    pub fn set_status_everywhere(&self, status: common::PresenceStatus) {
+        let inner = self.lock();
+        let links = inner.main.iter().chain(inner.dm.values());
+        for link in links {
+            let _ = link.conn.outgoing.send(ClientMsg::SetStatus { status });
+        }
+    }
+
     pub fn send_dm(&self, addr: &str, msg: ClientMsg) -> Result<(), CmdError> {
         let inner = self.lock();
         let link = inner

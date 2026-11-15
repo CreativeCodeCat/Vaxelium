@@ -17,6 +17,19 @@ use crate::search::Search;
 use crate::theme;
 
 pub const DM_TICK: Duration = Duration::from_secs(5);
+/// How long without any input before Online changes to Idle.
+pub const IDLE_AFTER: Duration = Duration::from_secs(5 * 60);
+
+/// Whether automatic Idle changes now: `Some(true)` to go Idle after `IDLE_AFTER` without input, and
+/// `Some(false)` to come back to Online as soon as there is input. Going Idle needs `enabled`; coming
+/// back always happens, so no server is left Idle.
+pub fn auto_idle_change(enabled: bool, idle_for: Duration, currently_idle: bool) -> Option<bool> {
+    if currently_idle {
+        (idle_for < IDLE_AFTER).then_some(false)
+    } else {
+        (enabled && idle_for >= IDLE_AFTER).then_some(true)
+    }
+}
 /// How often the app checks whether the auth service is back while the offline banner shows.
 pub const AUTH_PROBE: Duration = Duration::from_secs(10);
 /// How long the save bar stays red after a close was refused, and how often it is redrawn meanwhile.
@@ -322,6 +335,16 @@ pub struct App {
     pub editing: Option<(i64, String)>,
     pub pending_delete: Option<i64>,
     pub input: String,
+    /// When the last input happened (mouse or keyboard), for automatic Idle.
+    pub last_active: std::time::Instant,
+    /// Whether the status follows input (Online, then Idle when away). Choosing a status other than
+    /// Online turns this off until Online is chosen again.
+    pub auto_status: bool,
+    /// Automatic Idle is in effect on every connected server.
+    pub auto_idle: bool,
+    /// The status you chose, which follows your account on every server. Idle is shown on top of it
+    /// while you are away (see `effective_status`).
+    pub account_status: common::PresenceStatus,
     /// When this member last sent a typing notice, so they are not sent for every key.
     pub last_typing_sent: Option<std::time::Instant>,
     pub new_channel: String,
@@ -531,6 +554,8 @@ pub enum Message {
     CardOpen { id: String, name: String },
     CardLoaded(String, Result<crate::backend::Card, CmdError>),
     CardClose,
+    /// Input happened, so automatic Idle is checked again.
+    Activity,
     /// Sets how you appear to others on this server.
     SetStatus(common::PresenceStatus),
     /// A web link was clicked. Only http and https links are opened.
@@ -655,6 +680,10 @@ impl App {
             editing: None,
             pending_delete: None,
             input: String::new(),
+            last_active: std::time::Instant::now(),
+            auto_status: true,
+            auto_idle: false,
+            account_status: common::PresenceStatus::Online,
             last_typing_sent: None,
             new_channel: String::new(),
             create_open: false,
@@ -873,6 +902,7 @@ impl App {
                 self.save_prefs();
                 self.status = format!("Connected as {name}");
                 send_main(self, ClientMsg::ListChannels);
+                send_main(self, ClientMsg::SetStatus { status: self.effective_status() });
                 // A direct message asked for before connecting is opened instead of the first channel.
                 if let Some((addr, channel)) = self.pending_dm.take() {
                     if self.main.addr.as_deref() == Some(addr.as_str()) {
@@ -1167,11 +1197,15 @@ impl App {
     }
 
     pub(crate) fn handle_dm(&mut self, addr: &str, msg: ServerMsg) {
+        let status = self.effective_status();
         let Some(link) = self.dm_links.get_mut(addr) else {
             return;
         };
         match msg {
-            ServerMsg::Welcome { server_name, .. } => link.server_name = server_name,
+            ServerMsg::Welcome { server_name, .. } => {
+                link.server_name = server_name;
+                let _ = self.backend.send_dm(addr, ClientMsg::SetStatus { status });
+            }
             ServerMsg::DirectMessages { list } => link.dms = list,
             ServerMsg::DmHistory { channel, messages } => {
                 link.history.insert(channel, messages);
@@ -1458,6 +1492,15 @@ impl App {
         items
     }
 
+    /// The status sent to every server: the chosen one, or Idle while automatic Idle is in effect.
+    pub fn effective_status(&self) -> common::PresenceStatus {
+        if self.auto_idle && self.account_status == common::PresenceStatus::Online {
+            common::PresenceStatus::Idle
+        } else {
+            self.account_status
+        }
+    }
+
     pub(crate) fn status_menu_items(&self) -> Vec<MenuItem> {
         use common::PresenceStatus::*;
         [(Online, "Online"), (Idle, "Idle"), (DoNotDisturb, "Do not disturb"), (Invisible, "Invisible")]
@@ -1501,6 +1544,12 @@ impl App {
             Message::Event(event) => self.on_event(event),
             Message::Tick => {
                 self.dm_tick();
+                self.apply_auto_status();
+                Task::none()
+            }
+            Message::Activity => {
+                self.last_active = std::time::Instant::now();
+                self.apply_auto_status();
                 Task::none()
             }
             Message::WindowOpened(id) => {
@@ -1509,6 +1558,7 @@ impl App {
             }
             Message::CursorMoved(p) => {
                 self.cursor = p;
+                self.last_active = std::time::Instant::now();
                 if let Some(dnd) = self.dnd.as_mut() {
                     if (p.x - dnd.start.x).abs() > 4.0 || (p.y - dnd.start.y).abs() > 4.0 {
                         dnd.moved = true;
@@ -1699,6 +1749,7 @@ impl App {
                     key: keyboard::Key::Named(keyboard::key::Named::Escape),
                     ..
                 }) => Some(Message::Escape),
+                iced::Event::Keyboard(keyboard::Event::KeyPressed { .. }) => Some(Message::Activity),
                 _ => None,
             }),
         ];
@@ -1764,5 +1815,25 @@ impl App {
             }
             _ => false,
         }
+    }
+}
+
+#[cfg(test)]
+mod auto_status_tests {
+    use super::{auto_idle_change, IDLE_AFTER};
+    use std::time::Duration;
+
+    #[test]
+    fn going_idle_waits_for_the_limit_and_coming_back_is_immediate() {
+        assert_eq!(auto_idle_change(true, Duration::from_secs(1), false), None);
+        assert_eq!(auto_idle_change(true, IDLE_AFTER, false), Some(true));
+        assert_eq!(auto_idle_change(true, Duration::from_secs(1), true), Some(false));
+        assert_eq!(auto_idle_change(true, IDLE_AFTER, true), None);
+    }
+
+    #[test]
+    fn a_chosen_status_stops_going_idle_but_not_coming_back() {
+        assert_eq!(auto_idle_change(false, IDLE_AFTER * 2, false), None);
+        assert_eq!(auto_idle_change(false, Duration::ZERO, true), Some(false));
     }
 }

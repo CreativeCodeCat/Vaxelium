@@ -345,6 +345,11 @@ impl App {
             }
             Message::SetStatus(status) => {
                 self.menu = None;
+                // Online goes back to following input. Any other choice is kept by hand.
+                self.account_status = status;
+                self.auto_status = status == common::PresenceStatus::Online;
+                self.auto_idle = false;
+                self.backend.set_status_everywhere(self.effective_status());
                 let _ = self.backend.send_main(ClientMsg::SetStatus { status });
             }
             Message::MentionPick(name) => {
@@ -911,6 +916,19 @@ impl App {
             self.page = Page::None;
         }
         Task::none()
+    }
+
+    /// Changes between Online and Idle with input, while the status follows input.
+    pub(crate) fn apply_auto_status(&mut self) {
+        if !self.is_logged_in() {
+            return;
+        }
+        let Some(idle) = crate::app::auto_idle_change(self.auto_status, self.last_active.elapsed(), self.auto_idle) else {
+            return;
+        };
+        self.auto_idle = idle;
+        // Every server the app is connected to, not only the open one.
+        self.backend.set_status_everywhere(self.effective_status());
     }
 
     /// Starts the bio editor from the bio being edited.

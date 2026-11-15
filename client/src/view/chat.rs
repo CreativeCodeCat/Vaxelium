@@ -375,7 +375,7 @@ fn category_of(app: &App, channel: i64) -> Option<i64> {
 
 fn user_bar(app: &App, pal: Pal) -> Element<'_, Message> {
     let user = app.user.clone().unwrap_or_default();
-    let own_status = app.server.member_status.get(&app.user_id).copied().unwrap_or_default();
+    let own_status = app.effective_status();
     let who = column![
         text(user.clone()).size(14).color(pal.text_strong),
         // Your own status. Click it to change it.
