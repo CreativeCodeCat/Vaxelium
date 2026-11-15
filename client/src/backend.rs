@@ -234,6 +234,15 @@ impl Backend {
     }
 
     /// Sets this account's status on every server it is connected to.
+    /// Tells every server this client is connected to the status text, so everyone connected sees it.
+    pub fn set_profile_status_everywhere(&self, text: &str) {
+        let inner = self.lock();
+        let links = inner.main.iter().chain(inner.dm.values());
+        for link in links {
+            let _ = link.conn.outgoing.send(ClientMsg::SetProfileStatus { text: text.to_string() });
+        }
+    }
+
     pub fn set_status_everywhere(&self, status: common::PresenceStatus) {
         let inner = self.lock();
         let links = inner.main.iter().chain(inner.dm.values());

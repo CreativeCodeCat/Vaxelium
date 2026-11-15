@@ -596,8 +596,6 @@ pub enum Message {
     BadgeDelete(i64),
     /// Gives a member a badge, or takes it away (from a member's card, by an admin).
     SetMemberBadge { user: String, badge: i64, on: bool },
-    /// Reads a conversation again from its server, by the other person's account id.
-    RefreshConversation(String),
     CardLoaded(String, Result<crate::backend::Card, CmdError>),
     CardClose,
     /// Start, change or cancel editing your own status text on your profile card.
@@ -1002,18 +1000,10 @@ impl App {
                 self.server.channel = channel.name.clone();
                 self.members_view = false;
                 self.server.channel_id = channel.id;
-                // A message sent from a member's card goes out as soon as their conversation is open. Then the
-                // conversation is read again from the server it lives on, as opening it by hand does, so the
-                // new message shows. That read comes a moment later, so the message is stored first.
-                let mut after_send = Task::none();
+                // A message sent from a member's card goes out as soon as their conversation is open.
                 if is_dm_channel(&channel.name) {
                     if let Some(text) = self.pending_card_send.take() {
                         let _ = self.backend.send_main(ClientMsg::Say { text });
-                        if let Some(person) = self.current_person() {
-                            after_send = Task::perform(offload(|| std::thread::sleep(Duration::from_millis(400))), move |_| {
-                                Message::RefreshConversation(person.clone())
-                            });
-                        }
                     }
                 }
                 if !is_dm_channel(&channel.name) {
@@ -1026,14 +1016,21 @@ impl App {
                 return Task::batch([
                     operation::snap_to_end(MESSAGES_ID),
                     iced::widget::operation::focus(COMPOSER_ID),
-                    after_send,
                 ]);
             }
             ServerMsg::Message { message } => {
+                // A direct message is shown from each server's stored copy, so when a new one arrives in the open
+                // conversation, that copy is read again. This is what makes a sent message appear straight away.
+                let in_open_dm = message.channel_id == self.server.channel_id && is_dm_channel(&self.server.channel);
                 if message.channel_id != self.server.channel_id && self.pings_me(&message.text) {
                     self.pinged.insert(message.channel_id);
                 }
                 self.messages.entry(message.channel_id).or_default().push(Entry::Chat(message));
+                if in_open_dm {
+                    if let Some(person) = self.current_person() {
+                        self.fetch_person(&person);
+                    }
+                }
             }
             ServerMsg::Reactions { channel_id, id, reactions } => {
                 self.set_reactions(channel_id, id, reactions);
@@ -1131,6 +1128,11 @@ impl App {
                 self.server.owner_id = owner.map(|o| o.id);
                 if self.remember_protected() {
                     self.save_prefs();
+                }
+            }
+            ServerMsg::ProfileStatus { user, text } => {
+                if let Some(look) = self.profiles.get_mut(&user) {
+                    look.status = text;
                 }
             }
             ServerMsg::Typing { channel_id, user, name } => {
@@ -1297,6 +1299,11 @@ impl App {
             ServerMsg::Welcome { server_name, .. } => {
                 link.server_name = server_name;
                 let _ = self.backend.send_dm(addr, ClientMsg::SetStatus { status });
+            }
+            ServerMsg::ProfileStatus { user, text } => {
+                if let Some(look) = self.profiles.get_mut(&user) {
+                    look.status = text;
+                }
             }
             ServerMsg::DirectMessages { list } => link.dms = list,
             ServerMsg::DmHistory { channel, messages } => {

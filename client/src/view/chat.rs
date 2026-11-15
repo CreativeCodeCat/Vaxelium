@@ -1163,8 +1163,11 @@ fn members(app: &App, pal: Pal) -> Element<'_, Message> {
             }))
             .into()
     };
-    let online: Vec<&String> = server.online.iter().collect();
-    let offline: Vec<&String> = server.offline.iter().collect();
+    // Each group is listed alphabetically by name.
+    let mut online: Vec<&String> = server.online.iter().collect();
+    online.sort_by_key(|n| n.to_lowercase());
+    let mut offline: Vec<&String> = server.offline.iter().collect();
+    offline.sort_by_key(|n| n.to_lowercase());
     let head = |t: String| container(text(t).size(11).color(pal.text_muted)).padding(crate::util::pad(0.0, 12.0, 4.0, 12.0));
     let mut items: Vec<Element<'_, Message>> = Vec::new();
     // Roles set to display separately get their own group, under their highest such role, highest
