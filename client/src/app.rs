@@ -42,6 +42,14 @@ pub enum Page {
     Server,
 }
 
+/// The tabs of user settings.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum UserSection {
+    #[default]
+    Account,
+    Profile,
+}
+
 /// A section of the server settings page.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ServerSection {
@@ -127,6 +135,35 @@ pub struct Account {
     pub verify_code: String,
     pub verify_error: Option<String>,
     pub verify_busy: bool,
+    /// The bio and banner colour as saved, and the draft while they are being edited.
+    pub bio: String,
+    pub banner: String,
+    pub about_bio: String,
+    pub about_banner: String,
+    pub about_error: Option<String>,
+    pub about_busy: bool,
+    /// The profile picture as base64 PNG, or empty for none, and the last error saving one.
+    pub avatar: String,
+    pub avatar_error: Option<String>,
+}
+
+/// How a person looks in lists and messages: their picture (base64 PNG, or empty) and banner colour.
+#[derive(Debug, Clone, Default)]
+pub struct ProfileLook {
+    pub avatar: String,
+    pub banner: String,
+}
+
+/// The profile card open over the member list. `card` is None while it loads or when it cannot be
+/// fetched; the roles and the name are still shown.
+#[derive(Debug, Clone)]
+pub struct CardView {
+    pub id: String,
+    pub name: String,
+    pub at: iced::Point,
+    pub loading: bool,
+    pub card: Option<crate::backend::Card>,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -241,6 +278,8 @@ pub struct App {
     pub role_form: Option<RoleDraft>,
     /// The section of the server settings page that is showing.
     pub server_section: ServerSection,
+    /// The tab open in user settings.
+    pub user_section: UserSection,
     /// The tab open in the role editor.
     pub role_tab: RoleTab,
     /// The last refusal from the server about roles, shown on the roles page.
@@ -280,6 +319,11 @@ pub struct App {
     /// Categories whose channels are folded away, by category id.
     pub collapsed_categories: HashSet<i64>,
     pub menu: Option<Menu>,
+    pub card: Option<CardView>,
+    /// Profile pictures and banners of the people on the server, by account id, fetched from the
+    /// auth service. `profile_pending` holds the ids being fetched now.
+    pub profiles: HashMap<String, ProfileLook>,
+    pub profile_pending: HashSet<String>,
     pub picker: Option<Picker>,
     pub picker_query: String,
     /// A direct message to open once the server it is on has been joined.
@@ -425,6 +469,7 @@ pub enum Message {
     ServerSettingsClose,
     /// Switch the server settings page to another section.
     ServerSectionPick(ServerSection),
+    UserSectionPick(UserSection),
     /// Open the editor for a role, or for a new one with `None`.
     RoleEdit(Option<i64>),
     RoleEditCancel,
@@ -436,6 +481,22 @@ pub enum Message {
     RoleDraftColor(String),
     RoleDraftPerm(u32, bool),
     RoleDraftMentionable(bool),
+    /// Open a member's profile card, and close it.
+    CardOpen { id: String, name: String },
+    CardLoaded(String, Result<crate::backend::Card, CmdError>),
+    CardClose,
+    AboutInput(String),
+    AboutBanner(String),
+    AboutSave,
+    AboutDone(Result<(String, String), CmdError>),
+    /// Put the bio and banner drafts back to what is saved.
+    AboutReset,
+    /// Profile cards fetched for people whose pictures are not known yet.
+    ProfilesLoaded(Vec<(String, Option<crate::backend::Card>)>),
+    AvatarPick,
+    AvatarPicked(Result<Option<String>, CmdError>),
+    AvatarRemove,
+    AvatarDone(Result<String, CmdError>),
     /// A name picked from the @ menu under the message box. Roles and members both use their name.
     MentionPick(String),
     RoleDraftHoisted(bool),
@@ -524,6 +585,7 @@ impl App {
             server_form: ServerForm::default(),
             role_form: None,
             server_section: ServerSection::default(),
+            user_section: UserSection::default(),
             role_tab: RoleTab::default(),
             role_error: None,
             description_editor: iced::widget::text_editor::Content::new(),
@@ -550,6 +612,9 @@ impl App {
             members_hidden: false,
             collapsed_categories: HashSet::new(),
             menu: None,
+            card: None,
+            profiles: HashMap::new(),
+            profile_pending: HashSet::new(),
             picker: None,
             picker_query: String::new(),
             pending_dm: None,
@@ -905,7 +970,46 @@ impl App {
             }
             _ => {}
         }
-        Task::none()
+        self.fetch_profiles()
+    }
+
+    /// The picture and banner of a person, if they are known.
+    pub fn profile_look(&self, id: &str) -> (&str, &str) {
+        match self.profiles.get(id) {
+            Some(look) => (look.avatar.as_str(), look.banner.as_str()),
+            None => ("", ""),
+        }
+    }
+
+    /// Fetches the pictures of the people on this server and in its messages that are not known yet.
+    /// Nothing is fetched while the auth service is unreachable.
+    pub(crate) fn fetch_profiles(&mut self) -> Task<Message> {
+        if self.auth_down {
+            return Task::none();
+        }
+        let mut ids: Vec<String> = self.server.member_ids.values().cloned().collect();
+        for entries in self.messages.values() {
+            for entry in entries {
+                if let Entry::Chat(m) = entry {
+                    ids.push(m.author_id.clone());
+                }
+            }
+        }
+        ids.retain(|id| !id.is_empty() && !self.profiles.contains_key(id) && !self.profile_pending.contains(id));
+        ids.sort();
+        ids.dedup();
+        if ids.is_empty() {
+            return Task::none();
+        }
+        self.profile_pending.extend(ids.iter().cloned());
+        let backend = self.backend.clone();
+        Task::perform(
+            offload(move || ids.into_iter().map(|id| {
+                let card = backend.profile_card(&id).ok();
+                (id, card)
+            }).collect::<Vec<_>>()),
+            Message::ProfilesLoaded,
+        )
     }
 
     pub(crate) fn set_reactions(&mut self, channel_id: i64, id: i64, reactions: Vec<common::Reaction>) {
@@ -1507,3 +1611,13 @@ impl App {
     }
 }
 
+
+impl App {
+    /// The picture and banner of a member, looked up by display name.
+    pub fn member_id_look(&self, name: &str) -> (&str, &str) {
+        match self.server.member_ids.get(name) {
+            Some(id) => self.profile_look(id),
+            None => ("", ""),
+        }
+    }
+}

@@ -32,6 +32,27 @@ pub fn letter_badge<'a>(name: &str, size: f32, pal: &Pal) -> Element<'a, Message
         .into()
 }
 
+/// A profile picture. With none, the person's banner colour (or their name colour when they have no
+/// banner) with their initial on it.
+pub fn avatar<'a>(image: &str, banner: &str, name: &str, size: f32, pal: &Pal) -> Element<'a, Message> {
+    // An empty string decodes to an empty image, so only a real picture is drawn.
+    if let Some(handle) = Some(image).filter(|i| !i.is_empty()).and_then(decode_icon) {
+        return iced::widget::image(handle)
+            .width(Length::Fixed(size))
+            .height(Length::Fixed(size))
+            .border_radius(size / 2.0)
+            .into();
+    }
+    let bg = crate::util::hex_color(banner).unwrap_or_else(|| name_color(pal, name));
+    container(text(initial(name)).size(size * 0.45).color(Color::WHITE))
+        .width(Length::Fixed(size))
+        .height(Length::Fixed(size))
+        .align_x(iced::alignment::Horizontal::Center)
+        .align_y(iced::alignment::Vertical::Center)
+        .style(move |_: &Theme| round(bg, size / 2.0))
+        .into()
+}
+
 /// A plain container style: background and corner radius.
 pub fn round(bg: Color, radius: f32) -> container::Style {
     container::Style {
@@ -115,6 +136,9 @@ pub fn view(app: &App) -> Element<'_, Message> {
     let mut layers: Vec<Element<'_, Message>> = vec![frame.into()];
     if let Some(menu) = popups::menu_layer(app, pal) {
         layers.push(menu);
+    }
+    if let Some(card) = popups::card_layer(app, pal) {
+        layers.push(card);
     }
     if let Some(picker) = popups::picker_layer(app, pal) {
         layers.push(picker);

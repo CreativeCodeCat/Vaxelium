@@ -521,3 +521,55 @@ fn picking_from_the_at_menu_replaces_the_word_being_typed() {
     app.input = "email me@example".into();
     assert_eq!(app.mention_query(), None, "an @ inside a word is not a mention");
 }
+
+#[test]
+fn a_member_card_loads_for_the_member_clicked() {
+    use crate::app::CardView;
+    use crate::backend::{Card, CmdError};
+    let mut app = app();
+    welcome(&mut app);
+    app.card = Some(CardView { id: "id-bob".into(), name: "bob".into(), at: iced::Point::new(300.0, 200.0), loading: true, card: None, error: None });
+    let _ = app.update(Message::CardLoaded("id-other".into(), Ok(Card { name: "x".into(), username: "x".into(), bio: String::new(), banner: String::new(), avatar: String::new() })));
+    assert!(app.card.as_ref().is_some_and(|c| c.loading), "a reply for another member is ignored");
+    let _ = app.update(Message::CardLoaded("id-bob".into(), Ok(Card { name: "bob".into(), username: "bob".into(), bio: "hi".into(), banner: String::new(), avatar: String::new() })));
+    assert!(app.card.as_ref().is_some_and(|c| !c.loading && c.card.is_some()));
+    let _ = app.update(Message::CardLoaded("id-bob".into(), Err(CmdError::new("nope"))));
+    let _ = app.update(Message::CardClose);
+    assert!(app.card.is_none());
+}
+
+#[test]
+fn bio_is_limited_to_190_characters() {
+    let mut app = app();
+    let _ = app.update(Message::UserSectionPick(crate::app::UserSection::Profile));
+    let _ = app.update(Message::AboutInput("a".repeat(300)));
+    assert_eq!(app.account.about_bio.chars().count(), 190);
+}
+
+#[test]
+fn a_saved_picture_or_its_removal_is_kept() {
+    use crate::backend::CmdError;
+    let mut app = app();
+    let _ = app.update(Message::AvatarDone(Ok("aGVsbG8=".into())));
+    assert_eq!(app.account.avatar, "aGVsbG8=");
+    let _ = app.update(Message::AvatarDone(Err(CmdError::new("too large"))));
+    assert_eq!(app.account.avatar, "aGVsbG8=", "a failed save keeps the saved picture");
+    assert_eq!(app.account.avatar_error.as_deref(), Some("too large"));
+    let _ = app.update(Message::AvatarDone(Ok(String::new())));
+    assert!(app.account.avatar.is_empty());
+}
+
+#[test]
+fn fetched_profile_looks_are_kept_for_members_and_messages() {
+    use crate::backend::Card;
+    let mut app = app();
+    welcome(&mut app);
+    app.server.member_ids.insert("bob".into(), "id-bob".into());
+    app.profile_pending.insert("id-bob".into());
+    let card = Card { name: "bob".into(), username: "bob".into(), bio: String::new(), banner: "#2ecc71".into(), avatar: String::new() };
+    let _ = app.update(Message::ProfilesLoaded(vec![("id-bob".into(), Some(card))]));
+    assert!(!app.profile_pending.contains("id-bob"));
+    assert_eq!(app.member_id_look("bob"), ("", "#2ecc71"));
+    assert_eq!(app.profile_look("id-bob"), ("", "#2ecc71"));
+    assert_eq!(app.profile_look("id-nobody"), ("", ""), "someone not fetched has no picture");
+}

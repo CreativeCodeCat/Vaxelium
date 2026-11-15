@@ -46,6 +46,21 @@ pub struct Profile {
     pub verified: bool,
     /// True when the auth service can send the confirmation code.
     pub can_verify: bool,
+    pub bio: String,
+    /// The banner colour (`#rrggbb`), or empty for the default.
+    pub banner: String,
+    /// The profile picture as base64 PNG, or empty for none.
+    pub avatar: String,
+}
+
+/// Someone's public profile card, as the auth service reports it.
+#[derive(Debug, Clone)]
+pub struct Card {
+    pub name: String,
+    pub username: String,
+    pub bio: String,
+    pub banner: String,
+    pub avatar: String,
 }
 
 /// The outcome of restoring a saved login at startup.
@@ -382,6 +397,35 @@ impl Backend {
         self.apply_profile(reply)
     }
 
+    /// Saves the bio and banner colour. Returns what was saved.
+    pub fn set_about(&self, bio: String, banner: String) -> Result<(String, String), CmdError> {
+        let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
+        match self.auth(AuthRequest::SetAbout { token, bio, banner })? {
+            AuthReply::AboutSaved { bio, banner } => Ok((bio, banner)),
+            AuthReply::Error { text } => Err(CmdError::new(text)),
+            _ => Err(CmdError::new("Unexpected reply from the auth service.")),
+        }
+    }
+
+    /// Sets or removes the profile picture. Returns the picture now saved (empty when removed).
+    pub fn set_avatar(&self, png_base64: Option<String>) -> Result<String, CmdError> {
+        let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
+        match self.auth(AuthRequest::SetAvatar { token, png_base64 })? {
+            AuthReply::AvatarSaved { avatar } => Ok(avatar),
+            AuthReply::Error { text } => Err(CmdError::new(text)),
+            _ => Err(CmdError::new("Unexpected reply from the auth service.")),
+        }
+    }
+
+    /// Someone's public profile card, by their account id.
+    pub fn profile_card(&self, id: &str) -> Result<Card, CmdError> {
+        match self.auth(AuthRequest::ProfileCard { id: id.to_string() })? {
+            AuthReply::ProfileCard { name, username, bio, banner, avatar } => Ok(Card { name, username, bio, banner, avatar }),
+            AuthReply::Error { text } => Err(CmdError::new(text)),
+            _ => Err(CmdError::new("Unexpected reply from the auth service.")),
+        }
+    }
+
     pub fn update_profile(&self, name: Option<String>, username: Option<String>) -> Result<Profile, CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
         let reply = self.auth(AuthRequest::UpdateProfile { token, name, username })?;
@@ -391,7 +435,7 @@ impl Backend {
     /// Stores the name the auth service now reports, and moves the saved login to it.
     fn apply_profile(&self, reply: AuthReply) -> Result<Profile, CmdError> {
         match reply {
-            AuthReply::Profile { name, username, email, verified, can_verify } => {
+            AuthReply::Profile { name, username, email, verified, can_verify, bio, banner, avatar } => {
                 let (old, token, remember) = {
                     let mut inner = self.lock();
                     let old = std::mem::replace(&mut inner.user, name.clone());
@@ -403,7 +447,7 @@ impl Backend {
                     }
                     keychain::forget(&old);
                 }
-                Ok(Profile { name, username, email, verified, can_verify })
+                Ok(Profile { name, username, email, verified, can_verify, bio, banner, avatar })
             }
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
