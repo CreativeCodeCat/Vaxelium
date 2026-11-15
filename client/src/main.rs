@@ -16,6 +16,7 @@ mod flows;
 #[cfg(test)]
 mod screens;
 mod theme;
+mod tray;
 mod trust;
 mod update;
 mod util;
@@ -80,6 +81,7 @@ fn main() -> iced::Result {
         eprintln!("could not create {}: {e}", config.display());
     }
     trust::init(config.join("pins.json"));
+    tray::start();
 
     let (tx, rx) = mpsc::channel();
     *EVENTS.lock().unwrap_or_else(|e| e.into_inner()) = Some(rx);
@@ -87,30 +89,42 @@ fn main() -> iced::Result {
     let prefs = prefs::Prefs::load(&config);
     let (emoji, skin) = emoji_catalog();
 
-    iced::application(
+    // A daemon, not an application: the app keeps running with no window, so the tray can bring the
+    // window back after it has been hidden.
+    iced::daemon(
         move || {
             let app = App::new(backend.clone(), prefs.clone(), emoji.clone(), skin.clone());
-            let task = restore_task(&app);
+            let (_, open) = window::open(main_window_settings());
+            let task = Task::batch([open.map(app::Message::WindowOpened), restore_task(&app)]);
             (app, task)
         },
         App::update,
-        view::view,
+        view_window,
     )
     .title("Vaxelium")
     .subscription(App::subscription)
-    .theme(|app: &App| theme::iced_theme(&app.prefs.theme))
+    .theme(|app: &App, _window: window::Id| theme::iced_theme(&app.prefs.theme))
     // Noto Sans has the small capitals some names use, and all the Latin letters. Open Sans lacked
     // the small capitals, so text containing them was drawn with the wrong glyphs.
     .font(include_bytes!("../ui/fonts/NotoSans-Subset.ttf").as_slice())
     .default_font(Font::with_name("Noto Sans"))
-    .window(window::Settings {
+    .run()
+}
+
+/// The main window's contents: the app's view, whichever window asks.
+fn view_window(app: &App, _window: window::Id) -> iced::Element<'_, app::Message> {
+    view::view(app)
+}
+
+/// How the main window opens, and again after it has been hidden to the tray.
+pub fn main_window_settings() -> window::Settings {
+    window::Settings {
         size: Size::new(1100.0, 700.0),
         min_size: Some(Size::new(820.0, 480.0)),
         decorations: false,
         icon: app_icon(),
         ..window::Settings::default()
-    })
-    .run()
+    }
 }
 
 /// The window icon, from the app's icon file.
