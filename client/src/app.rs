@@ -287,6 +287,8 @@ pub struct App {
     pub skin: HashMap<String, [String; 5]>,
     pub window: Option<window::Id>,
     pub cursor: Point,
+    /// The window's size, kept up to date so menus can be kept on screen.
+    pub window_size: iced::Size,
 
     pub user: Option<String>,
     pub user_id: String,
@@ -570,6 +572,8 @@ pub enum Message {
     CardStatusDone(Result<String, CmdError>),
     /// Input happened, so automatic Idle is checked again.
     Activity,
+    /// The window was resized.
+    WindowResized(iced::Size),
     /// Sets how you appear to others on this server.
     SetStatus(common::PresenceStatus),
     /// A web link was clicked. Only http and https links are opened.
@@ -659,6 +663,7 @@ impl App {
             skin,
             window: None,
             cursor: Point::ORIGIN,
+            window_size: crate::main_window_settings().size,
             user: None,
             user_id: String::new(),
             auth_down: false,
@@ -1758,6 +1763,7 @@ impl App {
         let mut subs = vec![
             Subscription::run(crate::events_stream).map(Message::Event),
             window::open_events().map(Message::WindowOpened),
+            window::resize_events().map(|(_, size)| Message::WindowResized(size)),
             event::listen_with(|event, _status, _window| match event {
                 iced::Event::Mouse(mouse::Event::CursorMoved { position }) => Some(Message::CursorMoved(position)),
                 iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => Some(Message::MouseReleased),

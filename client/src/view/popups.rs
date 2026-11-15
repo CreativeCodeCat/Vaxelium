@@ -34,6 +34,29 @@ fn anchored<'a>(popup: Element<'a, Message>, at: iced::Point, close: Message) ->
     iced::widget::stack![backdrop, placed].into()
 }
 
+/// Roughly how tall a menu is drawn: rows are about 30 pixels, headings and dividers less. Used to
+/// keep the menu on screen before it is drawn.
+fn menu_height(menu: &Menu) -> f32 {
+    let rows: f32 = menu
+        .items
+        .iter()
+        .map(|item| match item {
+            MenuItem::Divider => 9.0,
+            MenuItem::Heading(_) => 28.0,
+            MenuItem::Action { .. } | MenuItem::Roles { .. } => 30.0,
+        })
+        .sum();
+    rows + 10.0
+}
+
+/// Moves a point back so a popup of `size` stays inside the window, with a margin at each edge.
+fn keep_on_screen(at: iced::Point, size: iced::Size, window: iced::Size) -> iced::Point {
+    const EDGE: f32 = 8.0;
+    let x = at.x.min(window.width - size.width - EDGE).max(EDGE);
+    let y = at.y.min(window.height - size.height - EDGE).max(EDGE);
+    iced::Point::new(x, y)
+}
+
 /// The context menu, when one is open.
 pub fn menu_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     let menu: &Menu = app.menu.as_ref()?;
@@ -108,6 +131,7 @@ pub fn menu_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
         }
     }
     let width = menu.width.unwrap_or(200.0);
+    let height = menu_height(menu);
     let body = container(Column::with_children(items).padding(4))
         .width(Length::Fixed(width))
         .style(move |_: &Theme| container::Style {
@@ -122,9 +146,10 @@ pub fn menu_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     });
     // Opens to the left of the menu, unless the menu is too close to the left edge to fit it.
     const FLYOUT_WIDTH: f32 = 200.0;
-    let left_fits = menu.at.x >= FLYOUT_WIDTH + 6.0;
+    let flyout_open = app.roles_menu_open && member.is_some();
     if menu.centered {
         // Member menus sit over the member list, centred in it. The Roles flyout goes just to its left.
+        let at = keep_on_screen(menu.at, iced::Size::new(0.0, height), app.window_size);
         let panel = app.panel_width("members");
         let flyout: Element<'_, Message> = match (app.roles_menu_open, member) {
             (true, Some(member)) => roles_flyout(app, member, pal),
@@ -132,16 +157,20 @@ pub fn menu_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
         };
         let centred = container(body).width(Length::Fixed(panel)).align_x(iced::alignment::Horizontal::Center);
         let content: Element<'_, Message> = row![space().width(Length::Fill), flyout, centred].into();
-        return Some(anchored(content, iced::Point::new(0.0, menu.at.y), Message::CloseMenu));
+        return Some(anchored(content, iced::Point::new(0.0, at.y), Message::CloseMenu));
     }
+    // The menu and its flyout must fit on screen together, so the point is moved back if they would not.
+    let total_width = width + if flyout_open { FLYOUT_WIDTH + 6.0 } else { 0.0 };
+    let at = keep_on_screen(menu.at, iced::Size::new(total_width, height), app.window_size);
+    let left_fits = at.x >= FLYOUT_WIDTH + 6.0;
     let (content, anchor): (Element<'_, Message>, iced::Point) = match (app.roles_menu_open, member) {
         // The row is anchored at the flyout's left edge, so the menu itself stays where it was opened.
         (true, Some(member)) if left_fits => (
             row![roles_flyout(app, member, pal), body].spacing(6).into(),
-            iced::Point::new(menu.at.x - FLYOUT_WIDTH - 6.0, menu.at.y),
+            iced::Point::new(at.x - FLYOUT_WIDTH - 6.0, at.y),
         ),
-        (true, Some(member)) => (row![body, roles_flyout(app, member, pal)].spacing(6).into(), menu.at),
-        _ => (body.into(), menu.at),
+        (true, Some(member)) => (row![body, roles_flyout(app, member, pal)].spacing(6).into(), at),
+        _ => (body.into(), at),
     };
     Some(anchored(content, anchor, Message::CloseMenu))
 }
@@ -697,4 +726,22 @@ fn status_bubble_editor<'a>(app: &App, status: &str, pal: Pal) -> Element<'a, Me
     container(row![shown, space().width(Length::Fill), edit, clear].spacing(6).align_y(iced::alignment::Vertical::Center))
         .padding(crate::util::pad(4.0, 14.0, 8.0, 14.0))
         .into()
+}
+
+#[cfg(test)]
+mod placement_tests {
+    use super::keep_on_screen;
+    use iced::{Point, Size};
+
+    #[test]
+    fn menus_near_the_bottom_or_right_move_back_onto_the_window() {
+        let window = Size::new(1000.0, 700.0);
+        // Opened near the bottom right: moved so the whole menu is visible.
+        let at = keep_on_screen(Point::new(990.0, 690.0), Size::new(200.0, 300.0), window);
+        assert_eq!(at, Point::new(792.0, 392.0));
+        // Room to spare: stays where it was opened.
+        assert_eq!(keep_on_screen(Point::new(100.0, 50.0), Size::new(200.0, 300.0), window), Point::new(100.0, 50.0));
+        // A menu taller than the window stays at the top margin rather than going off the top.
+        assert_eq!(keep_on_screen(Point::new(10.0, 10.0), Size::new(200.0, 900.0), window).y, 8.0);
+    }
 }

@@ -376,6 +376,14 @@ fn category_of(app: &App, channel: i64) -> Option<i64> {
 fn user_bar(app: &App, pal: Pal) -> Element<'_, Message> {
     let user = app.user.clone().unwrap_or_default();
     let own_status = app.effective_status();
+    // The room is the sidebar less the picture, the icons, the settings button and the gaps.
+    let room = (app.panel_width("channels") - 150.0).max(0.0);
+    let own_text = app.profiles.get(&app.user_id).map(|look| look.status.clone()).unwrap_or_default();
+    let status_text_line: Element<'_, Message> = if own_text.is_empty() {
+        space().height(Length::Fixed(0.0)).into()
+    } else {
+        text(fit_name(&own_text, room, 11.0)).size(11).color(pal.text).wrapping(iced::widget::text::Wrapping::None).into()
+    };
     let who = column![
         // Your name opens your own profile card, where your status bubble is edited.
         button(text(user.clone()).size(14).color(pal.text_strong))
@@ -387,6 +395,8 @@ fn user_bar(app: &App, pal: Pal) -> Element<'_, Message> {
             .padding(0)
             .on_press(Message::OpenMenu(crate::app::MenuKind::Status))
             .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() }),
+        // Your status text, if you have set one, on one line.
+        status_text_line,
     ]
     .width(Length::Fill);
     // Shows the same picture and banner as your entry in the member list, which are known as soon as

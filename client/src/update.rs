@@ -734,6 +734,7 @@ impl App {
                     }
                 };
             }
+            Message::WindowResized(size) => self.window_size = size,
             Message::TrayVisible(shown) => crate::tray::set_shown(shown),
             Message::TrayQuit => return iced::exit(),
             Message::FlashTick => {
