@@ -107,6 +107,8 @@ pub struct AddServer {
 #[derive(Debug, Clone, Default)]
 pub struct Discover {
     pub found: Vec<FoundServer>,
+    /// Servers the search reached but could not use, with the reason.
+    pub failed: Vec<(String, String)>,
     pub error: Option<String>,
     pub expanded: HashSet<String>,
     pub searching: bool,
@@ -1228,6 +1230,7 @@ impl App {
         let via = self.selected_server().map(|s| s.addr.clone());
         self.discover = Discover {
             found: Vec::new(),
+            failed: Vec::new(),
             error: None,
             expanded: HashSet::new(),
             searching: via.is_some(),
@@ -1564,6 +1567,13 @@ impl App {
             Event::Discovered(found) => {
                 if !self.discover.found.iter().any(|f| f.addr == found.addr) {
                     self.discover.found.push(found);
+                }
+                self.discover.searching = false;
+                Task::none()
+            }
+            Event::DiscoverFailed { addr, error } => {
+                if !self.discover.failed.iter().any(|(a, _)| *a == addr) {
+                    self.discover.failed.push((addr, error));
                 }
                 self.discover.searching = false;
                 Task::none()
