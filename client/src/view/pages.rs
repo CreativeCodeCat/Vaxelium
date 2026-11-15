@@ -628,6 +628,7 @@ pub fn server_settings(app: &App, pal: Pal) -> Element<'_, Message> {
             (content.into(), dirty)
         }
         ServerSection::Roles => roles_section(app, pal),
+        ServerSection::Badges => badges_section(app, pal),
     };
     // The bar saves whichever section is open.
     let (reset, save) = if section == ServerSection::Roles {
@@ -635,7 +636,8 @@ pub fn server_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     } else {
         (Message::ServerReset, Message::ServerSave)
     };
-    let page = settings_frame(server_nav(&name, app.is_owner(), section, pal), content, Message::ServerSettingsClose, pal);
+    let manage = app.my_permissions() & common::perm::MANAGE_ROLES != 0;
+    let page = settings_frame(server_nav(&name, app.is_owner(), manage, section, pal), content, Message::ServerSettingsClose, pal);
     if dirty {
         iced::widget::stack![page, unsaved_bar(app, pal, reset, save, "Careful – you have unsaved changes!")].into()
     } else {
@@ -644,12 +646,15 @@ pub fn server_settings(app: &App, pal: Pal) -> Element<'_, Message> {
 }
 
 /// The navigation down the left of the server settings page.
-fn server_nav<'a>(name: &str, owner: bool, active: ServerSection, pal: Pal) -> Element<'a, Message> {
+fn server_nav<'a>(name: &str, owner: bool, manage: bool, active: ServerSection, pal: Pal) -> Element<'a, Message> {
     let mut items = Column::new().spacing(4);
     if owner {
         items = items.push(nav_item("Server Profile", ServerSection::Profile, active, pal));
     }
     items = items.push(nav_item("Roles", ServerSection::Roles, active, pal));
+    if manage {
+        items = items.push(nav_item("Badges", ServerSection::Badges, active, pal));
+    }
     container(column![text(name.to_uppercase()).size(12).color(pal.text_muted), items].spacing(8))
         .padding(crate::util::pad2(24.0, 12.0))
         .width(Length::Fixed(220.0))
@@ -846,6 +851,63 @@ fn member_row<'a>(app: &App, name: &String, online: bool, pal: Pal) -> Element<'
 }
 
 /// The roles section. Also says whether the open role has changes that are not saved.
+/// Badges: the ones this server has, a delete button for each, and a form for a new one.
+fn badges_section(app: &App, pal: Pal) -> (Element<'_, Message>, bool) {
+    let mut items: Vec<Element<'_, Message>> = vec![
+        text("BADGES").size(12).color(pal.text_muted).into(),
+        text("Badges show on members' profile cards. Give them to members from a member's card.").size(13).color(pal.text_muted).into(),
+    ];
+    for badge in &app.server.badges {
+        let members = app.server.member_badges.values().filter(|ids| ids.contains(&badge.id)).count();
+        let color = crate::util::hex_color(&badge.color).unwrap_or(pal.text_strong);
+        let dot = container(space()).width(Length::Fixed(10.0)).height(Length::Fixed(10.0)).style(move |_: &Theme| container::Style {
+            background: Some(Background::Color(color)),
+            border: border::rounded(5.0),
+            ..container::Style::default()
+        });
+        items.push(
+            row![
+                dot,
+                text(badge.name.clone()).size(14).color(pal.text),
+                text(pluralise(members, "member")).size(12).color(pal.text_muted).width(Length::Fill),
+                small_button("Delete", Message::BadgeDelete(badge.id), pal),
+            ]
+            .spacing(10)
+            .align_y(iced::alignment::Vertical::Center)
+            .into(),
+        );
+    }
+    items.push(text("NEW BADGE").size(12).color(pal.text_muted).into());
+    items.push(
+        text_input("Badge name", &app.badge_name)
+            .on_input(Message::BadgeName)
+            .on_submit(Message::BadgeCreate)
+            .padding(10)
+            .style(input_style(pal))
+            .into(),
+    );
+    let mut swatches = row![].spacing(8).align_y(iced::alignment::Vertical::Center);
+    for hex in ROLE_COLORS.iter().take(10) {
+        let color = crate::util::hex_color(hex).unwrap_or(Color::BLACK);
+        let on = app.badge_color.to_lowercase() == hex.to_lowercase();
+        swatches = swatches.push(
+            button(space().width(Length::Fixed(24.0)).height(Length::Fixed(24.0)))
+                .padding(0)
+                .on_press(Message::BadgeColor(hex.to_string()))
+                .style(move |_: &Theme, _: button::Status| {
+                    let mut ring = border::rounded(12.0);
+                    ring.color = if on { pal.text_strong } else { Color::TRANSPARENT };
+                    ring.width = if on { 2.0 } else { 0.0 };
+                    button::Style { background: Some(Background::Color(color)), border: ring, ..button::Style::default() }
+                }),
+        );
+    }
+    items.push(swatches.into());
+    items.push(small_button("Create badge", Message::BadgeCreate, pal));
+    let content = scrollable(Column::with_children(items).spacing(14).padding(crate::util::pad2(24.0, 40.0)).width(Length::Fill)).height(Length::Fill);
+    (content.into(), false)
+}
+
 fn roles_section(app: &App, pal: Pal) -> (Element<'_, Message>, bool) {
     let dirty = app.role_form.as_ref().is_some_and(|draft| role_changed(app, draft));
     let selected = app.role_form.as_ref().map(|d| d.id);

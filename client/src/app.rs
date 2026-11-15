@@ -77,6 +77,7 @@ pub enum ServerSection {
     #[default]
     Profile,
     Roles,
+    Badges,
 }
 
 /// A tab of the role editor.
@@ -313,6 +314,15 @@ pub struct App {
     pub server_form: ServerForm,
     /// The role being edited on the roles page, if one is open.
     pub role_form: Option<RoleDraft>,
+    /// The name and colour typed for a new badge.
+    pub badge_name: String,
+    /// Whether the role checklist is open on a member's card (for admins giving roles).
+    pub card_roles_open: bool,
+    /// Whether the badge checklist is open on a member's card (for admins giving badges).
+    pub card_badges_open: bool,
+    /// The search text in the role or badge list on a member's card.
+    pub card_list_search: String,
+    pub badge_color: String,
     /// The name of a role just created from the editor, so the editor can select it once it arrives.
     pub role_created_name: Option<String>,
     /// Saving the open role would take the last role's channel permissions away. Asks first.
@@ -571,6 +581,19 @@ pub enum Message {
     CardMessageInput(String),
     /// Pressing Enter in the message box: opens the conversation with the text ready to send.
     CardMessageSend,
+    /// Opens or closes the role checklist on a member's card.
+    CardRolesToggle,
+    /// Opens or closes the badge checklist on a member's card.
+    CardBadgesToggle,
+    /// Typing in the role or badge list on a member's card.
+    CardListSearch(String),
+    /// Badge editor: the name and colour of a new badge, creating it, and deleting one.
+    BadgeName(String),
+    BadgeColor(String),
+    BadgeCreate,
+    BadgeDelete(i64),
+    /// Gives a member a badge, or takes it away (from a member's card, by an admin).
+    SetMemberBadge { user: String, badge: i64, on: bool },
     /// Reads a conversation again from its server, by the other person's account id.
     RefreshConversation(String),
     CardLoaded(String, Result<crate::backend::Card, CmdError>),
@@ -695,6 +718,11 @@ impl App {
             account: Account::default(),
             server_form: ServerForm::default(),
             role_form: None,
+            badge_name: String::new(),
+            card_roles_open: false,
+            card_badges_open: false,
+            card_list_search: String::new(),
+            badge_color: String::new(),
             server_section: ServerSection::default(),
             user_section: UserSection::default(),
             role_tab: RoleTab::default(),
@@ -940,6 +968,13 @@ impl App {
                 self.status = format!("Connected as {name}");
                 send_main(self, ClientMsg::ListChannels);
                 send_main(self, ClientMsg::SetStatus { status: self.effective_status() });
+                // Other people's cards show the servers shared with you, so tell the auth service which
+                // servers you are in. Sent from a thread, since it waits on the auth service.
+                let servers: Vec<String> = self.prefs.servers.iter().map(|s| s.addr.clone()).collect();
+                let backend = self.backend.clone();
+                std::thread::spawn(move || {
+                    let _ = backend.set_servers(servers);
+                });
                 // A direct message asked for before connecting is opened instead of the first channel.
                 if let Some((addr, channel)) = self.pending_dm.take() {
                     if self.main.addr.as_deref() == Some(addr.as_str()) {
@@ -1087,6 +1122,7 @@ impl App {
                 self.server.offline = users.iter().filter(|u| !u.online).map(|u| u.name.clone()).collect();
                 self.server.member_roles = users.iter().map(|u| (u.id.clone(), u.roles.clone())).collect();
                 self.server.member_status = users.iter().map(|u| (u.id.clone(), u.status)).collect();
+                self.server.member_badges = users.iter().map(|u| (u.id.clone(), u.badges.clone())).collect();
                 self.server.member_joined = users.iter().map(|u| (u.id.clone(), u.joined)).collect();
                 self.server.owner = owner.as_ref().map(|o| o.name.clone());
                 self.server.owner_id = owner.map(|o| o.id);
@@ -1103,6 +1139,7 @@ impl App {
             ServerMsg::ChannelOverrides { overrides } => {
                 self.server.overrides = overrides;
             }
+            ServerMsg::Badges { badges } => self.server.badges = badges,
             ServerMsg::Roles { roles } => {
                 self.server.roles = roles;
                 // A role made from the editor is selected, so saving does not leave the page.
@@ -1864,6 +1901,7 @@ impl App {
                 match self.shown_server_section() {
                     ServerSection::Profile => crate::view::pages::server_profile_dirty(self),
                     ServerSection::Roles => self.role_form.as_ref().is_some_and(|d| crate::view::pages::role_changed(self, d)),
+                    ServerSection::Badges => false,
                 }
             }
             _ => false,

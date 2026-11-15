@@ -60,6 +60,9 @@ pub struct ServerView {
     pub overrides: Vec<common::ChannelOverride>,
     /// How each member wants to appear, by account id.
     pub member_status: HashMap<String, common::PresenceStatus>,
+    /// The badges of this server, and which ones each member has, by account id.
+    pub badges: Vec<common::Badge>,
+    pub member_badges: HashMap<String, Vec<i64>>,
     /// Who has typed recently in each channel: account id, name, and when.
     pub typing: HashMap<i64, Vec<(String, String, std::time::Instant)>>,
     /// When each member first joined this server, by account id, in Unix seconds (0 when unknown).

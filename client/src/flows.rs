@@ -75,8 +75,8 @@ fn welcome_then_joined_shows_history_and_presence() {
 
     let _ = app.update(net(ServerMsg::Presence {
         users: vec![
-            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true, roles: vec![], joined: 0, status: Default::default() },
-            UserStatus { name: "bob".into(), id: "id-bob".into(), online: false, owner: false, roles: vec![], joined: 0, status: Default::default() },
+            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true, roles: vec![], joined: 0, status: Default::default(), badges: vec![] },
+            UserStatus { name: "bob".into(), id: "id-bob".into(), online: false, owner: false, roles: vec![], joined: 0, status: Default::default(), badges: vec![] },
         ],
     }));
     assert!(app.is_owner());
@@ -317,8 +317,8 @@ fn roles_grant_permissions_to_their_holders() {
     let _ = app.update(net(ServerMsg::Roles { roles: vec![mods] }));
     let _ = app.update(net(ServerMsg::Presence {
         users: vec![
-            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true, roles: vec![], joined: 0, status: Default::default() },
-            UserStatus { name: "bob".into(), id: "id-bob".into(), online: true, owner: false, roles: vec![5], joined: 0, status: Default::default() },
+            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true, roles: vec![], joined: 0, status: Default::default(), badges: vec![] },
+            UserStatus { name: "bob".into(), id: "id-bob".into(), online: true, owner: false, roles: vec![5], joined: 0, status: Default::default(), badges: vec![] },
         ],
     }));
 
@@ -395,9 +395,9 @@ fn the_owner_and_bypass_holders_cannot_be_ignored_or_blocked() {
     }));
     let _ = app.update(net(ServerMsg::Presence {
         users: vec![
-            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true, roles: vec![], joined: 0, status: Default::default() },
-            UserStatus { name: "bob".into(), id: "id-bob".into(), online: true, owner: false, roles: vec![7], joined: 0, status: Default::default() },
-            UserStatus { name: "carol".into(), id: "id-carol".into(), online: true, owner: false, roles: vec![], joined: 0, status: Default::default() },
+            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true, roles: vec![], joined: 0, status: Default::default(), badges: vec![] },
+            UserStatus { name: "bob".into(), id: "id-bob".into(), online: true, owner: false, roles: vec![7], joined: 0, status: Default::default(), badges: vec![] },
+            UserStatus { name: "carol".into(), id: "id-carol".into(), online: true, owner: false, roles: vec![], joined: 0, status: Default::default(), badges: vec![] },
         ],
     }));
     // The owner and bob (who has Bypass ignore) cannot be ignored or blocked.
@@ -441,8 +441,8 @@ fn bypass_protects_only_on_the_server_that_grants_it() {
     }));
     let _ = app.update(net(ServerMsg::Presence {
         users: vec![
-            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true, roles: vec![], joined: 0, status: Default::default() },
-            UserStatus { name: "bob".into(), id: "id-bob".into(), online: true, owner: false, roles: vec![7], joined: 0, status: Default::default() },
+            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true, roles: vec![], joined: 0, status: Default::default(), badges: vec![] },
+            UserStatus { name: "bob".into(), id: "id-bob".into(), online: true, owner: false, roles: vec![7], joined: 0, status: Default::default(), badges: vec![] },
         ],
     }));
     // The open server remembers bob as protected; the other server does not.
@@ -529,9 +529,9 @@ fn a_member_card_loads_for_the_member_clicked() {
     let mut app = app();
     welcome(&mut app);
     app.card = Some(CardView { id: "id-bob".into(), name: "bob".into(), at: iced::Point::new(300.0, 200.0), loading: true, card: None, error: None, above: false });
-    let _ = app.update(Message::CardLoaded("id-other".into(), Ok(Card { name: "x".into(), username: "x".into(), bio: String::new(), banner: String::new(), avatar: String::new(), status: String::new(), created: 0 })));
+    let _ = app.update(Message::CardLoaded("id-other".into(), Ok(Card { name: "x".into(), username: "x".into(), bio: String::new(), banner: String::new(), avatar: String::new(), status: String::new(), created: 0, mutual: vec![] })));
     assert!(app.card.as_ref().is_some_and(|c| c.loading), "a reply for another member is ignored");
-    let _ = app.update(Message::CardLoaded("id-bob".into(), Ok(Card { name: "bob".into(), username: "bob".into(), bio: "hi".into(), banner: String::new(), avatar: String::new(), status: String::new(), created: 0 })));
+    let _ = app.update(Message::CardLoaded("id-bob".into(), Ok(Card { name: "bob".into(), username: "bob".into(), bio: "hi".into(), banner: String::new(), avatar: String::new(), status: String::new(), created: 0, mutual: vec![] })));
     assert!(app.card.as_ref().is_some_and(|c| !c.loading && c.card.is_some()));
     let _ = app.update(Message::CardLoaded("id-bob".into(), Err(CmdError::new("nope"))));
     let _ = app.update(Message::CardClose);
@@ -566,7 +566,7 @@ fn fetched_profile_looks_are_kept_for_members_and_messages() {
     welcome(&mut app);
     app.server.member_ids.insert("bob".into(), "id-bob".into());
     app.profile_pending.insert("id-bob".into());
-    let card = Card { name: "bob".into(), username: "bob".into(), bio: String::new(), banner: "#2ecc71".into(), avatar: String::new(), status: String::new(), created: 0 };
+    let card = Card { name: "bob".into(), username: "bob".into(), bio: String::new(), banner: "#2ecc71".into(), avatar: String::new(), status: String::new(), created: 0, mutual: vec![] };
     let _ = app.update(Message::ProfilesLoaded(vec![("id-bob".into(), Some(card))]));
     assert!(!app.profile_pending.contains("id-bob"));
     assert_eq!(app.member_id_look("bob"), ("", "#2ecc71"));

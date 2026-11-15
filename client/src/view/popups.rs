@@ -1,7 +1,7 @@
 //! Popups drawn over the window: the context menus, the emoji picker, the dialogs, and the edges
 //! that resize the window.
 
-use iced::widget::{button, checkbox, column, container, mouse_area, row, scrollable, space, text, text_input, Column};
+use iced::widget::{button, checkbox, column, container, mouse_area, row, scrollable, space, text, text_input, tooltip, Column};
 use iced::{border, window, Background, Color, Element, Length, Padding, Theme};
 
 use super::chat::emoji;
@@ -217,6 +217,80 @@ fn roles_flyout<'a>(app: &'a App, member: &str, pal: Pal) -> Element<'a, Message
     container(scrollable(Column::with_children(rows).spacing(2).padding(4)).height(Length::Shrink))
         .max_height(320.0)
         .width(Length::Fixed(200.0))
+        .style(move |_: &Theme| container::Style {
+            background: Some(Background::Color(pal.sidebar_bg)),
+            border: border::rounded(8.0).color(pal.hover_bg).width(1.0),
+            ..container::Style::default()
+        })
+        .into()
+}
+
+/// A small × that removes the role or badge it sits on when pressed. Hovering shows what it does.
+fn remove_button<'a>(msg: Message, label: &'static str, pal: Pal) -> Element<'a, Message> {
+    let x = button(icons::icon(icons::CLOSE, 10.0, pal.text_muted))
+        .padding(0)
+        .on_press(msg)
+        .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() });
+    let bubble = container(text(label).size(12).color(pal.text_strong))
+        .padding(crate::util::pad2(4.0, 8.0))
+        .style(move |_: &Theme| container::Style {
+            background: Some(Background::Color(pal.sidebar_bg)),
+            border: border::rounded(6.0).color(pal.hover_bg).width(1.0),
+            ..container::Style::default()
+        });
+    tooltip(x, bubble, tooltip::Position::Top).gap(6).into()
+}
+
+/// One row of a pick list: a role or badge, its colour, and the message a click sends.
+struct PickRow {
+    name: String,
+    color: Color,
+    msg: Message,
+}
+
+/// A list to pick from, shown on a card: a search box, then a row per item. Clicking a row gives that item.
+fn pick_list<'a>(placeholder: &str, search: &str, rows: Vec<PickRow>, pal: Pal) -> Element<'a, Message> {
+    let query = search.trim().to_lowercase();
+    let mut items: Vec<Element<'a, Message>> = Vec::new();
+    for row_data in rows.into_iter().filter(|r| query.is_empty() || r.name.to_lowercase().contains(&query)) {
+        let color = row_data.color;
+        let dot = container(space()).width(Length::Fixed(10.0)).height(Length::Fixed(10.0)).style(move |_: &Theme| container::Style {
+            background: Some(Background::Color(color)),
+            border: border::rounded(5.0),
+            ..container::Style::default()
+        });
+        items.push(
+            button(
+                row![dot, text(row_data.name).size(13).color(pal.text).width(Length::Fill)]
+                    .spacing(10)
+                    .align_y(iced::alignment::Vertical::Center),
+            )
+            .padding(crate::util::pad2(6.0, 10.0))
+            .width(Length::Fill)
+            .on_press(row_data.msg)
+            .style(move |_: &Theme, status: button::Status| button::Style {
+                background: match status {
+                    button::Status::Hovered => Some(Background::Color(pal.hover_bg)),
+                    _ => None,
+                },
+                text_color: pal.text,
+                border: border::rounded(4.0),
+                ..button::Style::default()
+            })
+            .into(),
+        );
+    }
+    if items.is_empty() {
+        items.push(text("Nothing to show.").size(12).color(pal.text_muted).into());
+    }
+    let search_box = text_input(placeholder, search)
+        .on_input(Message::CardListSearch)
+        .padding(8)
+        .size(13)
+        .style(input_style(pal));
+    let list = scrollable(Column::with_children(items).spacing(2).padding(4)).height(Length::Shrink);
+    container(Column::new().push(search_box).push(container(list).max_height(240.0)).spacing(6).padding(6))
+        .width(Length::Fill)
         .style(move |_: &Theme| container::Style {
             background: Some(Background::Color(pal.sidebar_bg)),
             border: border::rounded(8.0).color(pal.hover_bg).width(1.0),
@@ -606,7 +680,27 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     items.push(container(head).width(Length::Fill).height(Length::Fixed(144.0)).into());
     items.push(container(text(name.clone()).size(name_size).color(pal.text_strong)).padding(crate::util::pad(12.0, 14.0, 0.0, 14.0)).into());
     if let Some(c) = card {
-        items.push(container(text(format!("@{}", c.username)).size(13).color(pal.text_muted)).padding(crate::util::pad(0.0, 14.0, 12.0, 14.0)).into());
+        items.push(container(text(format!("@{}", c.username)).size(13).color(pal.text_muted)).padding(crate::util::pad(0.0, 14.0, 8.0, 14.0)).into());
+        // The servers you and this member both are in, by name.
+        if !c.mutual.is_empty() {
+            let names: Vec<String> = c
+                .mutual
+                .iter()
+                .map(|addr| app.prefs.servers.iter().find(|s| s.addr == *addr).map_or(addr.clone(), |s| s.name.clone()))
+                .collect();
+            let label = format!("{} Mutual Server{}", names.len(), if names.len() == 1 { "" } else { "s" });
+            items.push(
+                container(
+                    column![
+                        text(label).size(12).color(pal.text_muted),
+                        text(names.join(" · ")).size(12).color(pal.text),
+                    ]
+                    .spacing(2),
+                )
+                .padding(crate::util::pad(0.0, 14.0, 10.0, 14.0))
+                .into(),
+            );
+        }
     }
     if own {
         items.push(status_bubble_editor(app, &status, pal));
@@ -622,36 +716,150 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     };
     items.push(container(bio).padding(crate::util::pad(0.0, 14.0, 8.0, 14.0)).into());
 
-    // The roles this member holds on this server, highest first, in their colours.
-    let held = app.server.member_ids.get(&name).and_then(|id| app.server.member_roles.get(id));
+    // The roles this member holds on this server, highest first, in their colours. Always shown, so a
+    // member with none says so. Admins get a + to give roles, which opens the role checklist here.
+    let member_id = if own { Some(app.user_id.clone()) } else { app.server.member_ids.get(&name).cloned() };
+    let held = member_id.as_ref().and_then(|id| app.server.member_roles.get(id));
+    let held_roles: Vec<i64> = held.cloned().unwrap_or_default();
     let roles: Vec<&common::RoleInfo> = app
         .server
         .roles
         .iter()
         .filter(|r| r.id != common::EVERYONE_ROLE && held.is_some_and(|h| h.contains(&r.id)))
         .collect();
-    if !roles.is_empty() {
-        items.push(container(text("ROLES").size(11).color(pal.text_muted)).padding(crate::util::pad(12.0, 14.0, 4.0, 14.0)).into());
-        let chips: Vec<Element<'_, Message>> = roles
-            .into_iter()
-            .map(|r| {
-                let color = crate::util::hex_color(&r.color).unwrap_or(pal.text_strong);
-                let dot = container(space()).width(Length::Fixed(10.0)).height(Length::Fixed(10.0)).style(move |_: &Theme| container::Style {
-                    background: Some(Background::Color(color)),
-                    border: border::rounded(5.0),
+    let can_assign = app.my_permissions() & common::perm::MANAGE_ROLES != 0;
+    // The + sits at the end of the roles, on the same line, when the viewer may give roles.
+    let plus: Option<Element<'_, Message>> = (can_assign && member_id.is_some()).then(|| {
+        button(
+            container(text("+").size(15).color(pal.text))
+                .width(Length::Fixed(22.0))
+                .height(Length::Fixed(22.0))
+                .align_x(iced::alignment::Horizontal::Center)
+                .align_y(iced::alignment::Vertical::Center)
+                .style(move |_: &Theme| container::Style {
+                    background: Some(Background::Color(pal.input_bg)),
+                    border: border::rounded(11.0).color(pal.text_muted).width(1.0),
                     ..container::Style::default()
-                });
-                container(row![dot, text(r.name.clone()).size(12).color(pal.text)].spacing(6).align_y(iced::alignment::Vertical::Center))
-                    .padding(crate::util::pad2(3.0, 8.0))
-                    .style(move |_: &Theme| container::Style {
-                        background: Some(Background::Color(pal.input_bg)),
-                        border: border::rounded(10.0),
+                }),
+        )
+        .padding(0)
+        .on_press(Message::CardRolesToggle)
+        .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() })
+        .into()
+    });
+    items.push(container(text("ROLES").size(11).color(pal.text_muted)).padding(crate::util::pad(12.0, 14.0, 4.0, 14.0)).into());
+    let mut role_chips: Vec<Element<'_, Message>> = roles
+        .into_iter()
+        .map(|r| {
+            let color = crate::util::hex_color(&r.color).unwrap_or(pal.text_strong);
+            let dot = container(space()).width(Length::Fixed(10.0)).height(Length::Fixed(10.0)).style(move |_: &Theme| container::Style {
+                background: Some(Background::Color(color)),
+                border: border::rounded(5.0),
+                ..container::Style::default()
+            });
+            let mut content = row![dot, text(r.name.clone()).size(12).color(pal.text)].spacing(6).align_y(iced::alignment::Vertical::Center);
+            if let (true, Some(who)) = (can_assign, member_id.clone()) {
+                content = content.push(remove_button(Message::SetMemberRole(who, r.id, false), "Remove role", pal));
+            }
+            container(content)
+                .padding(crate::util::pad2(3.0, 8.0))
+                .style(move |_: &Theme| container::Style {
+                    background: Some(Background::Color(pal.input_bg)),
+                    border: border::rounded(10.0),
+                    ..container::Style::default()
+                })
+                .into()
+        })
+        .collect();
+    if role_chips.is_empty() {
+        role_chips.push(text("No roles yet.").size(12).color(pal.text_muted).into());
+    }
+    role_chips.extend(plus);
+    items.push(container(row(role_chips).spacing(6).align_y(iced::alignment::Vertical::Center).wrap()).padding(crate::util::pad(0.0, 14.0, 10.0, 14.0)).into());
+    if can_assign && app.card_roles_open {
+        if let Some(id) = member_id.as_deref() {
+            let rows: Vec<PickRow> = app
+                .server
+                .roles
+                .iter()
+                .filter(|r| r.id != common::EVERYONE_ROLE && app.outranks_role(r.id) && !held_roles.contains(&r.id))
+                .map(|r| PickRow {
+                    name: r.name.clone(),
+                    color: crate::util::hex_color(&r.color).unwrap_or(pal.text),
+                    msg: Message::SetMemberRole(id.to_string(), r.id, true),
+                })
+                .collect();
+            items.push(container(pick_list("Role", &app.card_list_search, rows, pal)).padding(crate::util::pad(0.0, 14.0, 10.0, 14.0)).into());
+        }
+    }
+
+    // The badges this member has, then a + for admins, which opens a checklist of every badge here.
+    if let Some(id) = member_id.as_deref() {
+        let has: Vec<i64> = app.server.member_badges.get(id).cloned().unwrap_or_default();
+        let owned: Vec<&common::Badge> = app.server.badges.iter().filter(|b| has.contains(&b.id)).collect();
+        if can_assign || !owned.is_empty() {
+            let plus: Option<Element<'_, Message>> = can_assign.then(|| {
+                button(
+                    container(text("+").size(15).color(pal.text))
+                        .width(Length::Fixed(22.0))
+                        .height(Length::Fixed(22.0))
+                        .align_x(iced::alignment::Horizontal::Center)
+                        .align_y(iced::alignment::Vertical::Center)
+                        .style(move |_: &Theme| container::Style {
+                            background: Some(Background::Color(pal.input_bg)),
+                            border: border::rounded(11.0).color(pal.text_muted).width(1.0),
+                            ..container::Style::default()
+                        }),
+                )
+                .padding(0)
+                .on_press(Message::CardBadgesToggle)
+                .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() })
+                .into()
+            });
+            items.push(container(text("BADGES").size(11).color(pal.text_muted)).padding(crate::util::pad(12.0, 14.0, 4.0, 14.0)).into());
+            let mut badge_chips: Vec<Element<'_, Message>> = owned
+                .into_iter()
+                .map(|b| {
+                    let color = crate::util::hex_color(&b.color).unwrap_or(pal.text_strong);
+                    let dot = container(space()).width(Length::Fixed(10.0)).height(Length::Fixed(10.0)).style(move |_: &Theme| container::Style {
+                        background: Some(Background::Color(color)),
+                        border: border::rounded(5.0),
                         ..container::Style::default()
+                    });
+                    let mut content = row![dot, text(b.name.clone()).size(12).color(pal.text)].spacing(6).align_y(iced::alignment::Vertical::Center);
+                    if can_assign {
+                        content = content.push(remove_button(Message::SetMemberBadge { user: id.to_string(), badge: b.id, on: false }, "Remove badge", pal));
+                    }
+                    container(content)
+                        .padding(crate::util::pad2(3.0, 8.0))
+                        .style(move |_: &Theme| container::Style {
+                            background: Some(Background::Color(pal.input_bg)),
+                            border: border::rounded(10.0),
+                            ..container::Style::default()
+                        })
+                        .into()
+                })
+                .collect();
+            if badge_chips.is_empty() {
+                badge_chips.push(text("No badges yet.").size(12).color(pal.text_muted).into());
+            }
+            badge_chips.extend(plus);
+            items.push(container(row(badge_chips).spacing(6).align_y(iced::alignment::Vertical::Center).wrap()).padding(crate::util::pad(0.0, 14.0, 10.0, 14.0)).into());
+            if can_assign && app.card_badges_open {
+                let rows: Vec<PickRow> = app
+                    .server
+                    .badges
+                    .iter()
+                    .filter(|b| !has.contains(&b.id))
+                    .map(|b| PickRow {
+                        name: b.name.clone(),
+                        color: crate::util::hex_color(&b.color).unwrap_or(pal.text),
+                        msg: Message::SetMemberBadge { user: id.to_string(), badge: b.id, on: true },
                     })
-                    .into()
-            })
-            .collect();
-        items.push(container(row(chips).spacing(6).wrap()).padding(crate::util::pad(0.0, 14.0, 10.0, 14.0)).into());
+                    .collect();
+                items.push(container(pick_list("Badge", &app.card_list_search, rows, pal)).padding(crate::util::pad(0.0, 14.0, 10.0, 14.0)).into());
+            }
+        }
     }
 
     if own {
