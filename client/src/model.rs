@@ -58,6 +58,10 @@ pub struct ServerView {
     pub member_roles: HashMap<String, Vec<i64>>,
     /// The channel exceptions for roles (see `common::ChannelOverride`).
     pub overrides: Vec<common::ChannelOverride>,
+    /// How each member wants to appear, by account id.
+    pub member_status: HashMap<String, common::PresenceStatus>,
+    /// Who has typed recently in each channel: account id, name, and when.
+    pub typing: HashMap<i64, Vec<(String, String, std::time::Instant)>>,
     /// When each member first joined this server, by account id, in Unix seconds (0 when unknown).
     pub member_joined: HashMap<String, u64>,
 }

@@ -542,3 +542,51 @@ fn profile_card_blocks_hovers_underneath() {
     assert!(closed > 0, "the sweep should hover messages at all");
     assert_eq!(open, 0, "the card should block hovers underneath it");
 }
+
+#[test]
+fn clicking_own_status_opens_the_status_menu() {
+    use iced::{mouse, Event, Point};
+    let app = chat_app();
+    let mut ui = simulate(&app);
+    // Sweep the bottom of the channel list, where the user bar and its status label sit.
+    for y in (560..700).step_by(6) {
+        for x in (60..320).step_by(6) {
+            let p = Point::new(x as f32, y as f32);
+            ui.point_at(p);
+            ui.simulate([
+                Event::Mouse(mouse::Event::CursorMoved { position: p }),
+                Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+                Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+            ]);
+        }
+    }
+    let messages: Vec<Message> = ui.into_messages().collect();
+    assert!(messages.iter().any(|m| matches!(m, Message::OpenMenu(crate::app::MenuKind::Status))), "clicking the status should open its menu");
+}
+
+#[test]
+fn choosing_a_status_in_the_menu_sends_it() {
+    use iced::{mouse, Event, Point};
+    let mut app = chat_app();
+    app.cursor = Point::new(150.0, 560.0);
+    let _ = app.update(Message::OpenMenu(crate::app::MenuKind::Status));
+    let mut ui = simulate(&app);
+    let mut picked = Vec::new();
+    for y in (540..680).step_by(4) {
+        for x in (100..340).step_by(4) {
+            let p = Point::new(x as f32, y as f32);
+            ui.point_at(p);
+            ui.simulate([
+                Event::Mouse(mouse::Event::CursorMoved { position: p }),
+                Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+                Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+            ]);
+        }
+    }
+    for m in ui.into_messages() {
+        if matches!(m, Message::SetStatus(_)) {
+            picked.push(m);
+        }
+    }
+    assert!(!picked.is_empty(), "clicking a status in the menu should choose it");
+}

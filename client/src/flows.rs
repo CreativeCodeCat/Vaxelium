@@ -75,8 +75,8 @@ fn welcome_then_joined_shows_history_and_presence() {
 
     let _ = app.update(net(ServerMsg::Presence {
         users: vec![
-            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true, roles: vec![], joined: 0 },
-            UserStatus { name: "bob".into(), id: "id-bob".into(), online: false, owner: false, roles: vec![], joined: 0 },
+            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true, roles: vec![], joined: 0, status: Default::default() },
+            UserStatus { name: "bob".into(), id: "id-bob".into(), online: false, owner: false, roles: vec![], joined: 0, status: Default::default() },
         ],
     }));
     assert!(app.is_owner());
@@ -317,8 +317,8 @@ fn roles_grant_permissions_to_their_holders() {
     let _ = app.update(net(ServerMsg::Roles { roles: vec![mods] }));
     let _ = app.update(net(ServerMsg::Presence {
         users: vec![
-            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true, roles: vec![], joined: 0 },
-            UserStatus { name: "bob".into(), id: "id-bob".into(), online: true, owner: false, roles: vec![5], joined: 0 },
+            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true, roles: vec![], joined: 0, status: Default::default() },
+            UserStatus { name: "bob".into(), id: "id-bob".into(), online: true, owner: false, roles: vec![5], joined: 0, status: Default::default() },
         ],
     }));
 
@@ -395,9 +395,9 @@ fn the_owner_and_bypass_holders_cannot_be_ignored_or_blocked() {
     }));
     let _ = app.update(net(ServerMsg::Presence {
         users: vec![
-            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true, roles: vec![], joined: 0 },
-            UserStatus { name: "bob".into(), id: "id-bob".into(), online: true, owner: false, roles: vec![7], joined: 0 },
-            UserStatus { name: "carol".into(), id: "id-carol".into(), online: true, owner: false, roles: vec![], joined: 0 },
+            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true, roles: vec![], joined: 0, status: Default::default() },
+            UserStatus { name: "bob".into(), id: "id-bob".into(), online: true, owner: false, roles: vec![7], joined: 0, status: Default::default() },
+            UserStatus { name: "carol".into(), id: "id-carol".into(), online: true, owner: false, roles: vec![], joined: 0, status: Default::default() },
         ],
     }));
     // The owner and bob (who has Bypass ignore) cannot be ignored or blocked.
@@ -441,8 +441,8 @@ fn bypass_protects_only_on_the_server_that_grants_it() {
     }));
     let _ = app.update(net(ServerMsg::Presence {
         users: vec![
-            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true, roles: vec![], joined: 0 },
-            UserStatus { name: "bob".into(), id: "id-bob".into(), online: true, owner: false, roles: vec![7], joined: 0 },
+            UserStatus { name: "alice".into(), id: "id-alice".into(), online: true, owner: true, roles: vec![], joined: 0, status: Default::default() },
+            UserStatus { name: "bob".into(), id: "id-bob".into(), online: true, owner: false, roles: vec![7], joined: 0, status: Default::default() },
         ],
     }));
     // The open server remembers bob as protected; the other server does not.

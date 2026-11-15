@@ -33,6 +33,9 @@ pub const NEW_DM_ID: &str = "new-dm";
 pub const EDIT_ID: &str = "edit-box";
 /// The width of a member's right-click menu. It is always this wide.
 pub const MEMBER_MENU_WIDTH: f32 = 220.0;
+/// How long a typing notice counts, and how often this member's own notices are sent.
+pub const TYPING_FOR: std::time::Duration = std::time::Duration::from_secs(6);
+pub const TYPING_SEND_EVERY: std::time::Duration = std::time::Duration::from_secs(4);
 /// The longest bio, in characters. Line breaks count.
 pub const BIO_MAX: usize = 190;
 pub const PANEL_MIN: f32 = 250.0;
@@ -255,6 +258,8 @@ pub enum MenuKind {
     Server,
     Theme,
     Category { id: i64, name: String },
+    /// Your own status, from the user bar.
+    Status,
 }
 
 /// Everything the app shows and remembers.
@@ -317,6 +322,8 @@ pub struct App {
     pub editing: Option<(i64, String)>,
     pub pending_delete: Option<i64>,
     pub input: String,
+    /// When this member last sent a typing notice, so they are not sent for every key.
+    pub last_typing_sent: Option<std::time::Instant>,
     pub new_channel: String,
     pub create_open: bool,
     /// The category name box in the channel list is showing.
@@ -524,6 +531,8 @@ pub enum Message {
     CardOpen { id: String, name: String },
     CardLoaded(String, Result<crate::backend::Card, CmdError>),
     CardClose,
+    /// Sets how you appear to others on this server.
+    SetStatus(common::PresenceStatus),
     /// A web link was clicked. Only http and https links are opened.
     OpenLink(String),
     /// An edit to the bio, which may run over several lines.
@@ -646,6 +655,7 @@ impl App {
             editing: None,
             pending_delete: None,
             input: String::new(),
+            last_typing_sent: None,
             new_channel: String::new(),
             create_open: false,
             category_open: false,
@@ -994,12 +1004,19 @@ impl App {
                 self.server.online = users.iter().filter(|u| u.online).map(|u| u.name.clone()).collect();
                 self.server.offline = users.iter().filter(|u| !u.online).map(|u| u.name.clone()).collect();
                 self.server.member_roles = users.iter().map(|u| (u.id.clone(), u.roles.clone())).collect();
+                self.server.member_status = users.iter().map(|u| (u.id.clone(), u.status)).collect();
                 self.server.member_joined = users.iter().map(|u| (u.id.clone(), u.joined)).collect();
                 self.server.owner = owner.as_ref().map(|o| o.name.clone());
                 self.server.owner_id = owner.map(|o| o.id);
                 if self.remember_protected() {
                     self.save_prefs();
                 }
+            }
+            ServerMsg::Typing { channel_id, user, name } => {
+                let now = std::time::Instant::now();
+                let typing = self.server.typing.entry(channel_id).or_default();
+                typing.retain(|(id, _, at)| *id != user && now.duration_since(*at) < TYPING_FOR);
+                typing.push((user, name, now));
             }
             ServerMsg::ChannelOverrides { overrides } => {
                 self.server.overrides = overrides;
@@ -1311,8 +1328,10 @@ impl App {
     }
 
     pub(crate) fn open_menu(&mut self, kind: MenuKind) {
-        let at = self.cursor;
+        let mut at = self.cursor;
         let centered = matches!(kind, MenuKind::User { .. });
+        // The status menu opens from the bottom of the window, so it opens above the cursor instead.
+        let above = matches!(kind, MenuKind::Status);
         let (_key, items, width) = match kind {
             MenuKind::Channel { id, name, unread } => {
                 let mut items = Vec::new();
@@ -1410,7 +1429,12 @@ impl App {
             }
             MenuKind::Server => (String::from("server"), self.server_menu_items(), Some(200.0)),
             MenuKind::Theme => (String::from("theme"), self.theme_menu_items(), Some(180.0)),
+            MenuKind::Status => (String::from("status"), self.status_menu_items(), Some(200.0)),
         };
+        if above {
+            let height = items.len() as f32 * 34.0 + 8.0;
+            at.y = (at.y - height).max(8.0);
+        }
         self.roles_menu_open = false;
         self.menu = Some(Menu { at, items, width, centered });
         self.picker = None;
@@ -1432,6 +1456,14 @@ impl App {
         items.push(MenuItem::Divider);
         items.push(item("Leave server", None, true, Message::RemoveServer(self.selected.unwrap_or(usize::MAX))));
         items
+    }
+
+    pub(crate) fn status_menu_items(&self) -> Vec<MenuItem> {
+        use common::PresenceStatus::*;
+        [(Online, "Online"), (Idle, "Idle"), (DoNotDisturb, "Do not disturb"), (Invisible, "Invisible")]
+            .into_iter()
+            .map(|(status, label)| item(label, None, false, Message::SetStatus(status)))
+            .collect()
     }
 
     pub(crate) fn theme_menu_items(&self) -> Vec<MenuItem> {
