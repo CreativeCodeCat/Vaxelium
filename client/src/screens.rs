@@ -527,7 +527,7 @@ fn hovers_during_sweep(app: &App) -> usize {
 }
 
 #[test]
-fn messages_stay_hoverable_while_a_profile_card_is_open() {
+fn profile_card_blocks_hovers_underneath() {
     let mut app = chat_app();
     let closed = hovers_during_sweep(&app);
     app.card = Some(crate::app::CardView {
@@ -539,7 +539,6 @@ fn messages_stay_hoverable_while_a_profile_card_is_open() {
         error: None,
     });
     let open = hovers_during_sweep(&app);
-    eprintln!("hovers closed={closed} open={open}");
     assert!(closed > 0, "the sweep should hover messages at all");
-    assert_eq!(open, closed);
+    assert_eq!(open, 0, "the card should block hovers underneath it");
 }

@@ -22,7 +22,11 @@ const TONE_NAMES: [&str; 6] = [
 
 /// A full-window layer that closes when pressed, and holds one popup at a point.
 fn anchored<'a>(popup: Element<'a, Message>, at: iced::Point, close: Message) -> Element<'a, Message> {
-    let backdrop = mouse_area(container(space()).width(Length::Fill).height(Length::Fill)).on_press(close);
+    // The backdrop reports a pointer cursor, so the stack hides the cursor from the layers below. That
+    // keeps messages underneath from being hovered while the popup is up.
+    let backdrop = mouse_area(container(space()).width(Length::Fill).height(Length::Fill))
+        .on_press(close)
+        .interaction(iced::mouse::Interaction::Idle);
     let placed = container(popup)
         .width(Length::Fill)
         .height(Length::Fill)
