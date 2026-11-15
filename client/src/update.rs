@@ -427,6 +427,7 @@ impl App {
 
             // ----- settings pages -----
             Message::UserSettingsOpen => {
+                self.card = None;
                 self.page = Page::User;
                 self.account.editing = None;
                 return self.load_profile();

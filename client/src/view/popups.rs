@@ -531,32 +531,46 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     let card = view.card.as_ref();
     let name = card.map_or(view.name.clone(), |c| c.name.clone());
     let banner = card.and_then(|c| crate::util::hex_color(&c.banner)).unwrap_or(pal.accent);
+    // Your own card is taller, with a larger picture under the banner.
+    let own = view.id == app.user_id;
+    let banner_height = if own { 96.0 } else { 56.0 };
+    // The banner follows the card's rounded top corners.
     let banner_block = container(space())
         .width(Length::Fill)
-        .height(Length::Fixed(56.0))
+        .height(Length::Fixed(banner_height))
         .style(move |_: &Theme| container::Style {
             background: Some(Background::Color(banner)),
-            border: border::rounded(0.0),
+            border: border::Border {
+                radius: border::Radius { top_left: 8.0, top_right: 8.0, bottom_right: 0.0, bottom_left: 0.0 },
+                ..border::Border::default()
+            },
             ..container::Style::default()
         });
     let picture = card.map_or(String::new(), |c| c.avatar.clone());
     let banner_hex = card.map_or(String::new(), |c| c.banner.clone());
-    let badge = container(super::avatar(&picture, &banner_hex, &name, 64.0, &pal)).padding(crate::util::pad(8.0, 0.0, 0.0, 14.0));
-    let mut items: Vec<Element<'_, Message>> = vec![
-        banner_block.into(),
-        badge.into(),
-        container(text(name.clone()).size(18).color(pal.text_strong)).padding(crate::util::pad(12.0, 14.0, 0.0, 14.0)).into(),
-    ];
+    // The status bubble. On your own card it can be edited, with the pencil and the trash, and it sits
+    // under the name. On other members' cards it sits beside the avatar.
+    let status = card.map(|c| c.status.clone()).unwrap_or_default();
+    let mut items: Vec<Element<'_, Message>> = vec![banner_block.into()];
+    let name_size = if own { 20.0 } else { 18.0 };
+    if own {
+        let big = container(super::avatar(&picture, &banner_hex, &name, 84.0, &pal)).padding(crate::util::pad(8.0, 0.0, 0.0, 14.0));
+        items.push(big.into());
+    } else {
+        let badge = container(super::avatar(&picture, &banner_hex, &name, 64.0, &pal)).padding(crate::util::pad(8.0, 0.0, 0.0, 14.0));
+        let badge_row: Element<'_, Message> = if !status.is_empty() {
+            row![badge, container(status_bubble(&status, pal)).padding(crate::util::pad(0.0, 8.0, 0.0, 0.0))].align_y(iced::alignment::Vertical::Center).into()
+        } else {
+            badge.into()
+        };
+        items.push(badge_row);
+    }
+    items.push(container(text(name.clone()).size(name_size).color(pal.text_strong)).padding(crate::util::pad(12.0, 14.0, 0.0, 14.0)).into());
     if let Some(c) = card {
         items.push(container(text(format!("@{}", c.username)).size(13).color(pal.text_muted)).padding(crate::util::pad(0.0, 14.0, 12.0, 14.0)).into());
     }
-    // The status bubble. On your own card it can be edited, with the pencil and the trash.
-    let own = view.id == app.user_id;
-    let status = card.map(|c| c.status.clone()).unwrap_or_default();
     if own {
         items.push(status_bubble_editor(app, &status, pal));
-    } else if !status.is_empty() {
-        items.push(container(status_bubble(&status, pal)).padding(crate::util::pad(4.0, 14.0, 8.0, 14.0)).into());
     }
     items.push(super::divider(pal.selected_bg));
     items.push(container(text("ABOUT ME").size(11).color(pal.text_muted)).padding(crate::util::pad(12.0, 14.0, 4.0, 14.0)).into());
@@ -601,7 +615,14 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
         items.push(container(row(chips).spacing(6).wrap()).padding(crate::util::pad(0.0, 14.0, 10.0, 14.0)).into());
     }
 
-    if name != app.user.clone().unwrap_or_default() {
+    if own {
+        items.push(super::divider(pal.selected_bg));
+        items.push(
+            container(solid("Edit Profile", Message::UserSettingsOpen, pal.accent, pal.on_color, None))
+                .padding(crate::util::pad(8.0, 14.0, 14.0, 14.0))
+                .into(),
+        );
+    } else {
         items.push(super::divider(pal.selected_bg));
         items.push(
             container(solid("Message", Message::MessageUser(name.clone()), pal.accent, pal.on_color, None))
