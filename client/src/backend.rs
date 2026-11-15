@@ -65,6 +65,8 @@ pub struct Card {
     pub status: String,
     /// When the account was created, in Unix seconds (0 when unknown).
     pub created: u64,
+    /// The servers (by address) that the viewer and this member both are in.
+    pub mutual: Vec<String>,
 }
 
 /// The outcome of restoring a saved login at startup.
@@ -442,10 +444,22 @@ impl Backend {
 
     /// Someone's public profile card, by their account id.
     pub fn profile_card(&self, id: &str) -> Result<Card, CmdError> {
-        match self.auth(AuthRequest::ProfileCard { id: id.to_string() })? {
-            AuthReply::ProfileCard { name, username, bio, banner, avatar, created, status } => {
-                Ok(Card { name, username, bio, banner, avatar, status, created })
+        // The session lets the card list the servers the two of you share.
+        let token = self.token().unwrap_or_default();
+        match self.auth(AuthRequest::ProfileCard { id: id.to_string(), token })? {
+            AuthReply::ProfileCard { name, username, bio, banner, avatar, created, status, mutual } => {
+                Ok(Card { name, username, bio, banner, avatar, status, created, mutual })
             }
+            AuthReply::Error { text } => Err(CmdError::new(text)),
+            _ => Err(CmdError::new("Unexpected reply from the auth service.")),
+        }
+    }
+
+    /// Tells the auth service which servers this account is in, so other people's cards can show shared ones.
+    pub fn set_servers(&self, servers: Vec<String>) -> Result<(), CmdError> {
+        let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
+        match self.auth(AuthRequest::SetServers { token, servers })? {
+            AuthReply::ServersSaved => Ok(()),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
         }

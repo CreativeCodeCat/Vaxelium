@@ -601,6 +601,25 @@ impl App {
             },
             Message::CardOpen { id, name } => return self.open_card(id, name, self.cursor, false),
             Message::CardMessageInput(text) => self.card_message = text,
+            Message::CardRolesToggle => self.card_roles_open = !self.card_roles_open,
+            Message::CardBadgesToggle => self.card_badges_open = !self.card_badges_open,
+            Message::CardListSearch(text) => self.card_list_search = text,
+            Message::BadgeName(name) => self.badge_name = name,
+            Message::BadgeColor(color) => self.badge_color = color,
+            Message::BadgeCreate => {
+                let name = self.badge_name.trim().to_string();
+                if !name.is_empty() {
+                    let color = self.badge_color.clone();
+                    let _ = self.backend.send_main(ClientMsg::CreateBadge { name, color });
+                    self.badge_name.clear();
+                }
+            }
+            Message::BadgeDelete(badge) => {
+                let _ = self.backend.send_main(ClientMsg::DeleteBadge { badge });
+            }
+            Message::SetMemberBadge { user, badge, on } => {
+                let _ = self.backend.send_main(ClientMsg::SetMemberBadge { user, badge, on });
+            }
             Message::RefreshConversation(id) => {
                 self.fetch_person(&id);
             }
@@ -998,6 +1017,9 @@ impl App {
     /// Opens a profile card at a point and asks for the card's details.
     fn open_card(&mut self, id: String, name: String, at: iced::Point, above: bool) -> Task<Message> {
         self.card_message.clear();
+        self.card_roles_open = false;
+        self.card_badges_open = false;
+        self.card_list_search.clear();
         self.card = Some(crate::app::CardView { id: id.clone(), name, at, loading: true, card: None, error: None, above });
         let backend = self.backend.clone();
         Task::perform(offload(move || {
