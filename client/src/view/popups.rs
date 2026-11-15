@@ -508,6 +508,14 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     if let Some(c) = card {
         items.push(container(text(format!("@{}", c.username)).size(13).color(pal.text_muted)).padding(crate::util::pad(0.0, 14.0, 12.0, 14.0)).into());
     }
+    // The status bubble. On your own card it can be edited, with the pencil and the trash.
+    let own = view.id == app.user_id;
+    let status = card.map(|c| c.status.clone()).unwrap_or_default();
+    if own {
+        items.push(status_bubble_editor(app, &status, pal));
+    } else if !status.is_empty() {
+        items.push(container(status_bubble(&status, pal)).padding(crate::util::pad(4.0, 14.0, 8.0, 14.0)).into());
+    }
     items.push(super::divider(pal.selected_bg));
     items.push(container(text("ABOUT ME").size(11).color(pal.text_muted)).padding(crate::util::pad(12.0, 14.0, 4.0, 14.0)).into());
     let bio: Element<'_, Message> = match (card, &view.error, view.loading) {
@@ -633,4 +641,60 @@ fn access_choice<'a>(label: &str, current: Option<bool>, on_pick: impl Fn(Option
     .spacing(4)
     .align_y(iced::alignment::Vertical::Center)
     .into()
+}
+
+/// A rounded bubble with a status text in it.
+fn status_bubble<'a>(status: &str, pal: Pal) -> Element<'a, Message> {
+    container(text(status.to_string()).size(12).color(pal.text))
+        .padding(crate::util::pad2(4.0, 8.0))
+        .style(move |_: &Theme| container::Style {
+            background: Some(Background::Color(pal.input_bg)),
+            border: border::rounded(10.0),
+            ..container::Style::default()
+        })
+        .into()
+}
+
+/// Your own status bubble: shows the status with a pencil to edit it and a trash to clear it. While
+/// editing it is a text box with Save and Cancel.
+fn status_bubble_editor<'a>(app: &App, status: &str, pal: Pal) -> Element<'a, Message> {
+    if let Some(draft) = &app.card_status_draft {
+        let mut col = Column::new().spacing(6);
+        col = col.push(
+            text_input("What's your status?", draft)
+                .on_input(Message::CardStatusInput)
+                .on_submit(Message::CardStatusSave)
+                .padding(8)
+                .size(13),
+        );
+        if let Some(error) = &app.card_status_error {
+            col = col.push(text(error.clone()).size(12).color(pal.red));
+        }
+        col = col.push(
+            row![
+                space().width(Length::Fill),
+                link("Cancel", Message::CardStatusCancel, pal.text_muted),
+                solid("Save", Message::CardStatusSave, pal.accent, pal.on_color, Some(72.0)),
+            ]
+            .spacing(10)
+            .align_y(iced::alignment::Vertical::Center),
+        );
+        return container(col).padding(crate::util::pad(4.0, 14.0, 8.0, 14.0)).into();
+    }
+    let edit = button(icons::icon(icons::PENCIL, 13.0, pal.text_muted))
+        .padding(3)
+        .on_press(Message::CardStatusStart)
+        .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() });
+    let clear = button(icons::icon(icons::TRASH, 13.0, pal.text_muted))
+        .padding(3)
+        .on_press(Message::CardStatusClear)
+        .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() });
+    let shown: Element<'a, Message> = if status.is_empty() {
+        text("Set a status").size(12).color(pal.text_muted).into()
+    } else {
+        status_bubble(status, pal)
+    };
+    container(row![shown, space().width(Length::Fill), edit, clear].spacing(6).align_y(iced::alignment::Vertical::Center))
+        .padding(crate::util::pad(4.0, 14.0, 8.0, 14.0))
+        .into()
 }

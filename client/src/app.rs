@@ -177,6 +177,8 @@ pub struct ProfileLook {
     pub banner: String,
     /// When the account was created, in Unix seconds (0 when unknown).
     pub created: u64,
+    /// The status text under the name. Empty when none is set.
+    pub status: String,
 }
 
 /// The profile card open over the member list. `card` is None while it loads or when it cannot be
@@ -357,6 +359,9 @@ pub struct App {
     pub dnd: Option<Dnd>,
     /// The channel waiting for its delete confirmation.
     pub pending_channel_delete: Option<(i64, String)>,
+    /// Your status text while it is being edited on your profile card, and any error saving it.
+    pub card_status_draft: Option<String>,
+    pub card_status_error: Option<String>,
     /// The channel whose permissions are being edited.
     pub channel_access: Option<i64>,
     /// The role waiting for confirmation before it is deleted.
@@ -554,6 +559,15 @@ pub enum Message {
     CardOpen { id: String, name: String },
     CardLoaded(String, Result<crate::backend::Card, CmdError>),
     CardClose,
+    /// Start, change or cancel editing your own status text on your profile card.
+    CardStatusStart,
+    CardStatusInput(String),
+    CardStatusCancel,
+    /// Save the status text being edited (empty clears it).
+    CardStatusSave,
+    /// Clear your status text.
+    CardStatusClear,
+    CardStatusDone(Result<String, CmdError>),
     /// Input happened, so automatic Idle is checked again.
     Activity,
     /// Sets how you appear to others on this server.
@@ -691,6 +705,8 @@ impl App {
             rename_channel: None,
             dnd: None,
             pending_channel_delete: None,
+            card_status_draft: None,
+            card_status_error: None,
             channel_access: None,
             pending_role_delete: None,
             roles_menu_open: false,

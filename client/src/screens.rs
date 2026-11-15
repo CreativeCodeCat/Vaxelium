@@ -462,6 +462,7 @@ fn member_profile_card_screen() {
             bio: "I Use Arch BTW. Maintainer of the Discord bot.".into(),
             banner: "#5865f2".into(),
             avatar: String::new(),
+            status: "CodeWorks Creative Hub".into(),
             created: 0,
         }),
         error: None,
