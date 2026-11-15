@@ -55,16 +55,12 @@ pub fn start(via: String, events: Sender<Event>) {
         for addr in addrs {
             let events = events.clone();
             workers.push(std::thread::spawn(move || {
-                match ask(&addr, &ClientMsg::Info) {
-                    Ok(ServerMsg::Info { server_id, name, description, icon, online, public, self_signed }) => {
-                        let found = FoundServer { server_id, addr, name, description, icon, online, public, self_signed };
-                        let _ = events.send(Event::Discovered(found));
-                    }
-                    // Say why a server is missing, rather than leaving it out without a word.
-                    Ok(_) => {}
-                    Err(error) => {
-                        let _ = events.send(Event::DiscoverFailed { addr, error });
-                    }
+                // A server that cannot be reached or trusted is left out.
+                if let Ok(ServerMsg::Info { server_id, name, description, icon, online, public, self_signed }) =
+                    ask(&addr, &ClientMsg::Info)
+                {
+                    let found = FoundServer { server_id, addr, name, description, icon, online, public, self_signed };
+                    let _ = events.send(Event::Discovered(found));
                 }
             }));
         }
