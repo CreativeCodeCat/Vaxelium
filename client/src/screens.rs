@@ -451,6 +451,7 @@ fn member_profile_card_screen() {
     with_roles(&mut app);
     app.server.member_ids.insert("bob".into(), "id-bob".into());
     app.server.member_roles.insert("id-bob".into(), vec![1, 2]);
+    app.server.member_status.insert("id-bob".into(), common::PresenceStatus::Online);
     app.card = Some(crate::app::CardView {
         id: "id-bob".into(),
         name: "bob".into(),
