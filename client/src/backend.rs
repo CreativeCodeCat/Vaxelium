@@ -89,6 +89,8 @@ pub enum Event {
     DmLink { addr: String, id: u64, up: bool },
     /// A server answered a discovery request.
     Discovered(FoundServer),
+    /// A server the discovery search reached but could not use, such as one whose certificate changed.
+    DiscoverFailed { addr: String, error: String },
 }
 
 /// One open connection and the id the app uses to tell it apart from earlier ones.

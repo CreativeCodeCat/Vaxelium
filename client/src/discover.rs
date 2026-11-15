@@ -26,6 +26,8 @@ pub struct FoundServer {
     pub online: u32,
     /// True once other servers know it.
     pub public: bool,
+    /// True when the server uses a certificate it made itself.
+    pub self_signed: bool,
 }
 
 /// Sends one request over TLS and reads one reply line.
@@ -53,11 +55,16 @@ pub fn start(via: String, events: Sender<Event>) {
         for addr in addrs {
             let events = events.clone();
             workers.push(std::thread::spawn(move || {
-                if let Ok(ServerMsg::Info { server_id, name, description, icon, online, public }) =
-                    ask(&addr, &ClientMsg::Info)
-                {
-                    let found = FoundServer { server_id, addr, name, description, icon, online, public };
-                    let _ = events.send(Event::Discovered(found));
+                match ask(&addr, &ClientMsg::Info) {
+                    Ok(ServerMsg::Info { server_id, name, description, icon, online, public, self_signed }) => {
+                        let found = FoundServer { server_id, addr, name, description, icon, online, public, self_signed };
+                        let _ = events.send(Event::Discovered(found));
+                    }
+                    // Say why a server is missing, rather than leaving it out without a word.
+                    Ok(_) => {}
+                    Err(error) => {
+                        let _ = events.send(Event::DiscoverFailed { addr, error });
+                    }
                 }
             }));
         }

@@ -179,6 +179,7 @@ fn discover_screen() {
         icon: None,
         online: 2,
         public: true,
+        self_signed: true,
     }];
     let mut ui = simulate(&app);
     save(&mut ui, &app, "discover");
