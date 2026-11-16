@@ -70,6 +70,10 @@ pub fn range_in_block(from: (usize, usize), to: (usize, usize), block: usize, le
     (first <= last).then_some(first..last + 1)
 }
 
+/// How far below a block a drag still counts as reaching its end: enough to cover the gaps between
+/// blocks and between messages.
+const GAP_REACH: f32 = 60.0;
+
 /// A block of selectable text.
 pub struct Selectable<'a, Message> {
     units: Vec<Unit>,
@@ -388,11 +392,16 @@ impl<Message> Widget<Message, iced::Theme, iced::Renderer> for Selectable<'_, Me
                 if self.dragging {
                     if let Some(p) = cursor.position() {
                         let bounds = layout.bounds();
-                        if p.y >= bounds.y && p.y <= bounds.y + bounds.height {
+                        let bottom = bounds.y + bounds.height;
+                        if p.y >= bounds.y && p.y <= bottom {
                             let local = Point::new(p.x - bounds.x, p.y - bounds.y);
                             if let Some(index) = span_at(&state.paragraph, self.units.len(), local) {
                                 shell.publish((self.on_step)(Step::Over(index)));
                             }
+                        } else if p.y > bottom && p.y <= bottom + GAP_REACH && !self.units.is_empty() {
+                            // In the gap below this block, the drag reaches to its end. A block lower down
+                            // that the pointer is level with reports later, and so wins.
+                            shell.publish((self.on_step)(Step::Over(self.units.len() - 1)));
                         }
                     }
                 }

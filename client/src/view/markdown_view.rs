@@ -23,12 +23,11 @@ struct Text {
     size: f32,
 }
 
-/// The selection a message is drawn with: its two ends, and whether it is being dragged.
+/// The part of a message the selection covers: its two ends.
 #[derive(Clone, Copy)]
 pub struct Selection {
     pub from: (usize, usize),
     pub to: (usize, usize),
-    pub dragging: bool,
 }
 
 /// A message's body, drawn as Markdown. `message` is the message's id, which the selection reports.
@@ -37,15 +36,12 @@ pub fn message_body<'a>(app: &App, message: i64, body: &str, pal: Pal) -> Elemen
     let pings = app.role_pings(body);
     let mut texts = Vec::new();
     describe(&blocks, &pings, pal, &mut texts);
-    let selection = app
-        .text_sel
-        .as_ref()
-        .filter(|s| s.message == message)
-        .map(|s| Selection {
-            from: s.anchor,
-            to: s.focus,
-            dragging: s.dragging,
-        });
+    let selection = app.text_sel.as_ref().and_then(|s| {
+        let (from, to) = s.within(message)?;
+        Some(Selection { from, to })
+    });
+    // Every message hears a drag, so one can carry on into the messages around it.
+    let dragging = app.text_sel.as_ref().is_some_and(|s| s.dragging);
     let flipped: HashSet<usize> = app
         .details_flipped
         .iter()
@@ -57,6 +53,7 @@ pub fn message_body<'a>(app: &App, message: i64, body: &str, pal: Pal) -> Elemen
         next: 0,
         message,
         selection,
+        dragging,
         pal,
         flipped,
         details_next: 0,
@@ -152,6 +149,8 @@ struct View {
     next: usize,
     message: i64,
     selection: Option<Selection>,
+    /// Whether a selection is being dragged, here or in another message.
+    dragging: bool,
     pal: Pal,
     /// The `<details>` sections whose open state was changed by a click, by their number in the message.
     flipped: HashSet<usize>,
@@ -171,7 +170,7 @@ impl View {
         let selected = self
             .selection
             .and_then(|s| range_in_block(s.from, s.to, index, units.len()));
-        let dragging = self.selection.is_some_and(|s| s.dragging);
+        let dragging = self.dragging;
         let message = self.message;
         selectable(
             units,
