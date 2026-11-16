@@ -1689,10 +1689,10 @@ impl App {
         if !self.can_drag_to(dnd.item, dnd.over) {
             self.status = match dnd.item {
                 DragItem::Channel(_) => {
-                    "You need Manage channel for this channel, and for the categories it leaves or joins, to move it."
+                    "You need Manage Channel for this channel, and for the categories it leaves or joins, to move it."
                         .into()
                 }
-                DragItem::Category(_) => "You need the Manage channels permission to move categories.".into(),
+                DragItem::Category(_) => "You need the Manage Channels permission to move categories.".into(),
             };
             return;
         }

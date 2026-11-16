@@ -1444,7 +1444,7 @@ fn a_member_without_manage_channels_gets_no_drop_targets_and_is_told_why() {
         "no drop target without the permission"
     );
     let _ = app.update(Message::MouseReleased);
-    assert!(app.status.contains("Manage channels"), "status: {}", app.status);
+    assert!(app.status.contains("Manage Channels"), "status: {}", app.status);
 }
 
 #[test]
