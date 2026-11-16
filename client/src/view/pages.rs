@@ -312,7 +312,11 @@ pub fn server_status(app: &App, pal: Pal) -> Element<'_, Message> {
     } else {
         items.push(text("Pick a server").size(26).color(pal.text_strong).into());
         items.push(muted_text(
-            "Choose one from the icons on the left, or add a new one with +.",
+            if cfg!(target_arch = "wasm32") {
+                "Choose one from the icons on the left."
+            } else {
+                "Choose one from the icons on the left, or add a new one with +."
+            },
             14.0,
             pal.text_muted,
         ));

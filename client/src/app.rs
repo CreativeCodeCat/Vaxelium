@@ -661,6 +661,7 @@ pub enum Message {
     AddServerAddr(String),
     AddServerSubmit,
     FromAddDiscover,
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     DiscoverOpen,
     DiscoverClose,
     DiscoverToggle(String),
@@ -1247,6 +1248,15 @@ impl App {
         Task::perform(offload(move || backend.connect_main(&addr2)), move |r| {
             Message::Connected(seq, r)
         })
+    }
+
+    /// The web client has only the server that served it, so it is opened as soon as someone is
+    /// logged in. The desktop client waits for one to be picked.
+    pub(crate) fn open_page_server(&mut self) -> Task<Message> {
+        if cfg!(target_arch = "wasm32") && self.selected.is_none() && !self.prefs.servers.is_empty() {
+            return self.select_server(0);
+        }
+        Task::none()
     }
 
     pub(crate) fn select_server(&mut self, index: usize) -> Task<Message> {

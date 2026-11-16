@@ -86,6 +86,8 @@ pub fn rail(app: &App, pal: Pal) -> Element<'_, Message> {
         );
         items.push(name_bubble(button, &server.name, server.linked, pal));
     }
+    // The web client only reaches the server that served it, so it cannot add or find others.
+    #[cfg(not(target_arch = "wasm32"))]
     items.push(rail_button(
         text("+").size(24).color(pal.green).into(),
         Message::AddServerOpen,
@@ -93,6 +95,7 @@ pub fn rail(app: &App, pal: Pal) -> Element<'_, Message> {
         pal,
         None,
     ));
+    #[cfg(not(target_arch = "wasm32"))]
     items.push(rail_button(
         icons::icon(icons::EXPLORE, 22.0, pal.text),
         Message::DiscoverOpen,
