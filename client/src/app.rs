@@ -1939,6 +1939,13 @@ impl App {
                 }
                 Task::none()
             }
+            // Text selected in the composer or the edit box is copied by the box itself, so a message
+            // selection must not overwrite it.
+            Message::CopySelectedText
+                if self.composer.selection().is_some() || (self.editing.is_some() && self.edit_box.selection().is_some()) =>
+            {
+                Task::none()
+            }
             Message::CopySelectedText => match self.text_sel.clone() {
                 Some(sel) => match self.find_message(sel.message) {
                     Some(m) => {
