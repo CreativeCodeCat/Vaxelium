@@ -529,6 +529,31 @@ impl App {
             Message::ReplyCancel => self.replying_to = None,
             Message::JumpTo(id) => return self.jump_to(id),
             Message::JumpFlashEnd => self.jump_flash = None,
+            Message::AutoModWords(action) => self.automod_words.perform(action),
+            Message::AutoModLinks(on) => self.automod_links = on,
+            Message::AutoModSpam(on) => self.automod_spam = on,
+            Message::AutoModReset => self.automod_reset(),
+            Message::NamesEnabled(on) => self.names_enabled = on,
+            Message::NamesWords(action) => self.names_words.perform(action),
+            Message::NamesBlock(on) => self.names_block = on,
+            Message::NamesAlert(on) => self.names_alert = on,
+            Message::NamesEdit(open) => self.names_editing = open,
+            Message::AutoModChannel(channel) => self.automod_channel = channel,
+            Message::NamesRole(role, on) => {
+                self.names_roles.retain(|r| *r != role);
+                if on {
+                    self.names_roles.push(role);
+                }
+            }
+            Message::AutoModSave => {
+                let rules = self.automod_draft();
+                let _ = self.backend.send_main(ClientMsg::SetAutoMod { rules });
+            }
+            Message::DismissNotice(id) => {
+                for list in self.messages.values_mut() {
+                    list.retain(|e| !matches!(e, crate::model::Entry::Notice { id: n, .. } if *n == id));
+                }
+            }
             Message::PinsToggle => {
                 self.pins_open = !self.pins_open;
                 if self.pins_open {
@@ -686,6 +711,7 @@ impl App {
                 if let Some(channel) = text.strip_prefix("/join ") {
                     self.join(channel);
                 } else {
+                    self.last_sent = text.clone();
                     let reply_to = self.replying_to.take();
                     let _ = self.backend.send_main(ClientMsg::Say { text, reply_to });
                 }
@@ -747,6 +773,7 @@ impl App {
                     }
                 }
                 if let Some((id, text)) = self.editing.take() {
+                    self.last_sent = text.clone();
                     self.message_action(id, ClientMsg::Edit { id, text });
                 }
             }
@@ -1225,6 +1252,10 @@ impl App {
                 self.role_form = None;
                 self.role_error = None;
                 self.server_section = section;
+                self.names_editing = false;
+                if section == crate::app::ServerSection::AutoMod {
+                    let _ = self.backend.send_main(ClientMsg::GetAutoMod);
+                }
             }
             Message::RoleTab(tab) => self.role_tab = tab,
             Message::RoleColorPick(hex) => {

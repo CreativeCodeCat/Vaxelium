@@ -15,14 +15,25 @@ pub const GROUP_GAP_SECS: u64 = 7 * 60;
 #[derive(Debug, Clone)]
 pub enum Entry {
     Chat(ChatMessage),
-    System { text: String, at: u64 },
+    System {
+        text: String,
+        at: u64,
+    },
+    /// A notice only this viewer sees, such as a message AutoMod refused. `text` is what was sent, if
+    /// anything; `reason` says why it was blocked. It stays until dismissed or the channel is reloaded.
+    Notice {
+        id: u64,
+        text: String,
+        reason: String,
+        at: u64,
+    },
 }
 
 impl Entry {
     pub fn time(&self) -> u64 {
         match self {
             Entry::Chat(m) => m.timestamp,
-            Entry::System { at, .. } => *at,
+            Entry::System { at, .. } | Entry::Notice { at, .. } => *at,
         }
     }
 }
@@ -467,7 +478,7 @@ impl App {
             .into_iter()
             .filter(|e| match e {
                 Entry::Chat(m) => !self.is_blocked(&m.author_id) && !self.is_ignored_here(&m.author_id),
-                Entry::System { .. } => true,
+                Entry::System { .. } | Entry::Notice { .. } => true,
             })
             .collect()
     }

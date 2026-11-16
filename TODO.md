@@ -20,7 +20,6 @@ Features to consider, roughly in order of how much they add.
 - [ ] Slow mode per channel: a delay between each member's messages.
 - [ ] Audit log: who changed roles, channels, permissions and members, and when.
 - [ ] Bulk delete messages (purge).
-- [ ] Automatic moderation: blocked words, link and spam filters.
 
 ## Servers and members
 

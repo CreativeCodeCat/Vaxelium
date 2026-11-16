@@ -82,6 +82,7 @@ pub enum ServerSection {
     Profile,
     Roles,
     Badges,
+    AutoMod,
 }
 
 /// What a permissions draft is for: a channel, or a category.
@@ -446,6 +447,25 @@ pub struct App {
     pub input: String,
     /// The editor that shows `input` and takes the typing. `input` is kept in step with it.
     pub composer: iced::widget::text_editor::Content,
+    /// The text of the last message sent or edit saved, shown in AutoMod's notice when it is refused.
+    pub last_sent: String,
+    /// The number given to the last notice shown, so each can be dismissed on its own.
+    pub next_notice: u64,
+    /// The server's AutoMod rules as saved, once loaded, and the AutoMod page's unsaved edits.
+    pub automod: Option<common::AutoMod>,
+    pub automod_words: iced::widget::text_editor::Content,
+    pub automod_links: bool,
+    pub automod_spam: bool,
+    /// The AutoMod page's unsaved edits to the member names rule.
+    pub names_enabled: bool,
+    pub names_words: iced::widget::text_editor::Content,
+    pub names_block: bool,
+    pub names_alert: bool,
+    /// Whether the member names rule is open for editing on the AutoMod page.
+    pub names_editing: bool,
+    /// The AutoMod page's choice of channel for AutoMod's reports.
+    pub automod_channel: Option<i64>,
+    pub names_roles: Vec<i64>,
     /// The editor for the message being edited. Its text is kept in `editing`.
     pub edit_box: iced::widget::text_editor::Content,
     /// The selected text of a message, if one is selected.
@@ -721,6 +741,25 @@ pub enum Message {
     JumpFlashEnd,
     /// Open or close the pinned messages panel.
     PinsToggle,
+    /// Remove a notice only this viewer sees.
+    DismissNotice(u64),
+    /// Edits to the AutoMod page: the blocked words, the link and spam switches, saving and resetting.
+    AutoModWords(iced::widget::text_editor::Action),
+    AutoModLinks(bool),
+    AutoModSpam(bool),
+    AutoModSave,
+    AutoModReset,
+    /// Edits to the member names rule: on or off, its words, blocking, the alert channel (None for no
+    /// alert) and the roles it leaves alone.
+    NamesEnabled(bool),
+    NamesWords(iced::widget::text_editor::Action),
+    NamesBlock(bool),
+    NamesAlert(bool),
+    /// Open (true) or close the member names rule's editor.
+    NamesEdit(bool),
+    /// The channel AutoMod reports to, or None for no reports.
+    AutoModChannel(Option<i64>),
+    NamesRole(i64, bool),
     /// Pin (true) or unpin (false) a message.
     Pin(i64, bool),
     SearchFilter(&'static str),
@@ -1027,6 +1066,19 @@ impl App {
             pending_delete: None,
             input: String::new(),
             composer: iced::widget::text_editor::Content::new(),
+            last_sent: String::new(),
+            next_notice: 0,
+            automod: None,
+            automod_words: iced::widget::text_editor::Content::new(),
+            automod_links: false,
+            automod_spam: false,
+            names_enabled: false,
+            names_words: iced::widget::text_editor::Content::new(),
+            names_block: false,
+            names_alert: false,
+            names_editing: false,
+            automod_channel: None,
+            names_roles: Vec::new(),
             edit_box: iced::widget::text_editor::Content::new(),
             text_sel: None,
             details_flipped: HashSet::new(),
@@ -1359,6 +1411,10 @@ impl App {
                 ]);
             }
             ServerMsg::Message { message } => {
+                // A message of one's own arrived, so the last one sent was not refused.
+                if message.author_id == self.user_id {
+                    self.last_sent.clear();
+                }
                 // A direct message is shown from each server's stored copy, so when a new one arrives in the open
                 // conversation, that copy is read again. This is what makes a sent message appear straight away.
                 let in_open_dm = message.channel_id == self.server.channel_id && is_dm_channel(&self.server.channel);
@@ -1583,7 +1639,23 @@ impl App {
                     at: crate::util::now(),
                 });
             }
+            ServerMsg::AutoMod { rules } => {
+                self.automod = Some(rules);
+                self.automod_reset();
+            }
             ServerMsg::Error { text } => {
+                // AutoMod's refusals show in the chat as a notice only this member sees, with what was sent.
+                if let Some(reason) = text.strip_prefix("AutoMod: ").filter(|_| self.main.welcomed) {
+                    self.next_notice += 1;
+                    let notice = Entry::Notice {
+                        id: self.next_notice,
+                        text: std::mem::take(&mut self.last_sent),
+                        reason: reason.to_string(),
+                        at: crate::util::now(),
+                    };
+                    self.messages.entry(self.server.channel_id).or_default().push(notice);
+                    return self.fetch_profiles();
+                }
                 if self.page == Page::Server {
                     self.role_error = Some(text.clone());
                 }
@@ -1615,7 +1687,11 @@ impl App {
         let mut ids: Vec<String> = self.server.member_ids.values().cloned().collect();
         for entries in self.messages.values() {
             for entry in entries {
+                // AutoMod is part of the server, not an account, so it has no profile to fetch.
                 if let Entry::Chat(m) = entry {
+                    if common::is_automod(&m.author_id) {
+                        continue;
+                    }
                     ids.push(m.author_id.clone());
                 }
             }
@@ -2629,7 +2705,8 @@ impl App {
     /// The server settings section on screen. Only the owner may open the Server Profile, so anyone
     /// else who opens the page sees Roles instead.
     pub fn shown_server_section(&self) -> ServerSection {
-        if !self.can(perm::MANAGE_SERVER) && self.server_section == ServerSection::Profile {
+        let needs_manage_server = matches!(self.server_section, ServerSection::Profile | ServerSection::AutoMod);
+        if !self.can(perm::MANAGE_SERVER) && needs_manage_server {
             ServerSection::Roles
         } else {
             self.server_section
@@ -2774,6 +2851,7 @@ impl App {
                     .as_ref()
                     .is_some_and(|d| crate::view::pages::role_changed(self, d)),
                 ServerSection::Badges => false,
+                ServerSection::AutoMod => self.automod_dirty(),
             },
             _ => false,
         }
@@ -2865,6 +2943,48 @@ impl iced::advanced::widget::Operation<Option<f32>> for FindOffset {
 
     fn finish(&self) -> iced::advanced::widget::operation::Outcome<Option<f32>> {
         iced::advanced::widget::operation::Outcome::Some(self.found)
+    }
+}
+
+impl App {
+    /// The AutoMod page's rules as edited. Word lists are split on commas and new lines.
+    pub(crate) fn automod_draft(&self) -> common::AutoMod {
+        common::AutoMod {
+            blocked_words: common::split_words(&self.automod_words.text()),
+            block_links: self.automod_links,
+            spam_filter: self.automod_spam,
+            names: common::NameRule {
+                enabled: self.names_enabled,
+                words: common::split_words(&self.names_words.text()),
+                block_interactions: self.names_block,
+                send_alert: self.names_alert,
+                allowed_roles: self.names_roles.clone(),
+                old_alert_channel: None,
+            },
+            alert_channel: self.automod_channel,
+        }
+        .tidied()
+    }
+
+    /// Whether the AutoMod page has edits that are not saved.
+    pub(crate) fn automod_dirty(&self) -> bool {
+        self.automod
+            .as_ref()
+            .is_some_and(|saved| *saved != self.automod_draft())
+    }
+
+    /// Puts the AutoMod page back to the saved rules.
+    pub(crate) fn automod_reset(&mut self) {
+        let saved = self.automod.clone().unwrap_or_default();
+        self.automod_words = iced::widget::text_editor::Content::with_text(&saved.blocked_words.join("\n"));
+        self.automod_links = saved.block_links;
+        self.automod_spam = saved.spam_filter;
+        self.names_enabled = saved.names.enabled;
+        self.names_words = iced::widget::text_editor::Content::with_text(&saved.names.words.join(", "));
+        self.names_block = saved.names.block_interactions;
+        self.names_alert = saved.names.send_alert;
+        self.automod_channel = saved.alert_channel;
+        self.names_roles = saved.names.allowed_roles;
     }
 }
 

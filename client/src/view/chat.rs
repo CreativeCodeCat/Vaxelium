@@ -1044,6 +1044,10 @@ fn messages<'a>(app: &'a App, pal: Pal, entries: Vec<Entry>, search: &Search) ->
                 );
                 prev_author = None;
             }
+            Entry::Notice { id, text, reason, at } => {
+                out.push(notice(app, pal, id, &text, &reason, at, now));
+                prev_author = None;
+            }
             Entry::Chat(m) => {
                 // A reply always shows its author, so its preview has a name under it.
                 let grouped = m.reply.is_none()
@@ -1099,7 +1103,7 @@ fn new_divider<'a>(pal: Pal) -> Element<'a, Message> {
 fn entry_visible(channel: &str, e: &Entry, search: &Search) -> bool {
     match e {
         Entry::Chat(m) => search.matches(m, channel),
-        Entry::System { .. } => false,
+        Entry::System { .. } | Entry::Notice { .. } => false,
     }
 }
 
@@ -1130,7 +1134,41 @@ fn author_color(app: &App, m: &ChatMessage, pal: &Pal) -> Color {
     app.member_color(&m.author_id).unwrap_or(pal.text_strong)
 }
 
+/// A message the server's AutoMod posted, such as an alert: a shield in place of an avatar, AutoMod's
+/// name with a SYSTEM tag, and the text. It has no profile, menu, toolbar or replies, as no member wrote it.
+fn automod_message<'a>(app: &'a App, pal: Pal, m: ChatMessage, now: u64) -> Element<'a, Message> {
+    let badge = container(icons::icon(icons::SHIELD, 22.0, Color::WHITE))
+        .width(Length::Fixed(40.0))
+        .height(Length::Fixed(40.0))
+        .align_x(iced::alignment::Horizontal::Center)
+        .align_y(iced::alignment::Vertical::Center)
+        .style(move |_: &Theme| round(pal.accent, 20.0));
+    let tag = container(text("SYSTEM").size(10).color(Color::WHITE))
+        .padding(crate::util::pad2(1.0, 4.0))
+        .style(move |_: &Theme| round(pal.accent, 3.0));
+    let content = column![
+        row![
+            text("AutoMod").size(15).color(pal.text_strong),
+            tag,
+            text(stamp_label(m.timestamp, now)).size(12).color(pal.text_muted),
+        ]
+        .spacing(8)
+        .align_y(iced::alignment::Vertical::Center),
+        message_text(app, m.id, &m.text, pal),
+    ]
+    .spacing(2)
+    .width(Length::Fill);
+    container(row![badge, content].spacing(14))
+        .id(crate::app::message_id(m.id))
+        .padding(crate::util::pad2(6.0, 16.0))
+        .width(Length::Fill)
+        .into()
+}
+
 fn chat_message<'a>(app: &'a App, pal: Pal, m: ChatMessage, grouped: bool, now: u64) -> Element<'a, Message> {
+    if common::is_automod(&m.author_id) {
+        return automod_message(app, pal, m, now);
+    }
     let m_id = m.id;
     let editing = app.editing.as_ref().is_some_and(|(id, _)| *id == m.id);
     let hovered = app.hover == Some(m_id);
@@ -1257,6 +1295,61 @@ fn chat_message<'a>(app: &'a App, pal: Pal, m: ChatMessage, grouped: bool, now: 
     } else {
         area.into()
     }
+}
+
+/// A notice only this member sees, such as a message AutoMod blocked: their name and what they sent,
+/// why it was blocked, and a link to dismiss it.
+fn notice<'a>(app: &'a App, pal: Pal, id: u64, sent: &str, reason: &str, at: u64, now: u64) -> Element<'a, Message> {
+    let me = app.user.clone().unwrap_or_default();
+    let (picture, banner) = app.profile_look(&app.user_id);
+    let mut body = Column::new().spacing(4).width(Length::Fill).push(
+        row![
+            text(me.clone())
+                .size(15)
+                .color(app.member_color(&app.user_id).unwrap_or(pal.text_strong)),
+            text(stamp_label(at, now)).size(12).color(pal.text_muted),
+        ]
+        .spacing(8)
+        .align_y(iced::alignment::Vertical::Center),
+    );
+    if !sent.is_empty() {
+        body = body.push(text(sent.to_string()).size(15).color(pal.text));
+    }
+    body = body
+        .push(
+            row![
+                icons::icon(icons::SHIELD, 14.0, pal.red),
+                text(format!("AutoMod: {}", sentence(reason))).size(13).color(pal.text),
+            ]
+            .spacing(6)
+            .align_y(iced::alignment::Vertical::Center),
+        )
+        .push(
+            row![
+                icons::icon(icons::EYE, 13.0, pal.text_muted),
+                text("Only you can see this •").size(12).color(pal.text_muted),
+                mouse_area(text("Dismiss message").size(12).color(pal.link))
+                    .on_press(Message::DismissNotice(id))
+                    .interaction(iced::mouse::Interaction::Pointer),
+            ]
+            .spacing(6)
+            .align_y(iced::alignment::Vertical::Center),
+        );
+    container(row![super::avatar(picture, banner, &me, 40.0, &pal), body].spacing(14))
+        .padding(crate::util::pad2(6.0, 16.0))
+        .width(Length::Fill)
+        .into()
+}
+
+/// Text as a sentence: a capital first letter and a full stop at the end.
+fn sentence(text: &str) -> String {
+    let mut chars = text.trim().chars();
+    let mut out: String = chars.next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
+    out.push_str(chars.as_str());
+    if !out.ends_with(['.', '!', '?']) {
+        out.push('.');
+    }
+    out
 }
 
 /// The line above a reply: who wrote the message it answers and how it starts. A click on it scrolls to
@@ -1887,9 +1980,9 @@ fn members(app: &App, pal: Pal) -> Element<'_, Message> {
     };
     // Each group is listed alphabetically by name.
     let mut online: Vec<&String> = server.online.iter().collect();
-    online.sort_by_key(|n| n.to_lowercase());
+    online.sort_by_key(|n| crate::util::sort_key(n));
     let mut offline: Vec<&String> = server.offline.iter().collect();
-    offline.sort_by_key(|n| n.to_lowercase());
+    offline.sort_by_key(|n| crate::util::sort_key(n));
     let head =
         |t: String| container(text(t).size(11).color(pal.text_muted)).padding(crate::util::pad(0.0, 12.0, 4.0, 12.0));
     let mut items: Vec<Element<'_, Message>> = Vec::new();

@@ -1225,12 +1225,13 @@ pub fn server_settings(app: &App, pal: Pal) -> Element<'_, Message> {
         }
         ServerSection::Roles => roles_section(app, pal),
         ServerSection::Badges => badges_section(app, pal),
+        ServerSection::AutoMod => (automod_section(app, pal), app.automod_dirty()),
     };
     // The bar saves whichever section is open.
-    let (reset, save) = if section == ServerSection::Roles {
-        (Message::RoleReset, Message::RoleSave)
-    } else {
-        (Message::ServerReset, Message::ServerSave)
+    let (reset, save) = match section {
+        ServerSection::Roles => (Message::RoleReset, Message::RoleSave),
+        ServerSection::AutoMod => (Message::AutoModReset, Message::AutoModSave),
+        _ => (Message::ServerReset, Message::ServerSave),
     };
     let manage = app.my_permissions() & common::perm::MANAGE_ROLES != 0;
     let may_edit_profile = app.is_owner() || app.can(common::perm::MANAGE_SERVER);
@@ -1251,6 +1252,289 @@ pub fn server_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     }
 }
 
+/// The AutoMod section: blocked words, and switches for the link and spam filters. Members who may
+/// manage messages in a channel are not held to these there.
+fn automod_section(app: &App, pal: Pal) -> Element<'_, Message> {
+    let mut items: Vec<Element<'_, Message>> = vec![
+        text("AutoMod").size(20).color(pal.text_strong).into(),
+        muted_text(
+            "Refuses messages that break these rules. Members with Manage Messages in a channel are not \
+             held to them there, and direct messages are never checked.",
+            13.0,
+            pal.text_muted,
+        ),
+    ];
+    if app.automod.is_none() {
+        items.push(muted_text("Loading…", 14.0, pal.text_muted));
+    } else {
+        items.push(text("AutoMod Channel").size(15).color(pal.text_strong).into());
+        items.push(muted_text(
+            "Every time AutoMod blocks something, it posts here who it was, where, why and what they sent. \
+             Anyone who can see the channel sees the reports.",
+            12.0,
+            pal.text_muted,
+        ));
+        let picked = automod_channel_choice(app).unwrap_or(ChannelChoice {
+            id: 0,
+            name: String::new(),
+        });
+        items.push(
+            iced::widget::pick_list(automod_channel_choices(app), Some(picked), |c: ChannelChoice| {
+                Message::AutoModChannel((c.id != 0).then_some(c.id))
+            })
+            .width(Length::Fixed(320.0))
+            .padding(8)
+            .into(),
+        );
+        items.push(divider(pal.selected_bg));
+        items.push(text("Messages").size(18).color(pal.text_strong).into());
+        items.push(text("Blocked Words").size(15).color(pal.text_strong).into());
+        items.push(muted_text(
+            &format!(
+                "Separate words or phrases with a comma or a new line, up to {}. A plain word matches whole words \
+                 only; use * at the start, end or both for partial matching (cat*, *cat, *cat*).",
+                common::MAX_BLOCKED_WORDS
+            ),
+            12.0,
+            pal.text_muted,
+        ));
+        items.push(
+            iced::widget::text_editor(&app.automod_words)
+                .on_action(Message::AutoModWords)
+                .placeholder("One per line")
+                .padding(10)
+                .size(14)
+                .height(Length::Fixed(160.0))
+                .style(editor_style(pal))
+                .into(),
+        );
+        items.push(divider(pal.selected_bg));
+        items.push(flag_row(
+            "Block Links",
+            "Refuse messages with web links in them.",
+            app.automod_links,
+            Some(Message::AutoModLinks),
+            pal,
+        ));
+        items.push(flag_row(
+            "Spam Filter",
+            "Refuse a member's message when they have sent 5 in the last 5 seconds.",
+            app.automod_spam,
+            Some(Message::AutoModSpam),
+            pal,
+        ));
+        items.push(divider(pal.selected_bg));
+        items.push(text("Members").size(18).color(pal.text_strong).into());
+        items.push(names_card(app, pal));
+    }
+    scrollable(
+        Column::with_children(items)
+            .spacing(14)
+            .padding(crate::util::pad2(24.0, 40.0))
+            .width(Length::Fill),
+    )
+    .height(Length::Fill)
+    .into()
+}
+
+/// A channel offered for AutoMod's alerts.
+#[derive(Debug, Clone, PartialEq)]
+struct ChannelChoice {
+    id: i64,
+    name: String,
+}
+
+impl std::fmt::Display for ChannelChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.id == 0 {
+            write!(f, "No channel")
+        } else {
+            write!(f, "# {}", self.name)
+        }
+    }
+}
+
+/// The channels AutoMod can report to, with "No channel" first.
+fn automod_channel_choices(app: &App) -> Vec<ChannelChoice> {
+    let none = ChannelChoice {
+        id: 0,
+        name: String::new(),
+    };
+    std::iter::once(none)
+        .chain(app.server.channels.iter().map(|c| ChannelChoice {
+            id: c.id,
+            name: c.name.clone(),
+        }))
+        .collect()
+}
+
+/// The channel chosen for AutoMod's reports, if it still exists.
+fn automod_channel_choice(app: &App) -> Option<ChannelChoice> {
+    let id = app.automod_channel?;
+    automod_channel_choices(app).into_iter().find(|c| c.id == id && id != 0)
+}
+
+/// The member names rule, as a card: its switch, then 1 the words, 2 the response and 3 the roles it
+/// leaves alone.
+fn names_card<'a>(app: &'a App, pal: Pal) -> Element<'a, Message> {
+    let step = |n: &'static str| -> Element<'a, Message> {
+        container(text(n).size(13).color(pal.text_strong))
+            .width(Length::Fixed(26.0))
+            .height(Length::Fixed(26.0))
+            .align_x(iced::alignment::Horizontal::Center)
+            .align_y(iced::alignment::Vertical::Center)
+            .style(move |_: &Theme| round(pal.hover_bg, 13.0))
+            .into()
+    };
+    let panel = |content: Element<'a, Message>| -> Element<'a, Message> {
+        container(content)
+            .padding(14)
+            .width(Length::Fill)
+            .style(move |_: &Theme| container::Style {
+                background: Some(Background::Color(pal.sidebar_bg)),
+                border: border::rounded(8.0).color(pal.hover_bg).width(1.0),
+                ..container::Style::default()
+            })
+            .into()
+    };
+    let option = |title: &'static str, hint: String, on: bool, toggle: Box<dyn Fn(bool) -> Message>| {
+        container(
+            row![
+                column![
+                    text(title).size(14).color(pal.text_strong),
+                    muted_text(&hint, 12.0, pal.text_muted)
+                ]
+                .spacing(2)
+                .width(Length::Fill),
+                iced::widget::checkbox(on).on_toggle(toggle),
+            ]
+            .spacing(12)
+            .align_y(iced::alignment::Vertical::Center),
+        )
+        .padding(10)
+        .width(Length::Fill)
+        .style(move |_: &Theme| round(pal.hover_bg, 6.0))
+    };
+
+    let header = row![
+        column![
+            text("Flagged Member Names").size(15).color(pal.text_strong),
+            muted_text(
+                "Flags members whose display names contain these words.",
+                12.0,
+                pal.text_muted
+            ),
+        ]
+        .spacing(2)
+        .width(Length::Fill),
+        toggler(app.names_enabled).on_toggle(Message::NamesEnabled),
+        button(text(if app.names_editing { "Done" } else { "Edit" }).size(13))
+            .padding(crate::util::pad2(6.0, 14.0))
+            .on_press(Message::NamesEdit(!app.names_editing))
+            .style(move |_: &Theme, status| button::Style {
+                background: Some(Background::Color(match status {
+                    button::Status::Hovered | button::Status::Pressed => pal.selected_bg,
+                    _ => pal.hover_bg,
+                })),
+                text_color: pal.text_strong,
+                border: border::rounded(6.0),
+                ..button::Style::default()
+            }),
+    ]
+    .spacing(12)
+    .align_y(iced::alignment::Vertical::Center);
+
+    // Closed, the card shows only what the rule does: a chip for each response that is on.
+    if !app.names_editing {
+        let chip = |label: String| -> Element<'a, Message> {
+            container(text(label).size(12).color(pal.text))
+                .padding(crate::util::pad2(3.0, 8.0))
+                .style(move |_: &Theme| round(pal.hover_bg, 10.0))
+                .into()
+        };
+        let mut chips = row![].spacing(6);
+        if app.names_block {
+            chips = chips.push(chip("block member interactions".into()));
+        }
+        if app.names_alert {
+            chips = chips.push(chip("send alert".into()));
+        }
+        return panel(column![header, chips].spacing(10).into());
+    }
+
+    let words = column![
+        text("Choose your words").size(14).color(pal.text_strong),
+        iced::widget::text_editor(&app.names_words)
+            .on_action(Message::NamesWords)
+            .placeholder("admin*, *mod*, staff")
+            .padding(10)
+            .size(14)
+            .height(Length::Fixed(110.0))
+            .style(editor_style(pal)),
+        muted_text(
+            "Separate words or phrases with a comma or a new line. For each word, use * at the beginning, end or \
+             both for partial matching.",
+            12.0,
+            pal.text_muted,
+        ),
+    ]
+    .spacing(8);
+
+    let alert_hint = match automod_channel_choice(app) {
+        Some(c) => format!("Posts an alert naming the flagged member to {c} the first time they send a message."),
+        None => "Posts an alert naming the flagged member. Choose AutoMod's channel at the top of this page.".into(),
+    };
+    let response = column![
+        text("Choose a response").size(14).color(pal.text_strong),
+        option(
+            "Block member interactions",
+            "Stops the member sending, editing, reacting or pinning until they change their name.".into(),
+            app.names_block,
+            Box::new(Message::NamesBlock),
+        ),
+        option("Send alert", alert_hint, app.names_alert, Box::new(Message::NamesAlert)),
+    ]
+    .spacing(8);
+
+    let mut roles = Column::new().spacing(4);
+    for role in app.server.roles.iter().filter(|r| r.id != EVERYONE_ROLE) {
+        let id = role.id;
+        let colour = crate::util::hex_color(&role.color).unwrap_or(pal.text);
+        roles = roles.push(
+            iced::widget::checkbox(app.names_roles.contains(&id))
+                .label(role.name.clone())
+                .style(move |theme: &Theme, status| {
+                    let mut style = iced::widget::checkbox::primary(theme, status);
+                    style.text_color = Some(colour);
+                    style
+                })
+                .on_toggle(move |on| Message::NamesRole(id, on)),
+        );
+    }
+    let allowed = column![
+        text("Allow certain roles (optional)").size(14).color(pal.text_strong),
+        roles,
+        muted_text(
+            "Members with Administrator and Manage Server are always left alone by this rule.",
+            12.0,
+            pal.text_muted
+        ),
+    ]
+    .spacing(8);
+
+    let numbered = |n, body| row![step(n), panel(body)].spacing(10);
+    panel(
+        column![
+            header,
+            numbered("1", words.into()),
+            numbered("2", response.into()),
+            numbered("3", allowed.into()),
+        ]
+        .spacing(14)
+        .into(),
+    )
+}
+
 /// The navigation down the left of the server settings page.
 fn server_nav<'a>(name: &str, owner: bool, manage: bool, active: ServerSection, pal: Pal) -> Element<'a, Message> {
     let mut items = Column::new().spacing(4);
@@ -1260,6 +1544,9 @@ fn server_nav<'a>(name: &str, owner: bool, manage: bool, active: ServerSection, 
     items = items.push(nav_item("Roles", ServerSection::Roles, active, pal));
     if manage {
         items = items.push(nav_item("Badges", ServerSection::Badges, active, pal));
+    }
+    if owner {
+        items = items.push(nav_item("AutoMod", ServerSection::AutoMod, active, pal));
     }
     container(column![text(name.to_uppercase()).size(12).color(pal.text_muted), items].spacing(8))
         .padding(crate::util::pad2(24.0, 12.0))
@@ -2755,7 +3042,7 @@ pub fn member_entries(app: &App) -> Vec<(String, String)> {
         .iter()
         .map(|(name, id)| (id.clone(), name.clone()))
         .collect();
-    members.sort_by_key(|(_, name)| name.to_lowercase());
+    members.sort_by_key(|(_, name)| crate::util::sort_key(name));
     members
 }
 
