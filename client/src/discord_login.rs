@@ -3,7 +3,7 @@
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 /// What one request to the listener means.
@@ -33,7 +33,14 @@ pub fn open_browser(url: &str) -> std::io::Result<()> {
         c.arg(url);
         c
     };
-    command.spawn().map(|_| ())
+    // The browser inherits these streams, so its own log messages would print into this terminal.
+    command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    let mut child = command.spawn()?;
+    // Wait for the opener in the background so it does not linger as a finished process.
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
 }
 
 /// Waits for Discord to send the browser back with a code for this login, and answers the browser.

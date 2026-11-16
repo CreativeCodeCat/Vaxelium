@@ -37,6 +37,14 @@ impl CmdError {
     }
 }
 
+/// The outside accounts linked to this account.
+#[derive(Debug, Clone)]
+pub struct LinkedAccounts {
+    /// The Discord name, or None when no Discord account is linked.
+    pub discord: Option<String>,
+    pub can_unlink_discord: bool,
+}
+
 /// The account's name, username and email, as the auth service reports them.
 #[derive(Debug, Clone)]
 pub struct Profile {
@@ -544,6 +552,26 @@ impl Backend {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
         match self.auth(AuthRequest::VerifyEmail { token, code })? {
             AuthReply::EmailVerified => Ok(()),
+            AuthReply::Error { text } => Err(CmdError::new(text)),
+            _ => Err(CmdError::new("Unexpected reply from the auth service.")),
+        }
+    }
+
+    /// The Discord account linked to this account, and whether the link can be removed.
+    pub fn linked_accounts(&self) -> Result<LinkedAccounts, CmdError> {
+        let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
+        match self.auth(AuthRequest::LinkedAccounts { token })? {
+            AuthReply::LinkedAccounts { discord, can_unlink_discord } => Ok(LinkedAccounts { discord, can_unlink_discord }),
+            AuthReply::Error { text } => Err(CmdError::new(text)),
+            _ => Err(CmdError::new("Unexpected reply from the auth service.")),
+        }
+    }
+
+    /// Removes the link to the Discord account.
+    pub fn unlink_discord(&self) -> Result<(), CmdError> {
+        let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
+        match self.auth(AuthRequest::UnlinkDiscord { token })? {
+            AuthReply::DiscordUnlinked => Ok(()),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
         }

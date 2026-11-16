@@ -19,6 +19,14 @@ impl App {
                 self.login.register = !self.login.register;
                 self.login.error = None;
             }
+            Message::LoginEmailOpen => {
+                self.login.email_open = true;
+                self.login.error = None;
+            }
+            Message::LoginEmailClose => {
+                self.login.email_open = false;
+                self.login.error = None;
+            }
             Message::LoginSubmit => return self.login_submit(),
             Message::LoginDone(result) => match result {
                 Ok(name) => {
@@ -899,11 +907,43 @@ impl App {
             Message::UserSectionPick(section) => {
                 self.user_section = section;
                 // The Profile tab is always an editor, so it starts from what is saved.
+                if section == crate::app::UserSection::Linked {
+                    self.account.discord_error = None;
+                    let backend = self.backend.clone();
+                    return Task::perform(offload(move || backend.linked_accounts()), Message::LinkedLoaded);
+                }
                 if section == crate::app::UserSection::Profile {
                     self.account.about_bio = self.account.bio.clone();
                     self.reset_bio_editor();
                     self.account.about_banner = self.account.banner.clone();
                     self.account.about_error = None;
+                }
+            }
+            Message::LinkedLoaded(result) => match result {
+                Ok(linked) => {
+                    self.account.discord = linked.discord;
+                    self.account.can_unlink_discord = linked.can_unlink_discord;
+                    self.account.discord_error = None;
+                }
+                Err(e) => self.account.discord_error = Some(e.message),
+            },
+            Message::DiscordUnlink => {
+                if self.account.discord_busy {
+                    return Task::none();
+                }
+                self.account.discord_busy = true;
+                self.account.discord_error = None;
+                let backend = self.backend.clone();
+                return Task::perform(offload(move || backend.unlink_discord()), Message::DiscordUnlinked);
+            }
+            Message::DiscordUnlinked(result) => {
+                self.account.discord_busy = false;
+                match result {
+                    Ok(()) => {
+                        self.account.discord = None;
+                        self.account.can_unlink_discord = false;
+                    }
+                    Err(e) => self.account.discord_error = Some(e.message),
                 }
             }
             Message::ServerSectionPick(section) => {
