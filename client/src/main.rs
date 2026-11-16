@@ -4,6 +4,7 @@
 mod app;
 mod auth_client;
 mod backend;
+mod discord_login;
 mod discover;
 mod icons;
 mod keychain;

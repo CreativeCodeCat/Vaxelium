@@ -98,6 +98,11 @@ pub fn login(app: &App, pal: Pal) -> Element<'_, Message> {
         .into(),
     );
     items.push(solid(if login_form.register { "Register" } else { "Log in" }, Message::LoginSubmit, pal.accent, pal.on_color, None));
+    let discord_label = if login_form.discord_waiting { "Waiting for Discord…" } else { "Continue with Discord" };
+    items.push(solid(discord_label, Message::DiscordLogin, Color::from_rgb8(0x58, 0x65, 0xF2), Color::WHITE, None));
+    if login_form.discord_waiting {
+        items.push(muted_text("Finish logging in to Discord in your browser.", 13.0, pal.text_muted));
+    }
     items.push(
         row![
             muted_text(if login_form.register { "Already have an account?" } else { "Need an account?" }, 14.0, pal.text_muted),

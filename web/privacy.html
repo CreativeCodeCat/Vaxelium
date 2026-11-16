@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Privacy Policy · Vaxelium</title>
+    <meta name="description" content="What Vaxelium stores about you, why, and what you can do about it.">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+    <a class="brand" href="privacy.html">Vaxelium</a>
+    <nav>
+        <a href="terms.html">Terms of Service</a>
+        <a href="privacy.html" aria-current="page">Privacy Policy</a>
+    </nav>
+</header>
+
+<main>
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated: 16 November 2026</p>
+
+    <p class="notice">Replace the bracketed items marked <span class="placeholder">[like this]</span> with your details before publishing. Check the list of stored data against your own deployment.</p>
+
+    <h2>1. Who is responsible</h2>
+    <p>The Vaxelium account service is run by <span class="placeholder">[operator name]</span>, contact <span class="placeholder">[contact email]</span>. Each chat server is run by its own operator, who is the controller of the data on that server, such as messages, channels and members. Ask the operator of a server if you want to know how it handles its data.</p>
+
+    <h2>2. What we store</h2>
+    <p><strong>Account details.</strong> Your display name, your username (a lowercase handle), and your email address. Your email is stored in two forms: a keyed hash, which identifies your account, and an encrypted copy, so the address can be shown to you and used to send you email. The key is kept in a separate file from the database.</p>
+    <p><strong>Password.</strong> Your password is never stored as typed. It is stored as an Argon2 hash.</p>
+    <p><strong>Email confirmation.</strong> Whether you have confirmed your address, and any confirmation code you asked for. Codes expire after 15 minutes and are stored only as a hash.</p>
+    <p><strong>Profile.</strong> Your bio, banner colour, status text, profile picture, and the list of chat server addresses you are a member of.</p>
+    <p><strong>Discord login.</strong> If you log in with Discord, we receive your Discord user ID, your Discord name and username, your email address and whether Discord has verified it. We use these to create or find your account. We do not receive your Discord password, and we ask Discord only for the <em>identify</em> and <em>email</em> permissions.</p>
+    <p><strong>Sessions.</strong> Each login creates a session token that identifies you to the account service and to chat servers. Tokens end when you log out or when they are removed.</p>
+    <p><strong>Connection records.</strong> When you connect to a chat server, that server reports its address to the account service with the time you were seen there. Chat servers use these records to deliver direct messages to you when you are on a different server from the sender.</p>
+    <p><strong>Messages and activity.</strong> Messages, reactions, direct messages, and the channels and roles you use are stored by the chat server where they were sent. Its operator decides how long they are kept, as described in the Terms of Service.</p>
+    <p><strong>On your computer.</strong> The Vaxelium app keeps your settings and preferences, the certificates of servers you have trusted, and, if you chose <em>Keep me logged in</em>, your session token in your system's keychain.</p>
+    <p><strong>Email.</strong> We send a welcome email when you register or join with Discord, and a confirmation code when you ask for one.</p>
+
+    <h2>3. How we use it</h2>
+    <ul>
+        <li>to create and run your account and sign you in;</li>
+        <li>to let chat servers check who you are and show your name, picture and profile;</li>
+        <li>to send you the emails described above;</li>
+        <li>to keep the service secure, prevent abuse, and enforce the Terms of Service;</li>
+        <li>to fix faults and understand how the service is used.</li>
+    </ul>
+    <p>Where the law requires a legal basis, we rely on running the service you asked for, our legitimate interest in keeping it secure and free of abuse, and your consent where you choose an optional feature such as Discord login or <em>Keep me logged in</em>.</p>
+
+    <h2>4. Who can see your information</h2>
+    <ul>
+        <li><strong>Other people.</strong> Your display name, username, bio, banner, status, profile picture and the servers you share with a viewer are shown on your profile card. Your email address and internal account ID are not shown to other people.</li>
+        <li><strong>Server operators and moderators.</strong> Information about you that appears on their server, such as your messages and membership.</li>
+        <li><strong>Service providers.</strong> <span class="placeholder">[operator name]</span> uses Resend to send email, which means your address and the content of those emails pass through Resend. We also use <span class="placeholder">[hosting provider]</span> to run the service.</li>
+        <li><strong>Discord.</strong> If you log in with Discord, Discord knows you are using Vaxelium. Discord's own privacy policy applies to what it does with your data.</li>
+        <li><strong>Legal reasons.</strong> We may disclose information when the law requires it.</li>
+    </ul>
+    <p>We do not sell your personal information.</p>
+
+    <h2>5. Security</h2>
+    <p>Connections between the app and the account service and chat servers are encrypted with TLS. The app remembers the certificate of each service it has trusted and refuses a changed certificate until you confirm it. Passwords are stored as hashes, and email addresses are stored as hashes with an encrypted copy. No system is completely secure, so please use a strong, unique password.</p>
+
+    <h2>6. How long we keep it</h2>
+    <p>We keep your account for as long as it exists. Session tokens last until you log out or they are removed. Email confirmation codes are removed when they expire or are used. Connection records are kept while the account exists. Chat servers keep messages according to their operators' rules. <span class="placeholder">[operator name]</span> will delete or anonymise an account when you ask, unless the law requires us to keep something. <span class="placeholder">[state how long backups are kept]</span></p>
+
+    <h2>7. Your choices and rights</h2>
+    <ul>
+        <li>You can view and change your display name, username, bio, banner, status and picture in the app.</li>
+        <li>You can change your email address, which then has to be confirmed again.</li>
+        <li>You can log out, which ends your session.</li>
+        <li>You can ask us for a copy of the information we hold about you, to correct it, or to delete it, by contacting <span class="placeholder">[contact email]</span>.</li>
+        <li>Depending on where you live, you may have further rights, such as to object to or restrict some processing, or to complain to a data protection authority.</li>
+    </ul>
+
+    <h2>8. Children</h2>
+    <p>Vaxelium is not for children under 13, or the minimum age in your country if higher. If we learn that an account belongs to a younger child, we will close it.</p>
+
+    <h2>9. Where your data is kept</h2>
+    <p>Data is stored on servers in <span class="placeholder">[country]</span>. If you use Vaxelium from elsewhere, your information may be transferred to and processed in that country.</p>
+
+    <h2>10. Changes to this policy</h2>
+    <p>We may update this policy. When we do, we will change the date at the top of this page, and tell you in the app or by email if the change is significant.</p>
+
+    <h2>11. Contact</h2>
+    <p>Questions or requests about this policy: <span class="placeholder">[contact email]</span>.</p>
+</main>
+
+<footer>
+    <p>&copy; <span class="placeholder">[operator name]</span>. See also the <a href="terms.html">Terms of Service</a>.</p>
+</footer>
+</body>
+</html>

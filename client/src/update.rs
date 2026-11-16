@@ -22,6 +22,7 @@ impl App {
             Message::LoginSubmit => return self.login_submit(),
             Message::LoginDone(result) => match result {
                 Ok(name) => {
+                    self.login.discord_waiting = false;
                     self.user = Some(name);
                     self.auth_down = false;
                     self.login.password.clear();
@@ -31,10 +32,12 @@ impl App {
                     self.dm_tick();
                 }
                 Err(e) => {
+                    self.login.discord_waiting = false;
                     self.login.error = Some(e.message);
                     self.auth_down = e.auth_down;
                 }
             },
+            Message::DiscordLogin => return self.discord_login_submit(),
             Message::Remember(on) => {
                 self.remember = on;
                 self.remember_session_now();

@@ -146,6 +146,8 @@ pub struct LoginForm {
     pub email: String,
     pub password: String,
     pub error: Option<String>,
+    /// True while a login with Discord waits for the browser to come back.
+    pub discord_waiting: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -491,6 +493,7 @@ pub enum Message {
     LoginToggle,
     LoginSubmit,
     LoginDone(Result<String, CmdError>),
+    DiscordLogin,
     Remember(bool),
     TrustAuth,
     Restored(Restored),
@@ -1568,6 +1571,17 @@ impl App {
         let name = self.login.register.then(|| self.login.name.clone());
         let remember = self.remember;
         Task::perform(offload(move || backend.login(email, password, name, remember)), Message::LoginDone)
+    }
+
+    pub(crate) fn discord_login_submit(&mut self) -> Task<Message> {
+        if self.login.discord_waiting {
+            return Task::none();
+        }
+        self.login.discord_waiting = true;
+        self.login.error = None;
+        let backend = self.backend.clone();
+        let remember = self.remember;
+        Task::perform(offload(move || backend.discord_login(remember)), Message::LoginDone)
     }
 
     pub(crate) fn save_prefs_with_session(&mut self) {
