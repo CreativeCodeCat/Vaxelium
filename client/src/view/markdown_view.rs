@@ -33,7 +33,7 @@ pub struct Selection {
 /// A message's body, drawn as Markdown. `message` is the message's id, which the selection reports.
 pub fn message_body<'a>(app: &App, message: i64, body: &str, pal: Pal) -> Element<'a, Message> {
     let blocks = markdown::parse(body);
-    let pings = app.role_pings(body);
+    let pings = app.mentions(body);
     let mut texts = Vec::new();
     describe(&blocks, &pings, pal, &mut texts);
     let selection = app.text_sel.as_ref().and_then(|s| {

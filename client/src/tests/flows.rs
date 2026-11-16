@@ -1543,3 +1543,54 @@ fn pin_permission() {
         assert_eq!(app.can_pin(&m), may, "{who}");
     }
 }
+
+#[test]
+fn member_mentions_use_role_colour() {
+    let mut app = app();
+    welcome(&mut app);
+    let _ = app.update(net(ServerMsg::Roles {
+        roles: vec![common::RoleInfo {
+            id: 5,
+            name: "Founder".into(),
+            color: "#2ecc71".into(),
+            permissions: 0,
+            position: 1,
+            mentionable: true,
+            hoisted: false,
+        }],
+    }));
+    let member = |name: &str, roles: Vec<i64>| UserStatus {
+        name: name.into(),
+        id: format!("id-{name}"),
+        online: true,
+        owner: false,
+        roles,
+        joined: 0,
+        status: Default::default(),
+        badges: vec![],
+    };
+    let _ = app.update(net(ServerMsg::Presence {
+        users: vec![member("bob", vec![5]), member("dummy", vec![])],
+    }));
+
+    let found = app.mentions("hi @bob and @dummy and @bobby and @Founder");
+    let at = |s: &str| {
+        found
+            .iter()
+            .find(|p| &"hi @bob and @dummy and @bobby and @Founder"[p.range.clone()] == s)
+    };
+    assert_eq!(
+        at("@bob").unwrap().color,
+        app.member_color("id-bob"),
+        "bob takes his role's colour"
+    );
+    assert!(at("@bob").unwrap().color.is_some());
+    assert_eq!(
+        at("@dummy").unwrap().color,
+        None,
+        "no coloured role: the default mention colour"
+    );
+    let bobby = "hi @bob and @dummy and @bobby and @Founder".find("@bobby").unwrap();
+    assert!(found.iter().all(|p| p.range.start != bobby), "@bobby is not @bob");
+    assert_eq!(at("@Founder").unwrap().role, 5, "the role ping stays a role ping");
+}
