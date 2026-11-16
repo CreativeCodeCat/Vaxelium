@@ -395,6 +395,9 @@ pub fn picker_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
 
 /// The dialogs: delete a message, and joining a server.
 pub fn dialog_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
+    if let Some(add) = &app.access_add {
+        return Some(access_add_dialog(app, add, pal));
+    }
     if app.admin_grant_pending {
         let items: Vec<Element<'_, Message>> = vec![
             text("Give Administrator?").size(20).color(pal.text_strong).into(),
@@ -450,9 +453,6 @@ pub fn dialog_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
             )).collect();
             return Some(modal(items, pal, Message::RoleSaveCancel));
         }
-    }
-    if let Some(channel) = app.channel_access {
-        return Some(channel_access_dialog(app, channel, pal));
     }
     if app.account.verify_open {
         let acc = &app.account;
@@ -539,29 +539,87 @@ pub fn dialog_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
         ];
         return Some(modal(items, pal, Message::DeleteChannelCancel));
     }
-    if let Some((_, old, new)) = &app.rename_channel {
+    if let Some((_, name)) = &app.pending_category_delete {
         let items: Vec<Element<'_, Message>> = vec![
-            text(format!("Rename #{old}")).size(20).color(pal.text_strong).into(),
-            text_input("new-channel-name", new)
-                .id(crate::app::RENAME_ID)
-                .on_input(Message::RenameInput)
-                .on_submit(Message::RenameSubmit)
-                .padding(10)
+            text(format!("Delete {name}?")).size(20).color(pal.text_strong).into(),
+            text("The category is removed for everyone, and its permissions with it. Its channels stay and become uncategorized. This can't be undone.")
                 .size(14)
+                .color(pal.text)
                 .into(),
-            text("Messages and the channel's place in its category move with it.").size(12).color(pal.text_muted).into(),
             row![
                 space().width(Length::Fill),
-                link("Cancel", Message::RenameCancel, pal.text_muted),
-                solid("Save", Message::RenameSubmit, pal.accent, pal.on_color, Some(96.0)),
+                link("Cancel", Message::DeleteCategoryCancel, pal.text_muted),
+                solid("Delete", Message::DeleteCategoryConfirm, pal.red, pal.on_color, None),
             ]
             .spacing(10)
             .align_y(iced::alignment::Vertical::Center)
             .into(),
         ];
-        return Some(modal(items, pal, Message::RenameCancel));
+        return Some(modal(items, pal, Message::DeleteCategoryCancel));
     }
     None
+}
+
+/// The Add users or roles dialog: a search, then the roles and users a category has no setting for
+/// yet, each with a checkbox. Done adds the picked ones to the category's permissions.
+fn access_add_dialog<'a>(app: &'a App, add: &'a crate::app::AccessAdd, pal: Pal) -> Element<'a, Message> {
+    use common::Subject;
+    let target = add.target;
+    let query = add.query.trim().to_lowercase();
+    let matches = |name: &str| query.is_empty() || name.to_lowercase().contains(&query);
+    let free = |subject: &Subject| app.access_value(target, subject.clone()) == (None, None);
+
+    let mut roles = Column::new().spacing(12);
+    for role in app.server.roles.iter().filter(|r| r.id != common::EVERYONE_ROLE && matches(&r.name)) {
+        let subject = Subject::Role(role.id);
+        if !free(&subject) {
+            continue;
+        }
+        let colour = crate::util::hex_color(&role.color).unwrap_or(pal.text);
+        roles = roles.push(member_checkbox(&role.name, subject.clone(), add.picked.contains(&subject), colour));
+    }
+    let mut users = Column::new().spacing(12);
+    for (id, name) in crate::view::pages::member_entries(app) {
+        let subject = Subject::Member(id);
+        if !matches(&name) || !free(&subject) {
+            continue;
+        }
+        let picked = add.picked.contains(&subject);
+        users = users.push(member_checkbox(&name, subject, picked, pal.text));
+    }
+    let mut list = Column::new().spacing(14).padding(2);
+    list = list.push(text("Roles").size(12).color(pal.text_muted));
+    list = list.push(roles);
+    list = list.push(text("Users").size(12).color(pal.text_muted));
+    list = list.push(users);
+    let items: Vec<Element<'_, Message>> = vec![
+        text("Add users or roles").size(20).color(pal.text_strong).into(),
+        text_input("e.g. Moderators or alice", &add.query).on_input(Message::AccessAddQuery).padding(10).size(14).into(),
+        scrollable(list).height(Length::Fixed(320.0)).into(),
+        row![
+            space().width(Length::Fill),
+            link("Cancel", Message::AccessAddClose, pal.text_muted),
+            solid("Done", Message::AccessAddDone, pal.accent, pal.on_color, Some(96.0)),
+        ]
+        .spacing(10)
+        .align_y(iced::alignment::Vertical::Center)
+        .into(),
+    ];
+    modal(items, pal, Message::AccessAddClose)
+}
+
+/// One row of the Add users or roles dialog: a checkbox labelled with the role or user.
+fn member_checkbox<'a>(name: &str, subject: common::Subject, on: bool, colour: Color) -> Element<'a, Message> {
+    checkbox(on)
+        .label(name.to_string())
+        .on_toggle(move |picked| Message::AccessAddToggle(subject.clone(), picked))
+        .style(move |theme: &Theme, status| {
+            // The label takes the role's colour; the box keeps the standard look.
+            let mut style = iced::widget::checkbox::primary(theme, status);
+            style.text_color = Some(colour);
+            style
+        })
+        .into()
 }
 
 /// Thin strips along the window's edges and corners, which resize the window when dragged.
@@ -940,68 +998,6 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
         }
         None => Some(card_layer),
     }
-}
-
-/// The permissions of one channel: what each role may do there, with the server-wide setting as the default.
-fn channel_access_dialog(app: &App, channel: i64, pal: Pal) -> Element<'_, Message> {
-    let name = app.server.channels.iter().find(|c| c.id == channel).map(|c| c.name.clone()).unwrap_or_default();
-    let mut items: Vec<Element<'_, Message>> = vec![
-        text(format!("Permissions for #{name}")).size(20).color(pal.text_strong).into(),
-        text("Inherit keeps the role's server-wide setting. Deny wins over Allow when a member has several roles.")
-            .size(13)
-            .color(pal.text_muted)
-            .into(),
-    ];
-    for role in &app.server.roles {
-        let current = app.server.overrides.iter().find(|o| o.channel_id == channel && o.role == role.id);
-        let (view, send) = current.map_or((None, None), |o| (o.view, o.send));
-        let role_id = role.id;
-        items.push(
-            column![
-                text(role.name.clone()).size(14).color(pal.text),
-                access_choice("View", view, move |v| Message::ChannelAccessSet { channel, role: role_id, view: v, send }, pal),
-                access_choice("Send", send, move |s| Message::ChannelAccessSet { channel, role: role_id, view, send: s }, pal),
-            ]
-            .spacing(6)
-            .into(),
-        );
-    }
-    items.push(
-        row![space().width(Length::Fill), link("Done", Message::ChannelAccessClose, pal.text_muted)]
-            .align_y(iced::alignment::Vertical::Center)
-            .into(),
-    );
-    modal(items, pal, Message::ChannelAccessClose)
-}
-
-/// One setting of a channel exception: Inherit, Allow or Deny.
-fn access_choice<'a>(label: &str, current: Option<bool>, on_pick: impl Fn(Option<bool>) -> Message, pal: Pal) -> Element<'a, Message> {
-    let choice = |text_: &str, value: Option<bool>| -> Element<'a, Message> {
-        let selected = current == value;
-        button(text(text_.to_string()).size(12).color(if selected { pal.text_strong } else { pal.text_muted }))
-            .padding(crate::util::pad2(4.0, 10.0))
-            .on_press(on_pick(value))
-            .style(move |_: &Theme, status: button::Status| {
-                let bg = if selected {
-                    pal.selected_bg
-                } else if matches!(status, button::Status::Hovered) {
-                    pal.hover_bg
-                } else {
-                    Color::TRANSPARENT
-                };
-                button::Style { background: Some(Background::Color(bg)), text_color: pal.text, border: border::rounded(4.0), ..button::Style::default() }
-            })
-            .into()
-    };
-    row![
-        text(label.to_string()).size(13).color(pal.text_muted).width(Length::Fixed(44.0)),
-        choice("Inherit", None),
-        choice("Allow", Some(true)),
-        choice("Deny", Some(false)),
-    ]
-    .spacing(4)
-    .align_y(iced::alignment::Vertical::Center)
-    .into()
 }
 
 /// A rounded bubble with a status text in it.

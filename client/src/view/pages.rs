@@ -4,7 +4,7 @@ use iced::widget::{button, column, container, mouse_area, row, scrollable, space
 use iced::{border, Background, Color, Element, Length, Padding, Theme};
 
 use super::{divider, link, muted_text, round, server_icon, solid};
-use crate::app::{App, Field, Message, RoleDraft, RoleTab, ServerSection, UserSection, ADD_ADDR_ID};
+use crate::app::{App, EditSection, Field, Message, RoleDraft, RoleTab, ServerSection, UserSection, ADD_ADDR_ID};
 use common::{RoleInfo, EVERYONE_ROLE};
 use crate::icons;
 use crate::theme::Pal;
@@ -665,12 +665,21 @@ fn server_nav<'a>(name: &str, owner: bool, manage: bool, active: ServerSection, 
 }
 
 fn nav_item<'a>(label: &str, section: ServerSection, active: ServerSection, pal: Pal) -> Element<'a, Message> {
-    let selected = section == active;
-    let color = if selected { pal.text_strong } else { pal.text_muted };
+    nav_button(label, Message::ServerSectionPick(section), section == active, pal)
+}
+
+/// One item of a settings page's navigation.
+fn nav_button<'a>(label: &str, msg: Message, selected: bool, pal: Pal) -> Element<'a, Message> {
+    nav_button_tinted(label, msg, selected, None, pal)
+}
+
+/// A navigation item whose text can take a colour, such as a role's.
+fn nav_button_tinted<'a>(label: &str, msg: Message, selected: bool, tint: Option<Color>, pal: Pal) -> Element<'a, Message> {
+    let color = tint.unwrap_or(if selected { pal.text_strong } else { pal.text_muted });
     button(text(label.to_string()).size(15).color(color))
         .width(Length::Fill)
         .padding(crate::util::pad2(6.0, 10.0))
-        .on_press(Message::ServerSectionPick(section))
+        .on_press(msg)
         .style(move |_: &Theme, status: button::Status| {
             let bg = if selected {
                 pal.selected_bg
@@ -1317,3 +1326,412 @@ pub fn join_server(app: &App, pal: Pal) -> Element<'_, Message> {
     modal(items, pal, Message::AddServerClose)
 }
 
+
+/// The edit page of a channel, opened from its menu: its name, and what each role may do there.
+pub fn channel_edit(app: &App, channel: i64, pal: Pal) -> Element<'_, Message> {
+    let name = app.channel_name_of(channel).unwrap_or_default();
+    let draft = app.rename_channel.as_ref().map_or("", |(_, _, new)| new.as_str());
+    let dirty = app.edit_dirty();
+    let section = app.edit_section;
+    let content = match section {
+        EditSection::Overview => settings_column(vec![
+            name_field(draft, crate::app::RENAME_ID, Message::RenameInput, Message::RenameSubmit, "Channel Name", "new-channel-name", pal),
+            muted_text("Messages and the channel's place in its category move with it.", 13.0, pal.text_muted),
+        ]),
+        EditSection::Permissions => settings_column(vec![access_page(app, crate::app::AccessTarget::Channel(channel), pal)]),
+    };
+    let nav = page_nav(
+        &format!("#{name}"),
+        vec![
+            ("Overview", Message::EditSectionPick(EditSection::Overview), section == EditSection::Overview),
+            ("Permissions", Message::EditSectionPick(EditSection::Permissions), section == EditSection::Permissions),
+        ],
+        pal,
+    );
+    let page = settings_frame(nav, content, Message::ChannelEditClose, pal);
+    if dirty {
+        iced::widget::stack![page, unsaved_bar(app, pal, Message::EditPageReset, Message::EditPageSave, "Careful – you have unsaved changes!")].into()
+    } else {
+        page
+    }
+}
+
+/// The edit page of a category, opened from its menu: its name and permissions, and deleting it.
+/// Deleting it keeps its channels, which become uncategorized.
+pub fn category_edit(app: &App, pal: Pal) -> Element<'_, Message> {
+    let (id, old, draft) = app.category_edit.as_ref().map_or((0, "", ""), |(id, old, new)| (*id, old.as_str(), new.as_str()));
+    let dirty = app.edit_dirty();
+    let section = app.edit_section;
+    let delete = button(
+        row![icons::icon(icons::TRASH, 16.0, pal.red), text("Delete Category").size(15).color(pal.red)]
+            .spacing(8)
+            .align_y(iced::alignment::Vertical::Center),
+    )
+    .width(Length::Fill)
+    .padding(crate::util::pad2(6.0, 10.0))
+    .on_press(Message::DeleteCategoryAsk(id, old.to_string()))
+    .style(move |_: &Theme, status: button::Status| {
+        let bg = if matches!(status, button::Status::Hovered) { pal.hover_bg } else { Color::TRANSPARENT };
+        button::Style { background: Some(Background::Color(bg)), text_color: pal.red, border: border::rounded(4.0), ..button::Style::default() }
+    });
+    let nav = category_nav(
+        old,
+        vec![
+            ("Overview", Message::EditSectionPick(EditSection::Overview), section == EditSection::Overview),
+            ("Permissions", Message::EditSectionPick(EditSection::Permissions), section == EditSection::Permissions),
+        ],
+        delete,
+        pal,
+    );
+    let content = match section {
+        EditSection::Overview => settings_column(vec![
+            text("Overview").size(20).color(pal.text_strong).into(),
+            name_field(draft, crate::app::CATEGORY_EDIT_ID, Message::CategoryEditInput, Message::CategoryEditSubmit, "Category Name", "new-category-name", pal),
+        ]),
+        EditSection::Permissions => settings_column(vec![access_page(app, crate::app::AccessTarget::Category(id), pal)]),
+    };
+    let page = settings_frame(nav, content, Message::CategoryEditClose, pal);
+    if dirty {
+        iced::widget::stack![page, unsaved_bar(app, pal, Message::EditPageReset, Message::EditPageSave, "Careful – you have unsaved changes!")].into()
+    } else {
+        page
+    }
+}
+
+/// The navigation of the category page: the folder and its name, its sections, then Delete at the bottom.
+fn category_nav<'a>(name: &str, items: Vec<(&str, Message, bool)>, delete: impl Into<Element<'a, Message>>, pal: Pal) -> Element<'a, Message> {
+    let header = row![
+        icons::icon(icons::FOLDER, 14.0, pal.text_muted),
+        text(name.to_uppercase()).size(12).color(pal.text_muted),
+    ]
+    .spacing(6)
+    .align_y(iced::alignment::Vertical::Center);
+    let mut list = Column::new().spacing(4);
+    for (label, msg, selected) in items {
+        list = list.push(nav_button(label, msg, selected, pal));
+    }
+    container(
+        column![
+            header,
+            list,
+            space().height(Length::Fill),
+            super::divider(pal.selected_bg),
+            delete.into(),
+        ]
+        .spacing(8),
+    )
+    .padding(crate::util::pad2(24.0, 12.0))
+    .width(Length::Fixed(220.0))
+    .height(Length::Fill)
+    .style(move |_: &Theme| round(pal.sidebar_bg, 0.0))
+    .into()
+}
+
+/// The left navigation of an edit page: its title, then its items.
+fn page_nav<'a>(title: &str, items: Vec<(&str, Message, bool)>, pal: Pal) -> Element<'a, Message> {
+    let mut list = Column::new().spacing(4);
+    for (label, msg, selected) in items {
+        list = list.push(nav_button(label, msg, selected, pal));
+    }
+    container(column![text(title.to_uppercase()).size(12).color(pal.text_muted), list].spacing(8))
+        .padding(crate::util::pad2(24.0, 12.0))
+        .width(Length::Fixed(220.0))
+        .height(Length::Fill)
+        .style(move |_: &Theme| round(pal.sidebar_bg, 0.0))
+        .into()
+}
+
+/// A name box with its Save button.
+fn name_field<'a>(
+    draft: &'a str,
+    id: &'static str,
+    on_input: fn(String) -> Message,
+    submit: Message,
+    label: &'static str,
+    placeholder: &'static str,
+    pal: Pal,
+) -> Element<'a, Message> {
+    // Saved and reset from the bar at the bottom, as in server settings. Enter also saves.
+    column![
+        text(label).size(13).color(pal.text_muted),
+        text_input(placeholder, draft)
+            .id(id)
+            .on_input(on_input)
+            .on_submit(submit)
+            .padding(10)
+            .size(14)
+            .width(Length::Fill),
+    ]
+    .spacing(6)
+    .into()
+}
+
+/// The access page of a channel or a category, as Discord lays it out: a Private switch, the roles and
+/// users that can access it, and the advanced permissions of one of them at a time. A channel also
+/// has a sync row that pulls its category's settings in. Category settings apply to every channel in
+/// the category, and a channel moved in takes them on.
+fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> Element<'a, Message> {
+    use crate::app::AccessTarget;
+    use common::Subject;
+    let is_category = matches!(target, AccessTarget::Category(_));
+    let noun = if is_category { "category" } else { "channel" };
+    let setting = |subject: &Subject| app.access_value(target, subject.clone());
+    let everyone = Subject::Role(EVERYONE_ROLE);
+    let (everyone_view, everyone_send) = setting(&everyone);
+    let private = everyone_view == Some(false);
+
+    let private_note = if is_category {
+        "Only the roles and users listed below can view this category. Its channels match this setting."
+    } else {
+        "Only the roles and users listed below can view this channel."
+    };
+    let private_card = container(
+        column![
+            row![
+                text(format!("Private {}", if is_category { "Category" } else { "Channel" })).size(15).color(pal.text_strong).width(Length::Fill),
+                toggler(private).on_toggle(move |on| Message::AccessDraftSet {
+                    target,
+                    subject: Subject::Role(EVERYONE_ROLE),
+                    view: if on { Some(false) } else { None },
+                    send: everyone_send,
+                }),
+            ]
+            .align_y(iced::alignment::Vertical::Center),
+            muted_text(private_note, 12.0, pal.text_muted),
+        ]
+        .spacing(6),
+    )
+    .padding(crate::util::pad2(14.0, 16.0))
+    .width(Length::Fill)
+    .style(move |_: &Theme| round(pal.rail_bg, 8.0));
+
+    // Roles and members with any setting here are listed; the rest can be added.
+    let members = member_entries(app);
+    let mut listed: Vec<(Subject, String)> = Vec::new();
+    for role in app.server.roles.iter().filter(|r| r.id != EVERYONE_ROLE) {
+        let subject = Subject::Role(role.id);
+        if setting(&subject) != (None, None) {
+            listed.push((subject, role.name.clone()));
+        }
+    }
+    for (id, name) in &members {
+        let subject = Subject::Member(id.clone());
+        if setting(&subject) != (None, None) {
+            listed.push((subject, name.clone()));
+        }
+    }
+    let mut access = Column::new().spacing(10);
+    if listed.is_empty() {
+        let note = if private { format!("No roles or users can view this {noun} yet.") } else { format!("Everyone can view this {noun}.") };
+        access = access.push(muted_text(note, 13.0, pal.text_muted));
+    }
+    for (subject, name) in &listed {
+        let (view, send) = setting(subject);
+        let colour = role_colour(app, subject).unwrap_or(pal.text);
+        let remove = subject.clone();
+        access = access.push(
+            row![
+                text(name.clone()).size(14).color(colour).width(Length::Fill),
+                muted_text(describe_access(view, send), 12.0, pal.text_muted),
+                button(icons::icon(icons::CLOSE, 14.0, pal.text_muted))
+                    .padding(crate::util::pad2(3.0, 4.0))
+                    .on_press(Message::AccessDraftSet { target, subject: remove, view: None, send: None })
+                    .style(move |_: &Theme, status: button::Status| button::Style {
+                        background: Some(Background::Color(if matches!(status, button::Status::Hovered) { pal.hover_bg } else { Color::TRANSPARENT })),
+                        border: border::rounded(4.0),
+                        ..button::Style::default()
+                    }),
+            ]
+            .spacing(12)
+            .align_y(iced::alignment::Vertical::Center),
+        );
+    }
+    let who_head = row![
+        text(format!("Who can access this {noun}?")).size(15).color(pal.text_strong).width(Length::Fill),
+        solid("Add users or roles", Message::AccessAddOpen(target), pal.accent, pal.on_color, None),
+    ]
+    .spacing(12)
+    .align_y(iced::alignment::Vertical::Center);
+    let who_card = container(column![who_head, divider(pal.selected_bg), access].spacing(12))
+        .padding(crate::util::pad2(14.0, 16.0))
+        .width(Length::Fill)
+        .style(move |_: &Theme| round(pal.rail_bg, 8.0));
+
+    // Advanced permissions: the roles and listed members on the left, the chosen one's settings on the right.
+    let selected = app.access_subject.clone();
+    let mut subject_list = Column::new().spacing(4);
+    for role in &app.server.roles {
+        let subject = Subject::Role(role.id);
+        let tint = crate::util::hex_color(&role.color);
+        subject_list = subject_list.push(nav_button_tinted(
+            &role.name,
+            Message::AccessSubjectPick(subject.clone()),
+            selected == subject,
+            tint,
+            pal,
+        ));
+    }
+    for (subject, name) in listed.iter().filter(|(s, _)| matches!(s, Subject::Member(_))) {
+        subject_list = subject_list.push(nav_button(name, Message::AccessSubjectPick(subject.clone()), selected == *subject, pal));
+    }
+    let (view, send) = setting(&selected);
+    let for_view = selected.clone();
+    let for_send = selected.clone();
+    // While Private is on, @everyone's permissions are set by the switch above, so they cannot be changed here.
+    let everyone_locked = private && selected == Subject::Role(EVERYONE_ROLE);
+    let view_hint = if everyone_locked {
+        "Turned on or off by the Private switch."
+    } else if is_category {
+        "Allows members to view the channels in this category by default."
+    } else {
+        "Allows members to view this channel by default."
+    };
+    let send_hint = if everyone_locked {
+        "Locked while the Private switch is on."
+    } else if is_category {
+        "Allows members to send messages in the channels in this category by default."
+    } else {
+        "Allows members to send messages in this channel by default."
+    };
+    let settings = column![
+        text(format!("General {} Permissions", if is_category { "Category" } else { "Channel" })).size(15).color(pal.text_strong),
+        perm_row(
+            "View Channels",
+            view_hint,
+            view,
+            move |v| Message::AccessDraftSet { target, subject: for_view.clone(), view: v, send },
+            everyone_locked,
+            pal,
+        ),
+        divider(pal.selected_bg),
+        perm_row(
+            "Send Messages",
+            send_hint,
+            send,
+            move |s| Message::AccessDraftSet { target, subject: for_send.clone(), view, send: s },
+            everyone_locked,
+            pal,
+        ),
+    ]
+    .spacing(4)
+    .width(Length::Fill);
+    let advanced = row![container(subject_list).width(Length::Fixed(200.0)), settings].spacing(24);
+
+    let mut page = Column::new().spacing(18);
+    if let AccessTarget::Channel(channel) = target {
+        page = page.push(sync_row(app, channel, pal));
+    }
+    page.push(private_card)
+        .push(who_card)
+        .push(text("Advanced permissions").size(18).color(pal.text_strong))
+        .push(advanced)
+        .into()
+}
+
+/// The row that pulls a channel's category settings in. They go into the channel's unsaved changes,
+/// so Save applies them.
+fn sync_row<'a>(app: &App, channel: i64, pal: Pal) -> Element<'a, Message> {
+    let body: Element<'a, Message> = match app.category_of_channel(channel) {
+        None => muted_text("This channel is not in a category, so there is nothing to sync with.", 13.0, pal.text_muted),
+        Some((category, name)) => {
+            let synced = app.channel_synced(channel, category);
+            let status = if synced { format!("Synced with the category \"{name}\"") } else { format!("Not synced with the category \"{name}\"") };
+            row![
+                text(status).size(13).color(if synced { pal.green } else { pal.text_muted }).width(Length::Fill),
+                solid("Sync with category", Message::ChannelSyncWithCategory(channel), pal.accent, pal.on_color, None),
+            ]
+            .spacing(12)
+            .align_y(iced::alignment::Vertical::Center)
+            .into()
+        }
+    };
+    container(body)
+        .padding(crate::util::pad2(14.0, 16.0))
+        .width(Length::Fill)
+        .style(move |_: &Theme| round(pal.rail_bg, 8.0))
+        .into()
+}
+
+/// Every member of the server as (account id, name), by name.
+pub fn member_entries(app: &App) -> Vec<(String, String)> {
+    let mut members: Vec<(String, String)> = app.server.member_ids.iter().map(|(name, id)| (id.clone(), name.clone())).collect();
+    members.sort_by_key(|(_, name)| name.to_lowercase());
+    members
+}
+
+/// The colour a role or member shows in: a role's own colour, or none for a member.
+pub fn role_colour(app: &App, subject: &common::Subject) -> Option<Color> {
+    match subject {
+        common::Subject::Role(id) => app.server.roles.iter().find(|r| r.id == *id).and_then(|r| crate::util::hex_color(&r.color)),
+        common::Subject::Member(_) => None,
+    }
+}
+
+/// A role's category setting in words, for the access list.
+fn describe_access(view: Option<bool>, send: Option<bool>) -> String {
+    let part = |label: &str, value: Option<bool>| match value {
+        Some(true) => Some(format!("{label} allowed")),
+        Some(false) => Some(format!("{label} denied")),
+        None => None,
+    };
+    let parts: Vec<String> = [part("view", view), part("send", send)].into_iter().flatten().collect();
+    if parts.is_empty() { "inherits".to_string() } else { parts.join(" · ") }
+}
+
+/// One permission of the advanced list: its name and what it does, with its ✕ / slash / ✓ control.
+fn perm_row<'a>(
+    title: &str,
+    hint: &str,
+    value: Option<bool>,
+    on_pick: impl Fn(Option<bool>) -> Message,
+    locked: bool,
+    pal: Pal,
+) -> Element<'a, Message> {
+    row![
+        column![
+            text(title.to_string()).size(14).color(if locked { pal.text_muted } else { pal.text }),
+            text(hint.to_string()).size(12).color(pal.text_muted),
+        ]
+        .spacing(4)
+        .width(Length::Fill),
+        tristate(value, on_pick, locked, pal),
+    ]
+    .spacing(16)
+    .padding(crate::util::pad2(12.0, 0.0))
+    .align_y(iced::alignment::Vertical::Center)
+    .into()
+}
+
+/// Deny (✕), inherit (slash) or allow (✓) as three icons in one control. The chosen one is lit.
+/// A locked control shows its setting but cannot be changed.
+fn tristate<'a>(value: Option<bool>, on_pick: impl Fn(Option<bool>) -> Message, locked: bool, pal: Pal) -> Element<'a, Message> {
+    let segment = |icon: &'static str, colour: Color, choice: Option<bool>| -> Element<'a, Message> {
+        let selected = value == choice;
+        let mut control = button(icons::icon(icon, 14.0, if selected { colour } else { pal.text_muted }))
+            .padding(crate::util::pad2(5.0, 9.0));
+        if !locked {
+            control = control.on_press(on_pick(choice));
+        }
+        control
+            .style(move |_: &Theme, status: button::Status| {
+                let bg = if selected {
+                    pal.selected_bg
+                } else if matches!(status, button::Status::Hovered) {
+                    pal.hover_bg
+                } else {
+                    Color::TRANSPARENT
+                };
+                button::Style { background: Some(Background::Color(bg)), border: border::rounded(4.0), ..button::Style::default() }
+            })
+            .into()
+    };
+    container(row![
+        segment(icons::CLOSE, pal.red, Some(false)),
+        segment(icons::SLASH, pal.text_strong, None),
+        segment(icons::CHECK, pal.green, Some(true)),
+    ]
+    .spacing(2))
+    .padding(2)
+    .style(move |_: &Theme| round(pal.app_bg, 6.0))
+    .into()
+}

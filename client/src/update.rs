@@ -177,13 +177,82 @@ impl App {
                 }
             }
             Message::DeleteChannelCancel => self.pending_channel_delete = None,
-            Message::ChannelAccessOpen(id) => {
+            Message::ChannelEditOpen(id) => {
                 self.menu = None;
-                self.channel_access = Some(id);
+                self.access_draft = None;
+                self.access_subject = common::Subject::Role(common::EVERYONE_ROLE);
+                let name = self.channel_name_of(id).unwrap_or_default();
+                self.rename_channel = Some((id, name.clone(), name));
+                self.channel_edit = Some(id);
+                self.edit_section = crate::app::EditSection::Overview;
             }
-            Message::ChannelAccessClose => self.channel_access = None,
-            Message::ChannelAccessSet { channel, role, view, send } => {
-                let _ = self.backend.send_main(ClientMsg::SetChannelOverride { channel, role, view, send });
+            Message::ChannelEditClose => return self.close_channel_edit(),
+            Message::EditSectionPick(section) => self.edit_section = section,
+            Message::AccessDraftSet { target, subject, view, send } => {
+                if self.access_draft.as_ref().map_or(true, |d| d.target != target) {
+                    self.access_draft = Some(crate::app::AccessDraft { target, subjects: Default::default() });
+                }
+                if let Some(draft) = self.access_draft.as_mut() {
+                    draft.subjects.insert(subject, (view, send));
+                }
+            }
+            Message::AccessAddOpen(target) => self.access_add = Some(crate::app::AccessAdd { target, query: String::new(), picked: Default::default() }),
+            Message::AccessAddClose => self.access_add = None,
+            Message::AccessAddQuery(query) => {
+                if let Some(add) = self.access_add.as_mut() {
+                    add.query = query;
+                }
+            }
+            Message::AccessAddToggle(subject, on) => {
+                if let Some(add) = self.access_add.as_mut() {
+                    if on {
+                        add.picked.insert(subject);
+                    } else {
+                        add.picked.remove(&subject);
+                    }
+                }
+            }
+            Message::AccessAddDone => {
+                let picked = self.access_add.take().map(|a| a.picked).unwrap_or_default();
+                if let Some((category, _, _)) = self.category_edit.clone() {
+                    let target = crate::app::AccessTarget::Category(category);
+                    for subject in picked {
+                        let (_, send) = self.access_value(target, subject.clone());
+                        let _ = self.update(Message::AccessDraftSet { target, subject, view: Some(true), send });
+                    }
+                }
+            }
+            Message::ChannelSyncWithCategory(channel) => {
+                if let Some((category, _)) = self.category_of_channel(channel) {
+                    let target = crate::app::AccessTarget::Channel(channel);
+                    let subjects = self
+                        .subjects_of(channel, category)
+                        .into_iter()
+                        .map(|subject| {
+                            let value = self.server_access(crate::app::AccessTarget::Category(category), &subject);
+                            (subject, value)
+                        })
+                        .collect();
+                    self.access_draft = Some(crate::app::AccessDraft { target, subjects });
+                }
+            }
+            Message::EditPageSave => {
+                if self.channel_edit.is_some() {
+                    let _ = self.update(Message::RenameSubmit);
+                }
+                if self.category_edit.is_some() {
+                    let _ = self.update(Message::CategoryEditSubmit);
+                }
+                self.save_access();
+            }
+            Message::EditPageReset => {
+                if self.channel_edit.is_some() {
+                    let _ = self.update(Message::RenameReset);
+                }
+                if self.category_edit.is_some() {
+                    let _ = self.update(Message::CategoryEditReset);
+                }
+                self.access_draft = None;
             }
             Message::CreateOpen => {
                 self.create_open = true;
@@ -204,29 +273,62 @@ impl App {
                     let _ = self.backend.send_main(ClientMsg::CreateCategory { name });
                 }
             }
-            Message::DeleteCategory(category) => {
+            Message::DeleteCategoryAsk(id, name) => {
                 self.menu = None;
-                let _ = self.backend.send_main(ClientMsg::DeleteCategory { category });
+                self.pending_category_delete = Some((id, name));
             }
-            Message::RenameStart(id, name) => {
-                self.menu = None;
-                self.rename_channel = Some((id, name.clone(), name));
-                return operation::focus(crate::app::RENAME_ID);
+            Message::DeleteCategoryConfirm => {
+                if let Some((category, _)) = self.pending_category_delete.take() {
+                    let _ = self.backend.send_main(ClientMsg::DeleteCategory { category });
+                }
             }
+            Message::DeleteCategoryCancel => self.pending_category_delete = None,
             Message::RenameInput(v) => {
                 if let Some((_, _, text)) = self.rename_channel.as_mut() {
                     *text = v;
                 }
             }
+            Message::RenameReset => {
+                if let Some((_, old, new)) = self.rename_channel.as_mut() {
+                    *new = old.clone();
+                }
+            }
             Message::RenameSubmit => {
-                if let Some((id, old, new)) = self.rename_channel.take() {
+                if let Some((id, old, new)) = self.rename_channel.clone() {
                     let new = new.trim().to_string();
                     if !new.is_empty() && new != old {
                         let _ = self.backend.send_main(ClientMsg::RenameChannel { channel: id, new_name: new });
                     }
                 }
             }
-            Message::RenameCancel => self.rename_channel = None,
+            Message::CategoryEditOpen(id, name) => {
+                self.menu = None;
+                self.category_edit = Some((id, name.clone(), name));
+                self.edit_section = crate::app::EditSection::Overview;
+                self.access_subject = common::Subject::Role(common::EVERYONE_ROLE);
+                self.access_draft = None;
+                return operation::focus(crate::app::CATEGORY_EDIT_ID);
+            }
+            Message::CategoryEditInput(v) => {
+                if let Some((_, _, text)) = self.category_edit.as_mut() {
+                    *text = v;
+                }
+            }
+            Message::CategoryEditSubmit => {
+                if let Some((id, old, new)) = self.category_edit.clone() {
+                    let new = new.trim().to_string();
+                    if !new.is_empty() && new != old {
+                        let _ = self.backend.send_main(ClientMsg::RenameCategory { category: id, new_name: new });
+                    }
+                }
+            }
+            Message::CategoryEditReset => {
+                if let Some((_, old, new)) = self.category_edit.as_mut() {
+                    *new = old.clone();
+                }
+            }
+            Message::CategoryEditClose => return self.close_category_edit(),
+            Message::AccessSubjectPick(subject) => self.access_subject = subject,
             Message::CreateChannel => {
                 let name = std::mem::take(&mut self.new_channel);
                 self.create_open = false;
@@ -978,7 +1080,9 @@ impl App {
 
     /// Escape closes the topmost thing that is open.
     pub fn on_escape(&mut self) -> Task<Message> {
-        if self.search_open {
+        if self.access_add.is_some() {
+            self.access_add = None;
+        } else if self.search_open {
             self.search_open = false;
         } else if self.card.is_some() {
             self.card = None;
@@ -993,8 +1097,12 @@ impl App {
             self.pending_role_delete = None;
         } else if self.pending_channel_delete.is_some() {
             self.pending_channel_delete = None;
-        } else if self.rename_channel.is_some() {
-            self.rename_channel = None;
+        } else if self.pending_category_delete.is_some() {
+            self.pending_category_delete = None;
+        } else if self.channel_edit.is_some() {
+            return self.close_channel_edit();
+        } else if self.category_edit.is_some() {
+            return self.close_category_edit();
         } else if self.category_open {
             self.category_open = false;
         } else if self.add_server.open {
@@ -1070,6 +1178,50 @@ impl App {
     }
 
     /// Closes a settings page. Refused while it has unsaved changes: the save bar flashes red instead.
+    /// Sends the open page's permission changes that differ from the server's, and clears the draft.
+    fn save_access(&mut self) {
+        use crate::app::AccessTarget;
+        use common::Subject;
+        let Some(draft) = self.access_draft.take() else { return };
+        for (subject, (view, send)) in draft.subjects.clone() {
+            if (view, send) == self.server_access(draft.target, &subject) {
+                continue;
+            }
+            let msg = match (draft.target, subject) {
+                (AccessTarget::Channel(channel), Subject::Role(role)) => ClientMsg::SetChannelOverride { channel, role, view, send },
+                (AccessTarget::Channel(channel), Subject::Member(member)) => ClientMsg::SetChannelMemberOverride { channel, member, view, send },
+                (AccessTarget::Category(category), Subject::Role(role)) => ClientMsg::SetCategoryOverride { category, role, view, send },
+                (AccessTarget::Category(category), Subject::Member(member)) => ClientMsg::SetCategoryMemberOverride { category, member, view, send },
+            };
+            let _ = self.backend.send_main(msg);
+        }
+    }
+
+    /// Closes the channel edit page. Refused, with the save bar flashing red, while it has unsaved changes.
+    fn close_channel_edit(&mut self) -> Task<Message> {
+        if self.edit_dirty() {
+            self.unsaved_flash = Some(std::time::Instant::now());
+            return Task::none();
+        }
+        self.unsaved_flash = None;
+        self.channel_edit = None;
+        self.rename_channel = None;
+        self.access_draft = None;
+        Task::none()
+    }
+
+    /// Closes the category edit page. Refused, with the save bar flashing red, while it has unsaved changes.
+    fn close_category_edit(&mut self) -> Task<Message> {
+        if self.edit_dirty() {
+            self.unsaved_flash = Some(std::time::Instant::now());
+            return Task::none();
+        }
+        self.unsaved_flash = None;
+        self.category_edit = None;
+        self.access_draft = None;
+        Task::none()
+    }
+
     fn close_settings(&mut self) -> Task<Message> {
         if self.settings_unsaved() {
             self.unsaved_flash = Some(std::time::Instant::now());

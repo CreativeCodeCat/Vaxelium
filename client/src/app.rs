@@ -41,6 +41,7 @@ pub const COMPOSER_ID: &str = "composer";
 pub const NEW_CHANNEL_ID: &str = "new-channel";
 pub const NEW_CATEGORY_ID: &str = "new-category";
 pub const RENAME_ID: &str = "rename-channel";
+pub const CATEGORY_EDIT_ID: &str = "edit-category";
 pub const ADD_ADDR_ID: &str = "add-addr";
 pub const NEW_DM_ID: &str = "new-dm";
 pub const EDIT_ID: &str = "edit-box";
@@ -78,6 +79,37 @@ pub enum ServerSection {
     Profile,
     Roles,
     Badges,
+}
+
+/// What a permissions draft is for: a channel, or a category.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccessTarget {
+    Channel(i64),
+    Category(i64),
+}
+
+/// Permission changes on the open edit page that are not saved yet: each changed role's View and Send.
+#[derive(Debug, Clone)]
+pub struct AccessDraft {
+    pub target: AccessTarget,
+    pub subjects: std::collections::BTreeMap<common::Subject, (Option<bool>, Option<bool>)>,
+}
+
+/// The Add roles dialog of a category's permissions: its search text, and the roles picked so far.
+#[derive(Debug, Clone)]
+pub struct AccessAdd {
+    /// What the roles and users are being added to.
+    pub target: AccessTarget,
+    pub query: String,
+    pub picked: std::collections::BTreeSet<common::Subject>,
+}
+
+/// A section of the channel or category edit page.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum EditSection {
+    #[default]
+    Overview,
+    Permissions,
 }
 
 /// A tab of the role editor.
@@ -373,17 +405,29 @@ pub struct App {
     pub create_open: bool,
     /// The category name box in the channel list is showing.
     pub category_open: bool,
-    /// The rename dialog: the channel's current name, and the name being typed.
+    /// The name field of the channel edit page: the channel's current name, and the name being typed.
     pub rename_channel: Option<(i64, String, String)>,
+    /// The role or member whose permissions for the category are shown in its Advanced permissions.
+    pub access_subject: common::Subject,
+    /// The category edit page: the category's current name, and the name being typed.
+    pub category_edit: Option<(i64, String, String)>,
     /// A channel and category press in progress, and the drop target under the pointer.
     pub dnd: Option<Dnd>,
     /// The channel waiting for its delete confirmation.
     pub pending_channel_delete: Option<(i64, String)>,
+    /// The category waiting for its delete confirmation.
+    pub pending_category_delete: Option<(i64, String)>,
     /// Your status text while it is being edited on your profile card, and any error saving it.
     pub card_status_draft: Option<String>,
     pub card_status_error: Option<String>,
-    /// The channel whose permissions are being edited.
-    pub channel_access: Option<i64>,
+    /// The channel whose edit page is open (its name and permissions).
+    pub channel_edit: Option<i64>,
+    /// Permission changes on the open edit page, saved or reset with its bar.
+    pub access_draft: Option<AccessDraft>,
+    /// The Add roles dialog, while it is open.
+    pub access_add: Option<AccessAdd>,
+    /// The section of the channel edit page on screen.
+    pub edit_section: EditSection,
     /// The role waiting for confirmation before it is deleted.
     pub pending_role_delete: Option<(i64, String)>,
     /// The Roles checklist in a member's menu is open.
@@ -484,19 +528,43 @@ pub enum Message {
     RoleSaveCancel,
     AdminGrantConfirm,
     AdminGrantCancel,
-    ChannelAccessOpen(i64),
-    ChannelAccessClose,
-    /// Set a role's exception for a channel. `None` for both removes it.
-    ChannelAccessSet { channel: i64, role: i64, view: Option<bool>, send: Option<bool> },
+    ChannelEditOpen(i64),
+    ChannelEditClose,
+    /// Change a role's View and Send on the open channel or category edit page. Saved with its bar.
+    AccessDraftSet { target: AccessTarget, subject: common::Subject, view: Option<bool>, send: Option<bool> },
+    /// Fill the open channel's unsaved permissions with its category's. Save applies them.
+    ChannelSyncWithCategory(i64),
+    /// Save the open edit page's name and permission changes.
+    EditPageSave,
+    /// Put back the open edit page's name and permission changes.
+    EditPageReset,
+    AccessAddOpen(AccessTarget),
+    AccessAddClose,
+    AccessAddQuery(String),
+    AccessAddToggle(common::Subject, bool),
+    /// Add the picked roles and users, with View allowed, as unsaved changes.
+    AccessAddDone,
     CreateOpen,
     CategoryOpen,
     NewCategory(String),
     CreateCategory,
-    DeleteCategory(i64),
-    RenameStart(i64, String),
+    DeleteCategoryAsk(i64, String),
+    DeleteCategoryConfirm,
+    DeleteCategoryCancel,
     RenameInput(String),
     RenameSubmit,
-    RenameCancel,
+    /// Put the channel's name back as it was saved.
+    RenameReset,
+    EditSectionPick(EditSection),
+    CategoryEditOpen(i64, String),
+    CategoryEditInput(String),
+    CategoryEditSubmit,
+    CategoryEditReset,
+    CategoryEditClose,
+
+    /// Choose the role shown in a category's Advanced permissions.
+    AccessSubjectPick(common::Subject),
+
     NewChannel(String),
     CreateChannel,
     ToggleCategory(i64),
@@ -755,9 +823,15 @@ impl App {
             rename_channel: None,
             dnd: None,
             pending_channel_delete: None,
+            pending_category_delete: None,
             card_status_draft: None,
             card_status_error: None,
-            channel_access: None,
+            channel_edit: None,
+            edit_section: EditSection::default(),
+            access_subject: common::Subject::Role(common::EVERYONE_ROLE),
+            access_draft: None,
+            access_add: None,
+            category_edit: None,
             pending_role_delete: None,
             roles_menu_open: false,
             new_category: String::new(),
@@ -1106,6 +1180,13 @@ impl App {
             ServerMsg::Categories { categories, uncategorized } => {
                 self.server.categories = categories;
                 self.server.uncategorized = uncategorized;
+                // The edit page follows its category's name, and closes if the category is gone.
+                if let Some((id, old, _)) = self.category_edit.as_mut() {
+                    match self.server.categories.iter().find(|c| c.id == *id) {
+                        Some(cat) => *old = cat.name.clone(),
+                        None => self.category_edit = None,
+                    }
+                }
             }
             ServerMsg::ChannelDeleted { id } => {
                 let was_open = self.server.channel_id == id;
@@ -1155,6 +1236,13 @@ impl App {
             }
             ServerMsg::ChannelOverrides { overrides } => {
                 self.server.overrides = overrides;
+            }
+            ServerMsg::CategoryOverrides { overrides } => {
+                self.server.category_overrides = overrides;
+            }
+            ServerMsg::MemberOverrides { channels, categories } => {
+                self.server.member_channel_overrides = channels;
+                self.server.member_category_overrides = categories;
             }
             ServerMsg::Badges { badges } => self.server.badges = badges,
             ServerMsg::Roles { roles } => {
@@ -1287,6 +1375,11 @@ impl App {
         }
         if self.server.channel_id == id {
             self.server.channel = name.to_string();
+        }
+        if let Some((edited, old_name, _)) = self.rename_channel.as_mut() {
+            if *edited == id {
+                *old_name = name.to_string();
+            }
         }
         if let (Some(old), Some(addr)) = (old, self.main.addr.clone()) {
             if let Some(last) = self.prefs.last_channels.get_mut(&addr) {
@@ -1489,21 +1582,23 @@ impl App {
                 }
                 if !is_dm_channel(&name) {
                     if self.can(perm::MANAGE_CHANNELS) {
-                        items.push(item("Permissions", None, false, Message::ChannelAccessOpen(id)));
-                        items.push(item("Rename channel", None, false, Message::RenameStart(id, name.clone())));
+                        items.push(item("Edit channel", Some(crate::icons::PENCIL), false, Message::ChannelEditOpen(id)));
                         items.push(item("Delete channel", Some(crate::icons::TRASH), true, Message::DeleteChannelAsk(id, name.clone())));
                     }
-                    items.push(item("Copy channel name", None, false, Message::CopyText(format!("#{name}"))));
                 }
-                // The ID is always last, below a divider.
+                // The copy items are last, below a divider: the name (for channels, not direct messages), then the ID.
                 items.push(MenuItem::Divider);
+                if !is_dm_channel(&name) {
+                    items.push(item("Copy Channel Name", None, false, Message::CopyText(format!("#{name}"))));
+                }
                 items.push(item("Copy ID", None, false, Message::CopyText(id.to_string())));
                 (format!("channel-{name}"), items, None)
             }
             MenuKind::Category { id, name } => {
                 let mut items = Vec::new();
                 if self.can(perm::MANAGE_CHANNELS) {
-                    items.push(item("Delete category", Some(crate::icons::TRASH), true, Message::DeleteCategory(id)));
+                    items.push(item("Edit category", Some(crate::icons::PENCIL), false, Message::CategoryEditOpen(id, name.clone())));
+                    items.push(item("Delete category", Some(crate::icons::TRASH), true, Message::DeleteCategoryAsk(id, name.clone())));
                     items.push(MenuItem::Divider);
                 }
                 items.push(item("Copy ID", None, false, Message::CopyText(id.to_string())));
@@ -1911,6 +2006,79 @@ impl App {
     }
 
     /// True when the settings page on screen has changes that are not saved yet.
+    /// What a role's or member's View and Send are on the open edit page, with any unsaved change applied.
+    pub fn access_value(&self, target: AccessTarget, subject: common::Subject) -> (Option<bool>, Option<bool>) {
+        self.access_draft
+            .as_ref()
+            .filter(|d| d.target == target)
+            .and_then(|d| d.subjects.get(&subject).copied())
+            .unwrap_or_else(|| self.server_access(target, &subject))
+    }
+
+    /// What a role's or member's View and Send are on the server.
+    pub fn server_access(&self, target: AccessTarget, subject: &common::Subject) -> (Option<bool>, Option<bool>) {
+        use common::Subject;
+        match (target, subject) {
+            (AccessTarget::Channel(channel), Subject::Role(role)) => {
+                self.server.overrides.iter().find(|o| o.channel_id == channel && o.role == *role).map_or((None, None), |o| (o.view, o.send))
+            }
+            (AccessTarget::Channel(channel), Subject::Member(member)) => self
+                .server
+                .member_channel_overrides
+                .iter()
+                .find(|o| o.channel_id == channel && &o.member == member)
+                .map_or((None, None), |o| (o.view, o.send)),
+            (AccessTarget::Category(category), Subject::Role(role)) => self
+                .server
+                .category_overrides
+                .iter()
+                .find(|o| o.category_id == category && o.role == *role)
+                .map_or((None, None), |o| (o.view, o.send)),
+            (AccessTarget::Category(category), Subject::Member(member)) => self
+                .server
+                .member_category_overrides
+                .iter()
+                .find(|o| o.category_id == category && &o.member == member)
+                .map_or((None, None), |o| (o.view, o.send)),
+        }
+    }
+
+    /// The category a channel is in, by id and name, if it is in one.
+    pub fn category_of_channel(&self, channel: i64) -> Option<(i64, String)> {
+        self.server.categories.iter().find(|c| c.channels.iter().any(|ch| ch.id == channel)).map(|c| (c.id, c.name.clone()))
+    }
+
+    /// Every role and member with a setting on the channel or its category.
+    pub fn subjects_of(&self, channel: i64, category: i64) -> std::collections::BTreeSet<common::Subject> {
+        use common::Subject;
+        let mut subjects = std::collections::BTreeSet::new();
+        subjects.extend(self.server.category_overrides.iter().filter(|o| o.category_id == category).map(|o| Subject::Role(o.role)));
+        subjects.extend(self.server.overrides.iter().filter(|o| o.channel_id == channel).map(|o| Subject::Role(o.role)));
+        subjects.extend(self.server.member_category_overrides.iter().filter(|o| o.category_id == category).map(|o| Subject::Member(o.member.clone())));
+        subjects.extend(self.server.member_channel_overrides.iter().filter(|o| o.channel_id == channel).map(|o| Subject::Member(o.member.clone())));
+        subjects
+    }
+
+    /// True when the channel's permissions (with any unsaved change) match its category's.
+    pub fn channel_synced(&self, channel: i64, category: i64) -> bool {
+        let target = AccessTarget::Channel(channel);
+        self.subjects_of(channel, category)
+            .iter()
+            .all(|subject| self.access_value(target, subject.clone()) == self.server_access(AccessTarget::Category(category), subject))
+    }
+
+    /// True when the open edit page's permissions differ from the server's.
+    pub fn access_dirty(&self) -> bool {
+        self.access_draft.as_ref().is_some_and(|d| d.subjects.iter().any(|(subject, value)| *value != self.server_access(d.target, subject)))
+    }
+
+    /// True when the open channel or category edit page has changes that are not saved: its name or its permissions.
+    pub fn edit_dirty(&self) -> bool {
+        let name = self.rename_channel.as_ref().is_some_and(|(_, old, new)| new.trim() != old)
+            || self.category_edit.as_ref().is_some_and(|(_, old, new)| new.trim() != old);
+        name || self.access_dirty()
+    }
+
     pub fn settings_unsaved(&self) -> bool {
         match self.page {
             Page::User => match self.user_section {
