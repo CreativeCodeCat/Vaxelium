@@ -1556,11 +1556,11 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
             }
         }
     }
-    if any_role {
-        access = access.push(subheading("Roles", pal)).push(role_rows);
-    }
     if any_member {
         access = access.push(subheading("Members", pal)).push(member_rows);
+    }
+    if any_role {
+        access = access.push(subheading("Roles", pal)).push(role_rows);
     }
     let who_head = row![
         text(format!("Who can access this {noun}?")).size(15).color(pal.text_strong).width(Length::Fill),
@@ -1575,20 +1575,26 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
 
     // Advanced permissions: the roles and listed members on the left, the chosen one's settings on the right.
     let selected = app.access_subject.clone();
+    // Listed users first, then the roles in the order of the Roles page, and @everyone always last.
     let mut subject_list = Column::new().spacing(4);
-    for role in &app.server.roles {
+    let role_item = |role: &RoleInfo| {
         let subject = Subject::Role(role.id);
-        let tint = crate::util::hex_color(&role.color);
-        subject_list = subject_list.push(nav_button_tinted(
+        nav_button_tinted(
             &role.name,
             Message::AccessSubjectPick(subject.clone()),
             selected == subject,
-            tint,
+            crate::util::hex_color(&role.color),
             pal,
-        ));
-    }
+        )
+    };
     for (subject, name) in listed.iter().filter(|(s, _)| matches!(s, Subject::Member(_))) {
         subject_list = subject_list.push(nav_button(name, Message::AccessSubjectPick(subject.clone()), selected == *subject, pal));
+    }
+    for role in app.server.roles.iter().filter(|r| r.id != EVERYONE_ROLE) {
+        subject_list = subject_list.push(role_item(role));
+    }
+    if let Some(everyone) = app.server.roles.iter().find(|r| r.id == EVERYONE_ROLE) {
+        subject_list = subject_list.push(role_item(everyone));
     }
     let (view, send) = setting(&selected);
     let for_view = selected.clone();
