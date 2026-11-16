@@ -676,15 +676,42 @@ fn a_ping_marks_the_channel_only_for_members_of_that_role() {
 }
 
 #[test]
+fn a_message_can_span_several_lines() {
+    use iced::widget::text_editor::{Action, Edit};
+    let mut app = app();
+    welcome(&mut app);
+    let _ = app.update(Message::ComposerAction(Action::Edit(Edit::Insert('a'))));
+    let _ = app.update(Message::ComposerAction(Action::Edit(Edit::Enter)));
+    let _ = app.update(Message::ComposerAction(Action::Edit(Edit::Insert('b'))));
+    assert_eq!(app.input, "a\nb", "Enter starts a new line in the composer");
+    assert_eq!(app.composer.line_count(), 2);
+    // Setting the text again (after a send, or a picked mention) keeps every line.
+    app.set_input("one\ntwo".into());
+    assert_eq!(app.composer.line_count(), 2);
+}
+
+#[test]
+fn an_edited_message_keeps_its_line_breaks() {
+    use iced::widget::text_editor::{Action, Edit};
+    let mut app = app();
+    welcome(&mut app);
+    app.editing = Some((7, "a".into()));
+    app.edit_box = crate::app::editor_at_end("a");
+    let _ = app.update(Message::EditAction(Action::Edit(Edit::Enter)));
+    let _ = app.update(Message::EditAction(Action::Edit(Edit::Insert('b'))));
+    assert_eq!(app.editing.as_ref().map(|(_, t)| t.as_str()), Some("a\nb"));
+}
+
+#[test]
 fn picking_from_the_at_menu_replaces_the_word_being_typed() {
     let mut app = app();
     welcome(&mut app);
-    app.input = "hello there @Mo".into();
+    app.set_input("hello there @Mo".into());
     assert_eq!(app.mention_query().as_deref(), Some("Mo"));
     let _ = app.update(Message::MentionPick("Mods".into()));
     assert_eq!(app.input, "hello there @Mods ");
     assert_eq!(app.mention_query(), None, "after a space the menu closes");
-    app.input = "email me@example".into();
+    app.set_input("email me@example".into());
     assert_eq!(app.mention_query(), None, "an @ inside a word is not a mention");
 }
 

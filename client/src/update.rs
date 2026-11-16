@@ -497,7 +497,8 @@ impl App {
                 return operation::focus(crate::app::SEARCH_ID);
             }
             Message::Mention(name) => {
-                self.input.push_str(&format!("@{name} "));
+                let next = format!("{}@{name} ", self.input);
+                self.set_input(next);
                 self.menu = None;
                 return operation::focus(COMPOSER_ID);
             }
@@ -550,9 +551,14 @@ impl App {
             }
 
             // ----- composer and messages -----
-            Message::InputChanged(v) => {
-                let typing = !v.trim().is_empty() && self.server.channel_id != 0;
-                self.input = v;
+            Message::ComposerAction(action) => {
+                let edits = matches!(action, iced::widget::text_editor::Action::Edit(_));
+                self.composer.perform(action);
+                self.input = self.composer.text();
+                if !edits {
+                    return Task::none();
+                }
+                let typing = !self.input.trim().is_empty() && self.server.channel_id != 0;
                 let due = self.last_typing_sent.is_none_or(|at| at.elapsed() >= crate::app::TYPING_SEND_EVERY);
                 if typing && due {
                     self.last_typing_sent = Some(std::time::Instant::now());
@@ -571,15 +577,13 @@ impl App {
             Message::MentionPick(name) => {
                 // Replace the @ word being typed with the picked name, and leave a space after it.
                 let start = self.input.char_indices().rev().find(|(_, c)| c.is_whitespace()).map_or(0, |(i, c)| i + c.len_utf8());
-                self.input.truncate(start);
-                self.input.push('@');
-                self.input.push_str(&name);
-                self.input.push(' ');
+                let next = format!("{}@{name} ", &self.input[..start]);
+                self.set_input(next);
                 return operation::focus(COMPOSER_ID);
             }
             Message::Send => {
                 let text = self.input.trim().to_string();
-                self.input.clear();
+                self.set_input(String::new());
                 if text.is_empty() {
                     return Task::none();
                 }
@@ -614,12 +618,14 @@ impl App {
                 self.menu = None;
                 if let Some(m) = self.find_message(id) {
                     self.editing = Some((m.id, m.text.clone()));
+                    self.edit_box = crate::app::editor_at_end(&m.text);
                     return operation::focus(EDIT_ID);
                 }
             }
-            Message::EditChanged(v) => {
+            Message::EditAction(action) => {
+                self.edit_box.perform(action);
                 if let Some((_, text)) = self.editing.as_mut() {
-                    *text = v;
+                    *text = self.edit_box.text();
                 }
             }
             Message::EditSave => {
@@ -1217,6 +1223,7 @@ impl App {
 
     /// Escape closes the topmost thing that is open.
     pub fn on_escape(&mut self) -> Task<Message> {
+        self.text_sel = None;
         if self.access_add.is_some() {
             self.access_add = None;
         } else if self.search_open {

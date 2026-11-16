@@ -2,7 +2,7 @@
 //! composer, the member list and the message search.
 
 use common::ChatMessage;
-use iced::widget::{button, column, container, mouse_area, rich_text, row, scrollable, span, space, svg, text, text_input, tooltip, Column};
+use iced::widget::{button, column, container, mouse_area, row, scrollable, space, svg, text, text_input, tooltip, Column};
 use iced::{border, Background, Color, Element, Length, Theme};
 
 use super::{bar, divider, ghost, letter_badge, muted_text, panel, round, server_icon};
@@ -806,41 +806,9 @@ fn fit_name(name: &str, room: f32, size: f32) -> String {
     cut
 }
 
-/// A message's text. `@role` pings for roles anyone may ping are shown in the role's colour, in bold.
-fn message_text<'a>(app: &App, body: &str, pal: Pal) -> Element<'a, Message> {
-    let pings = app.role_pings(body);
-    let links = super::link_ranges(body);
-    if pings.is_empty() && links.is_empty() {
-        return text(body.to_string()).size(15).color(pal.text).width(Length::Shrink).into();
-    }
-    let bold = iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT };
-    // Pings and links in the order they appear. A link that overlaps a ping is shown as plain text.
-    let mut pieces: Vec<(std::ops::Range<usize>, Option<Option<Color>>)> = pings
-        .iter()
-        .map(|p| (p.range.clone(), Some(p.color)))
-        .chain(links.into_iter().map(|r| (r, None)))
-        .collect();
-    pieces.sort_by_key(|(r, _)| r.start);
-    let mut spans: Vec<iced::widget::text::Span<'static, String>> = Vec::new();
-    let mut at = 0;
-    for (range, ping) in pieces {
-        if range.start < at {
-            continue;
-        }
-        if range.start > at {
-            spans.push(span(body[at..range.start].to_string()).color(pal.text));
-        }
-        let part = body[range.clone()].to_string();
-        spans.push(match ping {
-            Some(color) => span(part).color(color.unwrap_or(pal.text_strong)).font(bold),
-            None => span(part.clone()).color(pal.link).underline(true).link(part),
-        });
-        at = range.end;
-    }
-    if at < body.len() {
-        spans.push(span(body[at..].to_string()).color(pal.text));
-    }
-    rich_text(spans).size(15).width(Length::Shrink).on_link_click(Message::OpenLink).into()
+/// A message's text, drawn as Markdown. `@role` pings are shown in the role's colour, in bold.
+fn message_text<'a>(app: &App, id: i64, body: &str, pal: Pal) -> Element<'a, Message> {
+    super::markdown_view::message_body(app, id, body, pal)
 }
 
 /// The colour of a message's author name: their highest role's colour, or the strong text colour
@@ -855,20 +823,22 @@ fn chat_message<'a>(app: &'a App, pal: Pal, m: ChatMessage, grouped: bool, now: 
     let hovered = app.hover == Some(m_id);
 
     let body_text: Element<'a, Message> = if editing {
-        let value = app.editing.as_ref().map(|(_, t)| t.clone()).unwrap_or_default();
         column![
-            text_input("", &value)
+            iced::widget::text_editor(&app.edit_box)
                 .id(EDIT_ID)
-                .on_input(Message::EditChanged)
-                .on_submit(Message::EditSave)
+                .on_action(Message::EditAction)
+                .key_binding(edit_key)
                 .padding(8)
-                .size(14),
-            muted_text("Enter to save · Escape to cancel", 12.0, pal.text_muted),
+                .size(14)
+                .min_height(36.0)
+                .max_height(220.0)
+                .height(Length::Shrink),
+            muted_text("Enter to save · Shift+Enter for a new line · Escape to cancel", 12.0, pal.text_muted),
         ]
         .spacing(4)
         .into()
     } else {
-        let mut line = row![message_text(app, &m.text, pal)].spacing(6);
+        let mut line = row![message_text(app, m.id, &m.text, pal)].spacing(6);
         if m.edited {
             line = line.push(text("(edited)").size(11).color(pal.text_muted));
         }
@@ -1087,6 +1057,27 @@ fn typing_line(app: &App) -> Option<String> {
     }
 }
 
+/// While editing, Enter saves the message and Shift+Enter starts a new line.
+fn edit_key(press: iced::widget::text_editor::KeyPress) -> Option<iced::widget::text_editor::Binding<Message>> {
+    use iced::keyboard::{key::Named, Key};
+    use iced::widget::text_editor::Binding;
+    if matches!(press.key, Key::Named(Named::Enter)) && !press.modifiers.shift() {
+        return Some(Binding::Custom(Message::EditSave));
+    }
+    Binding::from_key_press(press)
+}
+
+/// Enter sends the message. Shift+Enter keeps the editor's own behaviour (a new line).
+fn composer_key(press: iced::widget::text_editor::KeyPress) -> Option<iced::widget::text_editor::Binding<Message>> {
+    use iced::keyboard::{key::Named, Key};
+    use iced::widget::text_editor::Binding;
+    let enter = matches!(press.key, Key::Named(Named::Enter));
+    if enter && !press.modifiers.shift() {
+        return Some(Binding::Custom(Message::Send));
+    }
+    Binding::from_key_press(press)
+}
+
 fn composer(app: &App, pal: Pal) -> Element<'_, Message> {
     // Where the member may not send, the box stays but is disabled and says why.
     let can_send = app.may_send_here();
@@ -1098,21 +1089,24 @@ fn composer(app: &App, pal: Pal) -> Element<'_, Message> {
     let placeholder = if can_send { format!("Message {label}") } else { "You do not have permission to send messages in this channel.".to_string() };
     // Where the member may not send, the message is plain text: a text field would set its own pointer.
     let input: Element<'_, Message> = if can_send {
-        text_input(&placeholder, &app.input)
+        // Enter sends, Shift+Enter starts a new line. The box grows with the text, up to a limit.
+        iced::widget::text_editor(&app.composer)
             .id(COMPOSER_ID)
-            .on_input(Message::InputChanged)
-            .on_submit(Message::Send)
+            .placeholder(placeholder.clone())
+            .on_action(Message::ComposerAction)
+            .key_binding(composer_key)
             .padding(10)
             .size(15)
-            .style(move |_: &Theme, _| text_input::Style {
+            .min_height(44.0)
+            .max_height(220.0)
+            .height(Length::Shrink)
+            .style(move |_: &Theme, _| iced::widget::text_editor::Style {
                 background: Background::Color(Color::TRANSPARENT),
                 border: border::rounded(0.0),
-                icon: pal.text_muted,
                 placeholder: pal.text_muted,
                 value: pal.text,
                 selection: pal.accent,
             })
-            .width(Length::Fill)
             .into()
     } else {
         container(text(placeholder.clone()).size(15).color(pal.text_muted))
