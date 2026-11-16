@@ -161,8 +161,10 @@ impl App {
                 self.dnd = Some(crate::app::Dnd { item, start: self.cursor, moved: false, over: None });
             }
             Message::DndOver(target) => {
+                // Only members who may manage channels get drop targets, so nothing lights up for them.
+                let allowed = self.can(common::perm::MANAGE_CHANNELS);
                 if let Some(dnd) = self.dnd.as_mut() {
-                    dnd.over = target;
+                    dnd.over = if allowed { target } else { None };
                 }
             }
             Message::DeleteChannelAsk(id, name) => {

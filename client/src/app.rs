@@ -1250,6 +1250,10 @@ impl App {
             }
             return;
         }
+        if !self.can(perm::MANAGE_CHANNELS) {
+            self.status = "You need the Manage channels permission to move channels and categories.".into();
+            return;
+        }
         match (dnd.item, dnd.over) {
             (DragItem::Channel(id), Some(DropTarget::Category(category))) => {
                 let _ = self.backend.send_main(ClientMsg::MoveChannel { channel: id, category: Some(category) });
