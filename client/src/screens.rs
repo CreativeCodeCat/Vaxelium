@@ -605,6 +605,39 @@ fn member_profile_card_screen() {
 }
 
 #[test]
+fn bio_formatting_card_screen() {
+    let mut app = chat_app();
+    with_roles(&mut app);
+    app.server.member_ids.insert("bob".into(), "id-bob".into());
+    app.server.member_roles.insert("id-bob".into(), vec![1, 2]);
+    app.server.member_status.insert("id-bob".into(), common::PresenceStatus::Online);
+    app.server.badges = vec![
+        common::Badge { id: 1, name: "Early Adopter".into(), color: "#f1c40f".into() },
+        common::Badge { id: 2, name: "Helper".into(), color: "#2ecc71".into() },
+    ];
+    app.server.member_badges.insert("id-bob".into(), vec![1]);
+    app.card = Some(crate::app::CardView {
+        id: "id-bob".into(),
+        name: "bob".into(),
+        at: iced::Point::new(700.0, 180.0),
+        loading: false,
+        card: Some(crate::backend::Card {
+            name: "bob".into(),
+            username: "bob".into(),
+            bio: "**Maintainer** of the *Discord* bot, _really_.\n- Arch user\n- See https://example.com\n1. first\n2. second".into(),
+            banner: "#5865f2".into(),
+            avatar: String::new(),
+            status: "CodeWorks Creative Hub".into(),
+            created: 0,
+            mutual: vec!["10.0.0.1:7878".into(), "10.0.0.2:7878".into()],
+        }),
+        error: None,
+        above: false,
+    });
+    save_at(&app, "bio-formatting-card", 1100.0, 700.0);
+}
+
+#[test]
 fn account_about_editor_screen() {
     let mut app = chat_app();
     app.page = Page::User;

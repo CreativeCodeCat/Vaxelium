@@ -571,11 +571,11 @@ fn about_editor<'a>(app: &'a App, pal: Pal) -> Element<'a, Message> {
             .style(editor_style(pal))
             .into(),
     ];
-    // The editor cannot show links, so a preview appears under it while the bio has any.
+    // The editor shows plain text, so a preview appears under it while the bio has any.
     let draft = app.bio_editor.text();
-    if !super::link_ranges(&draft).is_empty() {
+    if !draft.trim().is_empty() {
         rows.push(text("PREVIEW").size(12).color(pal.text_muted).into());
-        rows.push(super::linked_text(draft.trim_end(), 13.0, pal.text, pal));
+        rows.push(super::bio_text(draft.trim_end(), 13.0, pal.text, pal));
     }
     rows.push(text("BANNER COLOUR").size(12).color(pal.text_muted).into());
     let picked = acc.about_banner.to_lowercase();
