@@ -859,10 +859,9 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
         .spacing(8)
         .align_y(iced::alignment::Vertical::Center);
     if app.server.owner.as_deref() == Some(name.as_str()) {
-        let crown = iced::widget::svg(iced::widget::svg::Handle::from_path(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/ui/assets/crown.svg"
-        )))
+        let crown = iced::widget::svg(iced::widget::svg::Handle::from_memory(
+            include_bytes!("../../ui/assets/crown.svg").as_slice(),
+        ))
         .width(Length::Fixed(16.0))
         .height(Length::Fixed(12.0));
         let bubble = container(text("Server Owner").size(12).color(pal.text_strong))

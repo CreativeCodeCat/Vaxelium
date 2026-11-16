@@ -8,7 +8,8 @@ servers, and a desktop GUI client (built with Iced, in Rust).
 ```
 common/   shared wire protocol (auth and chat messages, newline-delimited JSON)
 auth/     auth service: owns all accounts and login sessions (SQLite + Argon2)
-server/   chat server: channels, messages, presence (SQLite)
+server/   chat server: channels, messages, presence (SQLite); serves the web client (web/)
+scripts/  build-web.sh builds the web client
 client/   desktop GUI client (Iced): Rust in src/, fonts, icons and emoji artwork in ui/
 ```
 
@@ -39,6 +40,23 @@ Start three things, each in its own terminal.
    ```sh
    cargo run -p client
    ```
+
+Each chat server also serves a web client: the desktop client compiled for the browser, so it looks
+and works the same. Build it once (and again after changing the client), then open
+`http://127.0.0.1:7880` for a server on `127.0.0.1:7878`:
+
+```sh
+sudo pacman -S rust-wasm binaryen                            # on Arch; elsewhere: rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.130 --locked    # the version in Cargo.lock
+scripts/build-web.sh
+```
+
+By default the web client is on the first port past the server (or past a group of servers started
+together). Set `VAXELIUM_WEB_ADDR=host:port` to choose it, or `off` to turn it off. It is plain HTTP,
+so put it behind an HTTPS proxy before using it over the internet. A browser can only reach the
+server that served the page, so the web client works with that server only: no other servers, no
+finding servers on the network, and no direct messages with people on other servers. Logins and
+settings are kept in the browser.
 
 The client finds the auth service at `127.0.0.1:7900`. To use another one, set
 `VAXELIUM_AUTH=host:port` before starting the client.

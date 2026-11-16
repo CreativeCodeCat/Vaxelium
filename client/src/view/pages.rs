@@ -155,7 +155,9 @@ pub fn login(app: &App, pal: Pal) -> Element<'_, Message> {
         items.push(
             row![
                 iced::widget::checkbox(app.remember).on_toggle(Message::Remember),
-                text("Keep me logged in on this computer").size(14).color(pal.text),
+                text(format!("Keep me logged in {}", crate::util::ON_DEVICE))
+                    .size(14)
+                    .color(pal.text),
             ]
             .spacing(8)
             .align_y(iced::alignment::Vertical::Center)
@@ -233,7 +235,9 @@ pub fn login(app: &App, pal: Pal) -> Element<'_, Message> {
         items.push(
             row![
                 iced::widget::checkbox(app.remember).on_toggle(Message::Remember),
-                text("Keep me logged in on this computer").size(14).color(pal.text),
+                text(format!("Keep me logged in {}", crate::util::ON_DEVICE))
+                    .size(14)
+                    .color(pal.text),
             ]
             .spacing(8)
             .align_y(iced::alignment::Vertical::Center)
@@ -354,10 +358,9 @@ pub fn discover(app: &App, pal: Pal) -> Element<'_, Message> {
             .align_y(iced::alignment::Vertical::Center);
         if f.public {
             title = title.push(
-                svg(svg::Handle::from_path(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/ui/assets/house.svg"
-                )))
+                svg(svg::Handle::from_memory(
+                    include_bytes!("../../ui/assets/house.svg").as_slice(),
+                ))
                 .width(Length::Fixed(14.0))
                 .height(Length::Fixed(14.0)),
             );
@@ -649,7 +652,7 @@ fn delete_dialog<'a>(acc: &crate::app::Account, pal: Pal) -> Element<'a, Message
     let mut items: Vec<Element<'a, Message>> = vec![
         text("Delete your account?").size(20).color(pal.red).into(),
         muted_text(
-            "This cannot be undone. Your name, email, profile and Discord link are removed, and you are logged out on this computer. Messages you posted stay on the servers where you posted them.",
+            "This cannot be undone. Your name, email, profile and Discord link are removed, and you are logged out here. Messages you posted stay on the servers where you posted them.",
             13.0,
             pal.text_muted,
         ),

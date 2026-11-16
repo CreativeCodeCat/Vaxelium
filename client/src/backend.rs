@@ -3,9 +3,9 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use common::{is_valid_email, AuthReply, AuthRequest, ClientMsg, ServerMsg};
 
@@ -107,6 +107,16 @@ pub struct Restored {
     pub notice: Option<String>,
 }
 
+/// Where the backend's events go: an async channel, read by the app's subscription. Usable from any
+/// thread, and in the browser, which has none.
+pub type EventSender = iced::futures::channel::mpsc::UnboundedSender<Event>;
+pub type EventReceiver = iced::futures::channel::mpsc::UnboundedReceiver<Event>;
+
+/// A new channel for the backend's events.
+pub fn event_channel() -> (EventSender, EventReceiver) {
+    iced::futures::channel::mpsc::unbounded()
+}
+
 /// Something a connection tells the app.
 #[derive(Debug, Clone)]
 pub enum Event {
@@ -128,6 +138,8 @@ pub enum Event {
     DmLink { addr: String, id: u64, up: bool },
     /// A server answered a discovery request.
     Discovered(FoundServer),
+    /// Something the window shows has arrived, such as an emoji's artwork in the browser: draw again.
+    Redraw,
 }
 
 /// One open connection and the id the app uses to tell it apart from earlier ones.
@@ -155,12 +167,12 @@ struct Inner {
 #[derive(Clone)]
 pub struct Backend {
     inner: Arc<Mutex<Inner>>,
-    events: Sender<Event>,
+    events: EventSender,
     config_dir: PathBuf,
 }
 
 impl Backend {
-    pub fn new(events: Sender<Event>, config_dir: PathBuf) -> Self {
+    pub fn new(events: EventSender, config_dir: PathBuf) -> Self {
         Self {
             inner: Arc::new(Mutex::new(Inner::default())),
             events,
@@ -169,7 +181,7 @@ impl Backend {
     }
 
     /// A sender for events, for background work that reports back to the app.
-    pub fn events_sender(&self) -> Sender<Event> {
+    pub fn events_sender(&self) -> EventSender {
         self.events.clone()
     }
 
@@ -192,33 +204,35 @@ impl Backend {
         inner.remember = remember;
     }
 
-    /// Passes everything a connection receives to the app until the connection ends.
-    fn forward(&self, dm: bool, addr: String, id: u64, rx: Receiver<NetEvent>) {
+    /// What a connection does with everything it receives: passes it to the app, and forgets the
+    /// connection once it ends.
+    fn forwarder(&self, dm: bool, addr: String, id: u64) -> impl FnMut(NetEvent) + Send + 'static {
         let backend = self.clone();
-        std::thread::spawn(move || {
-            while let Ok(event) = rx.recv() {
-                match event {
-                    NetEvent::Server(msg) => {
-                        let _ = backend.events.send(Event::Net {
-                            dm,
-                            addr: addr.clone(),
-                            id,
-                            msg,
-                        });
-                    }
-                    NetEvent::Disconnected(reason) => {
-                        backend.forget_link(dm, &addr, id);
-                        let _ = backend.events.send(Event::Closed {
-                            dm,
-                            addr: addr.clone(),
-                            id,
-                            reason,
-                        });
-                        break;
-                    }
-                }
+        move |event| match event {
+            NetEvent::Server(msg) => {
+                let _ = backend.events.unbounded_send(Event::Net {
+                    dm,
+                    addr: addr.clone(),
+                    id,
+                    msg,
+                });
             }
-        });
+            NetEvent::Disconnected(reason) => {
+                backend.forget_link(dm, &addr, id);
+                let _ = backend.events.unbounded_send(Event::Closed {
+                    dm,
+                    addr: addr.clone(),
+                    id,
+                    reason,
+                });
+            }
+        }
+    }
+
+    fn next_id(&self) -> u64 {
+        let mut inner = self.lock();
+        inner.next_id += 1;
+        inner.next_id
     }
 
     /// Removes a connection that has ended, so it is not used again.
@@ -243,7 +257,7 @@ impl Backend {
             }
         };
         if dropped {
-            let _ = self.events.send(Event::DmLink {
+            let _ = self.events.unbounded_send(Event::DmLink {
                 addr: addr.to_string(),
                 id,
                 up: false,
@@ -257,15 +271,14 @@ impl Backend {
         // Close the old connection first, so the server sees it end.
         let old = self.lock().main.take();
         drop(old);
-        let (conn, rx) = net::connect(addr, ClientMsg::Connect { token }).map_err(CmdError::new)?;
-        let id = {
-            let mut inner = self.lock();
-            inner.next_id += 1;
-            let id = inner.next_id;
-            inner.main = Some(Link { id, conn });
-            id
-        };
-        self.forward(false, addr.to_string(), id, rx);
+        let id = self.next_id();
+        let conn = net::connect(
+            addr,
+            ClientMsg::Connect { token },
+            self.forwarder(false, addr.to_string(), id),
+        )
+        .map_err(CmdError::new)?;
+        self.lock().main = Some(Link { id, conn });
         Ok(id)
     }
 
@@ -289,7 +302,6 @@ impl Backend {
             .as_ref()
             .ok_or_else(|| CmdError::new("Not connected to a server."))?;
         link.conn
-            .outgoing
             .send(msg)
             .map_err(|_| CmdError::new("Not connected to a server."))
     }
@@ -300,10 +312,7 @@ impl Backend {
         let inner = self.lock();
         let links = inner.main.iter().chain(inner.dm.values());
         for link in links {
-            let _ = link
-                .conn
-                .outgoing
-                .send(ClientMsg::SetProfileStatus { text: text.to_string() });
+            let _ = link.conn.send(ClientMsg::SetProfileStatus { text: text.to_string() });
         }
     }
 
@@ -311,7 +320,7 @@ impl Backend {
         let inner = self.lock();
         let links = inner.main.iter().chain(inner.dm.values());
         for link in links {
-            let _ = link.conn.outgoing.send(ClientMsg::SetStatus { status });
+            let _ = link.conn.send(ClientMsg::SetStatus { status });
         }
     }
 
@@ -322,7 +331,6 @@ impl Backend {
             .get(addr)
             .ok_or_else(|| CmdError::new("Not connected to that server."))?;
         link.conn
-            .outgoing
             .send(msg)
             .map_err(|_| CmdError::new("Not connected to that server."))
     }
@@ -347,27 +355,33 @@ impl Backend {
             }
             let backend = self.clone();
             let token = token.clone();
+            #[cfg(not(target_arch = "wasm32"))]
             std::thread::spawn(move || backend.connect_dm(addr, token));
+            // A browser connection opens without waiting, so it needs no thread of its own.
+            #[cfg(target_arch = "wasm32")]
+            backend.connect_dm(addr, token);
         }
     }
 
     fn connect_dm(&self, addr: String, token: String) {
-        let result = net::connect(&addr, ClientMsg::Connect { token });
+        let id = self.next_id();
+        let result = net::connect(
+            &addr,
+            ClientMsg::Connect { token },
+            self.forwarder(true, addr.clone(), id),
+        );
         let mut inner = self.lock();
         inner.dm_connecting.remove(&addr);
         match result {
-            Ok((conn, rx)) => {
+            Ok(conn) => {
                 // The account may have logged out while this was connecting.
                 if inner.token.is_none() {
                     return;
                 }
-                inner.next_id += 1;
-                let id = inner.next_id;
                 inner.dm_retry_at.remove(&addr);
                 inner.dm.insert(addr.clone(), Link { id, conn });
                 drop(inner);
-                self.forward(true, addr.clone(), id, rx);
-                let _ = self.events.send(Event::DmLink { addr, id, up: true });
+                let _ = self.events.unbounded_send(Event::DmLink { addr, id, up: true });
             }
             Err(_) => {
                 inner.dm_retry_at.insert(addr, Instant::now() + DM_RETRY);
@@ -397,12 +411,12 @@ impl Backend {
         drop(old);
     }
 
-    fn auth(&self, request: AuthRequest) -> Result<AuthReply, CmdError> {
-        auth_client::request(&request).map_err(CmdError::unreachable)
+    async fn auth(&self, request: AuthRequest) -> Result<AuthReply, CmdError> {
+        auth_client::request(request).await.map_err(CmdError::unreachable)
     }
 
     /// Registers or logs in with the auth service. With `name` set, the account is registered.
-    pub fn login(
+    pub async fn login(
         &self,
         email: String,
         password: String,
@@ -433,7 +447,7 @@ impl Backend {
                 AuthRequest::Login { email, password }
             }
         };
-        match self.auth(request)? {
+        match self.auth(request).await? {
             AuthReply::Session { token, name } => Ok(self.finish_login(token, name, remember)),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
@@ -441,10 +455,10 @@ impl Backend {
     }
 
     /// Logs in with a Discord account. Opens Discord in the browser and waits until the login finishes.
-    pub fn discord_login(&self, remember: bool) -> Result<String, CmdError> {
-        let (url, state) = self.start_discord(String::new())?;
+    pub async fn discord_login(&self, remember: bool) -> Result<String, CmdError> {
+        let (url, state) = self.start_discord(String::new()).await?;
         open_discord(&url)?;
-        match self.wait_discord(&state)? {
+        match self.wait_discord(&state).await? {
             AuthReply::Session { token, name } => Ok(self.finish_login(token, name, remember)),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
@@ -452,11 +466,11 @@ impl Backend {
     }
 
     /// Links a Discord account to the account that is logged in. Returns the Discord name.
-    pub fn link_discord(&self) -> Result<String, CmdError> {
+    pub async fn link_discord(&self) -> Result<String, CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
-        let (url, state) = self.start_discord(token)?;
+        let (url, state) = self.start_discord(token).await?;
         open_discord(&url)?;
-        match self.wait_discord(&state)? {
+        match self.wait_discord(&state).await? {
             AuthReply::DiscordLinked { discord } => Ok(discord),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
@@ -464,8 +478,8 @@ impl Backend {
     }
 
     /// Asks the auth service to start a Discord login (or a link, with a session token).
-    fn start_discord(&self, token: String) -> Result<(String, String), CmdError> {
-        match self.auth(AuthRequest::DiscordStart { token })? {
+    async fn start_discord(&self, token: String) -> Result<(String, String), CmdError> {
+        match self.auth(AuthRequest::DiscordStart { token }).await? {
             AuthReply::DiscordUrl { url, state } => Ok((url, state)),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
@@ -474,17 +488,20 @@ impl Backend {
 
     /// Polls until the Discord login finishes. The browser may take a while, so this waits up to ten
     /// minutes, which is also how long the auth service keeps the login.
-    fn wait_discord(&self, state: &str) -> Result<AuthReply, CmdError> {
+    async fn wait_discord(&self, state: &str) -> Result<AuthReply, CmdError> {
         let deadline = Instant::now() + Duration::from_secs(10 * 60);
         loop {
-            match self.auth(AuthRequest::DiscordPoll {
-                state: state.to_string(),
-            })? {
+            match self
+                .auth(AuthRequest::DiscordPoll {
+                    state: state.to_string(),
+                })
+                .await?
+            {
                 AuthReply::DiscordPending => {
                     if Instant::now() >= deadline {
                         return Err(CmdError::new("The Discord login took too long. Try again."));
                     }
-                    std::thread::sleep(Duration::from_secs(1));
+                    crate::util::sleep(Duration::from_secs(1)).await;
                 }
                 other => return Ok(other),
             }
@@ -492,9 +509,9 @@ impl Backend {
     }
 
     /// Sets a password on an account that has none.
-    pub fn set_password(&self, password: String) -> Result<(), CmdError> {
+    pub async fn set_password(&self, password: String) -> Result<(), CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
-        match self.auth(AuthRequest::SetPassword { token, password })? {
+        match self.auth(AuthRequest::SetPassword { token, password }).await? {
             AuthReply::PasswordSet => Ok(()),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
@@ -502,9 +519,9 @@ impl Backend {
     }
 
     /// Permanently deletes the account, after checking the password. The caller logs out afterwards.
-    pub fn delete_account(&self, password: String) -> Result<(), CmdError> {
+    pub async fn delete_account(&self, password: String) -> Result<(), CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
-        match self.auth(AuthRequest::DeleteAccount { token, password })? {
+        match self.auth(AuthRequest::DeleteAccount { token, password }).await? {
             AuthReply::AccountDeleted => Ok(()),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
@@ -524,7 +541,7 @@ impl Backend {
 
     /// Checks a login saved from an earlier run. If the auth service cannot be reached, the saved
     /// login is used anyway, so the chat server can still accept it.
-    pub fn restore(&self, saved_name: &str) -> Restored {
+    pub async fn restore(&self, saved_name: &str) -> Restored {
         let none = |error: Option<String>| Restored {
             user: None,
             auth_down: false,
@@ -534,7 +551,7 @@ impl Backend {
         let Some(token) = keychain::load(saved_name) else {
             return none(None);
         };
-        match self.auth(AuthRequest::Verify { token: token.clone() }) {
+        match self.auth(AuthRequest::Verify { token: token.clone() }).await {
             Ok(AuthReply::Verified { name, .. }) => {
                 self.set_session(token, name.clone(), true);
                 Restored {
@@ -562,7 +579,7 @@ impl Backend {
     }
 
     /// Ends the session on the server and the auth service, and forgets the saved login.
-    pub fn logout(&self) {
+    pub async fn logout(&self) {
         self.farewell_main();
         self.dm_disconnect_all();
         let (token, user) = {
@@ -572,21 +589,21 @@ impl Backend {
         };
         if let Some(token) = token {
             // Logging out still clears the local session if the auth service cannot be reached.
-            let _ = self.auth(AuthRequest::Logout { token });
+            let _ = self.auth(AuthRequest::Logout { token }).await;
         }
         keychain::forget(&user);
     }
 
-    pub fn profile(&self) -> Result<Profile, CmdError> {
+    pub async fn profile(&self) -> Result<Profile, CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
-        let reply = self.auth(AuthRequest::Profile { token })?;
+        let reply = self.auth(AuthRequest::Profile { token }).await?;
         self.apply_profile(reply)
     }
 
     /// Saves the bio and banner colour. Returns what was saved.
-    pub fn set_about(&self, bio: String, banner: String) -> Result<(String, String), CmdError> {
+    pub async fn set_about(&self, bio: String, banner: String) -> Result<(String, String), CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
-        match self.auth(AuthRequest::SetAbout { token, bio, banner })? {
+        match self.auth(AuthRequest::SetAbout { token, bio, banner }).await? {
             AuthReply::AboutSaved { bio, banner } => Ok((bio, banner)),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
@@ -594,9 +611,9 @@ impl Backend {
     }
 
     /// Sets the status text on the profile card. Returns the text now saved (empty when cleared).
-    pub fn set_status_text(&self, text: String) -> Result<String, CmdError> {
+    pub async fn set_status_text(&self, text: String) -> Result<String, CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
-        match self.auth(AuthRequest::SetStatusText { token, text })? {
+        match self.auth(AuthRequest::SetStatusText { token, text }).await? {
             AuthReply::StatusTextSaved { text } => Ok(text),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
@@ -604,9 +621,9 @@ impl Backend {
     }
 
     /// Sets or removes the profile picture. Returns the picture now saved (empty when removed).
-    pub fn set_avatar(&self, png_base64: Option<String>) -> Result<String, CmdError> {
+    pub async fn set_avatar(&self, png_base64: Option<String>) -> Result<String, CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
-        match self.auth(AuthRequest::SetAvatar { token, png_base64 })? {
+        match self.auth(AuthRequest::SetAvatar { token, png_base64 }).await? {
             AuthReply::AvatarSaved { avatar } => Ok(avatar),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
@@ -614,13 +631,16 @@ impl Backend {
     }
 
     /// Someone's public profile card, by their account id.
-    pub fn profile_card(&self, id: &str) -> Result<Card, CmdError> {
+    pub async fn profile_card(&self, id: &str) -> Result<Card, CmdError> {
         // The session lets the card list the servers the two of you share.
         let token = self.token().unwrap_or_default();
-        match self.auth(AuthRequest::ProfileCard {
-            id: id.to_string(),
-            token,
-        })? {
+        match self
+            .auth(AuthRequest::ProfileCard {
+                id: id.to_string(),
+                token,
+            })
+            .await?
+        {
             AuthReply::ProfileCard {
                 name,
                 username,
@@ -646,18 +666,18 @@ impl Backend {
     }
 
     /// Tells the auth service which servers this account is in, so other people's cards can show shared ones.
-    pub fn set_servers(&self, servers: Vec<String>) -> Result<(), CmdError> {
+    pub async fn set_servers(&self, servers: Vec<String>) -> Result<(), CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
-        match self.auth(AuthRequest::SetServers { token, servers })? {
+        match self.auth(AuthRequest::SetServers { token, servers }).await? {
             AuthReply::ServersSaved => Ok(()),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
         }
     }
 
-    pub fn update_profile(&self, name: Option<String>, username: Option<String>) -> Result<Profile, CmdError> {
+    pub async fn update_profile(&self, name: Option<String>, username: Option<String>) -> Result<Profile, CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
-        let reply = self.auth(AuthRequest::UpdateProfile { token, name, username })?;
+        let reply = self.auth(AuthRequest::UpdateProfile { token, name, username }).await?;
         self.apply_profile(reply)
     }
 
@@ -704,9 +724,9 @@ impl Backend {
     }
 
     /// Emails a confirmation code to the account's address.
-    pub fn request_email_code(&self) -> Result<(), CmdError> {
+    pub async fn request_email_code(&self) -> Result<(), CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
-        match self.auth(AuthRequest::RequestEmailCode { token })? {
+        match self.auth(AuthRequest::RequestEmailCode { token }).await? {
             AuthReply::CodeSent => Ok(()),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
@@ -714,9 +734,9 @@ impl Backend {
     }
 
     /// Confirms the email address with the code that was emailed.
-    pub fn verify_email(&self, code: String) -> Result<(), CmdError> {
+    pub async fn verify_email(&self, code: String) -> Result<(), CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
-        match self.auth(AuthRequest::VerifyEmail { token, code })? {
+        match self.auth(AuthRequest::VerifyEmail { token, code }).await? {
             AuthReply::EmailVerified => Ok(()),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
@@ -724,9 +744,9 @@ impl Backend {
     }
 
     /// The Discord account linked to this account, and whether the link can be removed.
-    pub fn linked_accounts(&self) -> Result<LinkedAccounts, CmdError> {
+    pub async fn linked_accounts(&self) -> Result<LinkedAccounts, CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
-        match self.auth(AuthRequest::LinkedAccounts { token })? {
+        match self.auth(AuthRequest::LinkedAccounts { token }).await? {
             AuthReply::LinkedAccounts {
                 discord,
                 can_unlink_discord,
@@ -740,22 +760,25 @@ impl Backend {
     }
 
     /// Removes the link to the Discord account.
-    pub fn unlink_discord(&self) -> Result<(), CmdError> {
+    pub async fn unlink_discord(&self) -> Result<(), CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
-        match self.auth(AuthRequest::UnlinkDiscord { token })? {
+        match self.auth(AuthRequest::UnlinkDiscord { token }).await? {
             AuthReply::DiscordUnlinked => Ok(()),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
         }
     }
 
-    pub fn change_email(&self, password: String, new_email: String) -> Result<String, CmdError> {
+    pub async fn change_email(&self, password: String, new_email: String) -> Result<String, CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
-        match self.auth(AuthRequest::ChangeEmail {
-            token,
-            password,
-            new_email,
-        })? {
+        match self
+            .auth(AuthRequest::ChangeEmail {
+                token,
+                password,
+                new_email,
+            })
+            .await?
+        {
             AuthReply::EmailChanged { email } => Ok(email),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),

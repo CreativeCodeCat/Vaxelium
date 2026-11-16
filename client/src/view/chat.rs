@@ -13,7 +13,9 @@ use crate::icons;
 use crate::model::{is_dm_channel, Entry, GROUP_GAP_SECS};
 use crate::search::Search;
 use crate::theme::Pal;
-use crate::util::{day_label, emoji_path, stamp_label};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::util::emoji_path;
+use crate::util::{day_label, stamp_label};
 
 /// Emoji offered on every message's toolbar.
 pub const QUICK_REACTIONS: [&str; 3] = ["👍", "❤️", "😂"];
@@ -23,15 +25,27 @@ const SPLITTER: f32 = 6.0;
 
 /// An emoji as a picture, or its text when no artwork exists.
 pub fn emoji<'a>(e: &str, size: f32) -> Element<'a, Message> {
-    let path = emoji_path(e);
-    if path.exists() {
-        svg(svg::Handle::from_path(path))
+    match emoji_handle(e) {
+        Some(handle) => svg(handle)
             .width(Length::Fixed(size))
             .height(Length::Fixed(size))
-            .into()
-    } else {
-        text(e.to_string()).size(size * 0.8).into()
+            .into(),
+        None => text(e.to_string()).size(size * 0.8).into(),
     }
+}
+
+/// An emoji's artwork, read from the app's files on the desktop.
+#[cfg(not(target_arch = "wasm32"))]
+fn emoji_handle(e: &str) -> Option<svg::Handle> {
+    let path = emoji_path(e);
+    path.exists().then(|| svg::Handle::from_path(path))
+}
+
+/// An emoji's artwork in the browser, fetched from the server the first time it is shown. Until it
+/// arrives (or if there is none) the emoji is drawn as text.
+#[cfg(target_arch = "wasm32")]
+fn emoji_handle(e: &str) -> Option<svg::Handle> {
+    crate::web::emoji(&crate::util::emoji_file(e))
 }
 
 /// A draggable edge between two panels.
@@ -47,10 +61,9 @@ pub fn splitter<'a>(key: &'static str, right: bool) -> Element<'a, Message> {
 pub fn rail(app: &App, pal: Pal) -> Element<'_, Message> {
     let mut items: Vec<Element<'_, Message>> = Vec::new();
     items.push(rail_button(
-        svg(svg::Handle::from_path(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/ui/assets/dm.svg"
-        )))
+        svg(svg::Handle::from_memory(
+            include_bytes!("../../ui/assets/dm.svg").as_slice(),
+        ))
         .width(Length::Fixed(24.0))
         .height(Length::Fixed(24.0))
         .into(),
@@ -107,10 +120,9 @@ fn name_bubble<'a>(button: Element<'a, Message>, name: &str, linked: bool, pal: 
     let mut parts = row![].spacing(8).align_y(iced::alignment::Vertical::Center);
     if linked {
         parts = parts.push(
-            svg(svg::Handle::from_path(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/ui/assets/house.svg"
-            )))
+            svg(svg::Handle::from_memory(
+                include_bytes!("../../ui/assets/house.svg").as_slice(),
+            ))
             .width(Length::Fixed(14.0))
             .height(Length::Fixed(14.0)),
         );
@@ -383,10 +395,9 @@ fn sidebar(app: &App, pal: Pal) -> Element<'_, Message> {
     let mut header_row = row![].spacing(8).align_y(iced::alignment::Vertical::Center);
     if linked {
         header_row = header_row.push(
-            svg(svg::Handle::from_path(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/ui/assets/house.svg"
-            )))
+            svg(svg::Handle::from_memory(
+                include_bytes!("../../ui/assets/house.svg").as_slice(),
+            ))
             .width(Length::Fixed(14.0))
             .height(Length::Fixed(14.0)),
         );
@@ -1571,7 +1582,7 @@ pub(crate) fn status_color(status: common::PresenceStatus, pal: &Pal) -> Option<
 
 /// "alice is typing…" for the people who have typed in this channel recently. None when nobody has.
 fn typing_line(app: &App) -> Option<String> {
-    let now = std::time::Instant::now();
+    let now = web_time::Instant::now();
     let names: Vec<&str> = app
         .server
         .typing
@@ -1934,10 +1945,9 @@ fn members(app: &App, pal: Pal) -> Element<'_, Message> {
             .align_y(iced::alignment::Vertical::Center);
         if owner.as_deref() == Some(name.as_str()) {
             // The crown says who owns the server. Hovering it names the role.
-            let crown = svg(svg::Handle::from_path(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/ui/assets/crown.svg"
-            )))
+            let crown = svg(svg::Handle::from_memory(
+                include_bytes!("../../ui/assets/crown.svg").as_slice(),
+            ))
             .width(Length::Fixed(16.0))
             .height(Length::Fixed(12.0));
             let bubble = container(text("Server Owner").size(12).color(pal.text_strong))

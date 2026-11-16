@@ -9,6 +9,7 @@ use iced::futures::{SinkExt, Stream};
 use crate::app::Message;
 
 /// What the tray icon asks the app to do.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 #[derive(Debug, Clone, Copy)]
 pub enum TrayEvent {
     /// Hide the window if it is showing, or show it if it is hidden.
@@ -53,7 +54,7 @@ pub fn start() {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_arch = "wasm32")))]
 pub fn start() {}
 
 /// The tray's messages, as app messages, for the app's subscription.

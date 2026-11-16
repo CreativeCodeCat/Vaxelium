@@ -5,6 +5,7 @@ use std::future::Future;
 use std::time::Duration;
 
 use common::{perm, ClientMsg, ServerMsg};
+#[cfg(not(target_arch = "wasm32"))]
 use iced::futures::channel::oneshot;
 use iced::widget::operation;
 use iced::{event, keyboard, mouse, window, Point, Subscription, Task};
@@ -473,7 +474,7 @@ pub struct App {
     /// The `<details>` sections a click has opened or shut, as (message id, section number in the message).
     pub details_flipped: HashSet<(i64, usize)>,
     /// When the last input happened (mouse or keyboard), for automatic Idle.
-    pub last_active: std::time::Instant,
+    pub last_active: web_time::Instant,
     /// Whether the status follows input (Online, then Idle when away). Choosing a status other than
     /// Online turns this off until Online is chosen again.
     pub auto_status: bool,
@@ -483,7 +484,7 @@ pub struct App {
     /// while you are away (see `effective_status`).
     pub account_status: common::PresenceStatus,
     /// When this member last sent a typing notice, so they are not sent for every key.
-    pub last_typing_sent: Option<std::time::Instant>,
+    pub last_typing_sent: Option<web_time::Instant>,
     pub new_channel: String,
     pub create_open: bool,
     /// The category name box in the channel list is showing.
@@ -524,7 +525,7 @@ pub struct App {
     pub menu: Option<Menu>,
     pub card: Option<CardView>,
     /// When a close was refused over unsaved changes, so the save bar flashes.
-    pub unsaved_flash: Option<std::time::Instant>,
+    pub unsaved_flash: Option<web_time::Instant>,
     /// Profile pictures and banners of the people on the server, by account id, fetched from the
     /// auth service. `profile_pending` holds the ids being fetched now.
     pub profiles: HashMap<String, ProfileLook>,
@@ -953,12 +954,20 @@ pub struct AccountSaved {
 
 /// Runs blocking work on a worker thread and returns a future for its result, so the window stays
 /// responsive while the network is used.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn offload<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> impl Future<Output = T> {
     let (tx, rx) = oneshot::channel();
     std::thread::spawn(move || {
         let _ = tx.send(work());
     });
     async move { rx.await.expect("background work ended without a result") }
+}
+
+/// In the browser there are no worker threads, and nothing done this way blocks: the work runs when
+/// the future is first polled.
+#[cfg(target_arch = "wasm32")]
+pub fn offload<T: 'static>(work: impl FnOnce() -> T + 'static) -> impl Future<Output = T> {
+    async move { work() }
 }
 
 /// Sends a message to the open server. Errors are ignored: a dropped connection is reported by its
@@ -1082,7 +1091,7 @@ impl App {
             edit_box: iced::widget::text_editor::Content::new(),
             text_sel: None,
             details_flipped: HashSet::new(),
-            last_active: std::time::Instant::now(),
+            last_active: web_time::Instant::now(),
             auto_status: true,
             auto_idle: false,
             account_status: common::PresenceStatus::Online,
@@ -1357,12 +1366,13 @@ impl App {
                     },
                 );
                 // Other people's cards show the servers shared with you, so tell the auth service which
-                // servers you are in. Sent from a thread, since it waits on the auth service.
+                // servers you are in. Sent in the background, since it waits on the auth service.
                 let servers: Vec<String> = self.prefs.servers.iter().map(|s| s.addr.clone()).collect();
                 let backend = self.backend.clone();
-                std::thread::spawn(move || {
-                    let _ = backend.set_servers(servers);
-                });
+                let tell_auth = Task::future(async move {
+                    let _ = backend.set_servers(servers).await;
+                })
+                .discard();
                 // A direct message asked for before connecting is opened instead of the first channel.
                 if let Some((addr, channel)) = self.pending_dm.take() {
                     if self.main.addr.as_deref() == Some(addr.as_str()) {
@@ -1370,6 +1380,7 @@ impl App {
                         send_main(self, ClientMsg::Join { channel });
                     }
                 }
+                return tell_auth;
             }
             ServerMsg::Joined { channel, history } => {
                 if is_dm_channel(&channel.name) {
@@ -1604,7 +1615,7 @@ impl App {
                 }
             }
             ServerMsg::Typing { channel_id, user, name } => {
-                let now = std::time::Instant::now();
+                let now = web_time::Instant::now();
                 let typing = self.server.typing.entry(channel_id).or_default();
                 typing.retain(|(id, _, at)| *id != user && now.duration_since(*at) < TYPING_FOR);
                 typing.push((user, name, now));
@@ -1705,14 +1716,14 @@ impl App {
         self.profile_pending.extend(ids.iter().cloned());
         let backend = self.backend.clone();
         Task::perform(
-            offload(move || {
-                ids.into_iter()
-                    .map(|id| {
-                        let card = backend.profile_card(&id).ok();
-                        (id, card)
-                    })
-                    .collect::<Vec<_>>()
-            }),
+            async move {
+                let mut cards = Vec::with_capacity(ids.len());
+                for id in ids {
+                    let card = backend.profile_card(&id).await.ok();
+                    cards.push((id, card));
+                }
+                cards
+            },
             Message::ProfilesLoaded,
         )
     }
@@ -2028,7 +2039,7 @@ impl App {
         let name = self.login.register.then(|| self.login.name.clone());
         let remember = self.remember;
         Task::perform(
-            offload(move || backend.login(email, password, name, remember)),
+            async move { backend.login(email, password, name, remember).await },
             Message::LoginDone,
         )
     }
@@ -2041,7 +2052,7 @@ impl App {
         self.login.error = None;
         let backend = self.backend.clone();
         let remember = self.remember;
-        Task::perform(offload(move || backend.discord_login(remember)), Message::LoginDone)
+        Task::perform(async move { backend.discord_login(remember).await }, Message::LoginDone)
     }
 
     pub(crate) fn save_session_prefs(&mut self) {
@@ -2064,7 +2075,7 @@ impl App {
         self.remember_session();
         self.save_prefs();
         let backend = self.backend.clone();
-        Task::perform(offload(move || backend.logout()), |_| Message::LoggedOut)
+        Task::perform(async move { backend.logout().await }, |_| Message::LoggedOut)
     }
 
     pub(crate) fn open_menu(&mut self, kind: MenuKind) {
@@ -2345,7 +2356,7 @@ impl App {
                 Task::none()
             }
             Message::Activity => {
-                self.last_active = std::time::Instant::now();
+                self.last_active = web_time::Instant::now();
                 self.apply_auto_status();
                 Task::none()
             }
@@ -2355,7 +2366,7 @@ impl App {
             }
             Message::CursorMoved(p) => {
                 self.cursor = p;
-                self.last_active = std::time::Instant::now();
+                self.last_active = web_time::Instant::now();
                 if let Some(dnd) = self.dnd.as_mut() {
                     if (p.x - dnd.start.x).abs() > 4.0 || (p.y - dnd.start.y).abs() > 4.0 {
                         dnd.moved = true;
@@ -2586,6 +2597,7 @@ impl App {
                 }
                 Task::none()
             }
+            Event::Redraw => Task::none(),
             Event::Discovered(found) => {
                 if !self.discover.found.iter().any(|f| f.addr == found.addr) {
                     self.discover.found.push(found);

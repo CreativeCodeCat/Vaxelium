@@ -1,4 +1,5 @@
-//! Blocking requests to the auth service (register, log in, log out), over TLS.
+//! Requests to the auth service (register, log in, log out and the rest), over TLS. Each runs on a
+//! background thread, so the app can wait for it without blocking.
 //! Set the `VAXELIUM_AUTH` environment variable to use a different auth service.
 
 use std::io::{BufRead, BufReader, Write};
@@ -13,12 +14,16 @@ pub fn auth_addr() -> String {
 }
 
 /// Whether the auth service accepts a connection right now. Used to hide the offline banner again.
-pub fn reachable() -> bool {
-    common::tls::connect_blocking(&auth_addr(), Duration::from_secs(3)).is_ok()
+pub async fn reachable() -> bool {
+    crate::app::offload(|| common::tls::connect_blocking(&auth_addr(), Duration::from_secs(3)).is_ok()).await
 }
 
 /// Sends one request and returns the reply.
-pub fn request(req: &AuthRequest) -> Result<AuthReply, String> {
+pub async fn request(req: AuthRequest) -> Result<AuthReply, String> {
+    crate::app::offload(move || request_blocking(&req)).await
+}
+
+fn request_blocking(req: &AuthRequest) -> Result<AuthReply, String> {
     let addr = auth_addr();
     let (mut stream, fingerprint) =
         common::tls::connect_blocking(&addr, Duration::from_secs(4)).map_err(|e| connect_error_message(&e))?;
