@@ -438,6 +438,10 @@ pub struct App {
     pub replying_to: Option<i64>,
     /// The message just jumped to from a reply, which is lit up for a moment.
     pub jump_flash: Option<i64>,
+    /// Whether the pinned messages panel is open, in place of the member list.
+    pub pins_open: bool,
+    /// The open channel's pinned messages, once the server has sent them.
+    pub pins: Option<(i64, Vec<common::ChatMessage>)>,
     pub pending_delete: Option<i64>,
     pub input: String,
     /// The editor that shows `input` and takes the typing. `input` is kept in step with it.
@@ -715,6 +719,10 @@ pub enum Message {
     JumpTo(i64),
     /// The light on a jumped-to message goes out.
     JumpFlashEnd,
+    /// Open or close the pinned messages panel.
+    PinsToggle,
+    /// Pin (true) or unpin (false) a message.
+    Pin(i64, bool),
     SearchFilter(&'static str),
     /// Picks a suggestion: the word being typed is replaced by this filter.
     SearchPick(String),
@@ -1014,6 +1022,8 @@ impl App {
             editing: None,
             replying_to: None,
             jump_flash: None,
+            pins_open: false,
+            pins: None,
             pending_delete: None,
             input: String::new(),
             composer: iced::widget::text_editor::Content::new(),
@@ -1315,8 +1325,10 @@ impl App {
                 }
                 let previous = self.server.channel_id;
                 if channel.id != previous {
-                    // A reply belongs to the channel it was started in.
+                    // A reply belongs to the channel it was started in, and so do the pins shown.
                     self.replying_to = None;
+                    self.pins_open = false;
+                    self.pins = None;
                     if let Some(list) = self.messages.get(&previous) {
                         self.read_marks.insert(previous, list.len());
                     }
@@ -1382,6 +1394,31 @@ impl App {
                 }
                 // Replies to it still show they were replies, but no longer what they answered.
                 self.update_replies(channel_id, id, None);
+            }
+            ServerMsg::MessagePinned { channel_id, id, pinned } => {
+                if let Some(list) = self.messages.get_mut(&channel_id) {
+                    for e in list.iter_mut() {
+                        if let Entry::Chat(m) = e {
+                            if m.id == id {
+                                m.pinned = pinned;
+                            }
+                        }
+                    }
+                }
+                if !pinned {
+                    if let Some((_, pins)) = self.pins.as_mut().filter(|(c, _)| *c == channel_id) {
+                        pins.retain(|m| m.id != id);
+                    }
+                }
+                // An open pins panel for that channel is read again, so it stays in order.
+                if self.pins_open && channel_id == self.server.channel_id {
+                    send_main(self, ClientMsg::ListPins { channel: channel_id });
+                }
+            }
+            ServerMsg::Pins { channel_id, messages } => {
+                if channel_id == self.server.channel_id {
+                    self.pins = Some((channel_id, messages));
+                }
             }
             ServerMsg::MessageEdited { channel_id, id, text } => {
                 if let Some(list) = self.messages.get_mut(&channel_id) {
@@ -2084,6 +2121,17 @@ impl App {
                             items.push(MenuItem::Divider);
                         }
                     }
+                    if self.can_pin(&m) {
+                        let (label, pinned) = if m.pinned {
+                            ("Unpin Message", false)
+                        } else {
+                            ("Pin Message", true)
+                        };
+                        items.push(item(label, Some(crate::icons::PIN), false, Message::Pin(id, pinned)));
+                        if self.can_edit(&m) || self.can_delete(&m) {
+                            items.push(MenuItem::Divider);
+                        }
+                    }
                     if self.can_edit(&m) {
                         items.push(item(
                             "Edit Message",
@@ -2505,6 +2553,7 @@ fn with_id(msg: ClientMsg, id: i64) -> ClientMsg {
         ClientMsg::Edit { text, .. } => ClientMsg::Edit { id, text },
         ClientMsg::Delete { .. } => ClientMsg::Delete { id },
         ClientMsg::React { emoji, .. } => ClientMsg::React { id, emoji },
+        ClientMsg::Pin { pinned, .. } => ClientMsg::Pin { id, pinned },
         other => other,
     }
 }

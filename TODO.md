@@ -5,7 +5,6 @@ Features to consider, roughly in order of how much they add.
 ## Messages
 
 - [ ] File and image attachments: upload, show image previews inline, download other files (the attach icon is there but does nothing yet).
-- [ ] Pinned messages: pin and unpin, and a pinned list per channel.
 - [ ] Link previews (embeds): title, description and image for links posted in chat.
 - [ ] Spoilers: `||hidden text||` that shows when clicked.
 - [ ] Custom emoji per server, usable in messages and reactions.

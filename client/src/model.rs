@@ -532,6 +532,17 @@ impl App {
         m.author_id == self.user_id
     }
 
+    /// Whether this account may pin or unpin a message: anyone in a direct message, and members who may
+    /// pin (or manage) messages in a channel. Messages kept in step with another server cannot be pinned.
+    pub fn can_pin(&self, m: &ChatMessage) -> bool {
+        if m.id == 0 || m.id >= VIRTUAL_BASE {
+            return false;
+        }
+        is_dm_channel(&m.channel)
+            || self.channel_permission(m.channel_id, perm::PIN_MESSAGES)
+            || self.channel_permission(m.channel_id, perm::MANAGE_MESSAGES)
+    }
+
     pub fn can_delete(&self, m: &ChatMessage) -> bool {
         self.can_edit(m) || self.channel_permission(m.channel_id, perm::MANAGE_MESSAGES)
     }

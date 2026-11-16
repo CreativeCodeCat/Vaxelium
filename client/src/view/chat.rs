@@ -628,7 +628,16 @@ fn header(app: &App, pal: Pal) -> Element<'_, Message> {
         row![
             disabled_icon(icons::HASH, pal),
             disabled_icon(icons::BELL, pal),
-            disabled_icon(icons::PIN, pal),
+            ghost(
+                icons::icon(
+                    icons::PIN,
+                    16.0,
+                    if app.pins_open { pal.text_strong } else { pal.text_muted }
+                ),
+                Some(Message::PinsToggle),
+                pal.hover_bg,
+                4.0
+            ),
             ghost(
                 icons::icon(icons::MEMBERS, 16.0, members_color),
                 Some(Message::ToggleMembers),
@@ -1178,6 +1187,11 @@ fn chat_message<'a>(app: &'a App, pal: Pal, m: ChatMessage, grouped: bool, now: 
                         can_message: m.author != app.user.clone().unwrap_or_default(),
                     })),
                 text(stamp_label(m.timestamp, now)).size(12).color(pal.text_muted),
+                if m.pinned {
+                    icons::icon(icons::PIN, 12.0, pal.text_muted)
+                } else {
+                    space().width(Length::Shrink).into()
+                },
             ]
             .spacing(8)
             .align_y(iced::alignment::Vertical::Center),
@@ -1631,6 +1645,127 @@ fn composer(app: &App, pal: Pal) -> Element<'_, Message> {
 }
 
 // ----- members -----
+
+/// The pinned messages dropdown, under the header's pin button, newest pin first. Each can be jumped to,
+/// and unpinned by those who may. A click outside it closes it.
+pub fn pins_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
+    if !app.pins_open || !app.chat_ready() {
+        return None;
+    }
+    let now = crate::util::now();
+    let title = container(
+        row![
+            icons::icon(icons::PIN, 18.0, pal.text_muted),
+            text("Pinned Messages").size(16).color(pal.text_strong),
+        ]
+        .spacing(10)
+        .align_y(iced::alignment::Vertical::Center),
+    )
+    .padding(crate::util::pad2(14.0, 16.0))
+    .width(Length::Fill);
+    let divider = container(space())
+        .width(Length::Fill)
+        .height(Length::Fixed(1.0))
+        .style(move |_: &Theme| round(pal.hover_bg, 0.0));
+    let body: Element<'_, Message> = match &app.pins {
+        None => container(muted_text("Loading…", 14.0, pal.text_muted))
+            .padding(32)
+            .width(Length::Fill)
+            .align_x(iced::alignment::Horizontal::Center)
+            .into(),
+        Some((_, pins)) if pins.is_empty() => container(
+            column![
+                container(icons::icon(icons::PIN, 40.0, pal.text_muted))
+                    .padding(20)
+                    .style(move |_: &Theme| round(pal.hover_bg, 40.0)),
+                text("This channel doesn't have any\npinned messages... yet.")
+                    .size(14)
+                    .color(pal.text)
+                    .align_x(iced::alignment::Horizontal::Center),
+            ]
+            .spacing(16)
+            .align_x(iced::alignment::Horizontal::Center),
+        )
+        .padding(crate::util::pad2(32.0, 16.0))
+        .width(Length::Fill)
+        .align_x(iced::alignment::Horizontal::Center)
+        .into(),
+        Some((_, pins)) => {
+            let cards: Vec<Element<'_, Message>> = pins
+                .iter()
+                .map(|m| {
+                    let mut actions = row![ghost(
+                        text("Jump").size(12).color(pal.text),
+                        Some(Message::JumpTo(m.id)),
+                        pal.hover_bg,
+                        4.0
+                    )]
+                    .spacing(4);
+                    if app.can_pin(m) {
+                        actions = actions.push(ghost(
+                            text("Unpin").size(12).color(pal.text),
+                            Some(Message::Pin(m.id, false)),
+                            pal.hover_bg,
+                            4.0,
+                        ));
+                    }
+                    let (picture, banner) = app.profile_look(&m.author_id);
+                    let card = row![
+                        super::avatar(picture, banner, &m.author, 32.0, &pal),
+                        column![
+                            row![
+                                text(m.author.clone()).size(14).color(author_color(app, m, &pal)),
+                                text(stamp_label(m.timestamp, now)).size(11).color(pal.text_muted),
+                                space().width(Length::Fill),
+                                actions,
+                            ]
+                            .spacing(8)
+                            .align_y(iced::alignment::Vertical::Center),
+                            text(m.text.clone()).size(14).color(pal.text),
+                        ]
+                        .spacing(2)
+                        .width(Length::Fill),
+                    ]
+                    .spacing(10);
+                    container(card)
+                        .padding(10)
+                        .width(Length::Fill)
+                        .style(move |_: &Theme| container::Style {
+                            background: Some(Background::Color(pal.app_bg)),
+                            border: border::rounded(8.0).color(pal.hover_bg).width(1.0),
+                            ..container::Style::default()
+                        })
+                        .into()
+                })
+                .collect();
+            scrollable(Column::with_children(cards).spacing(8).padding(12))
+                .height(Length::Shrink)
+                .into()
+        }
+    };
+    let panel = container(column![title, divider, body])
+        .width(Length::Fixed(420.0))
+        .max_height(520.0)
+        .style(move |_: &Theme| container::Style {
+            background: Some(Background::Color(pal.sidebar_bg)),
+            border: border::rounded(8.0).color(pal.hover_bg).width(1.0),
+            shadow: iced::Shadow {
+                color: Color { a: 0.4, ..Color::BLACK },
+                offset: iced::Vector::new(0.0, 4.0),
+                blur_radius: 16.0,
+            },
+            ..container::Style::default()
+        });
+    // Under the pin button: right of it are the members button and the search slot.
+    let right = app.panel_width("members") + SPLITTER + 16.0;
+    let placed = container(iced::widget::opaque(panel))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(iced::alignment::Horizontal::Right)
+        .padding(crate::util::pad(FILTERS_TOP - 4.0, right, 0.0, 0.0));
+    let away = mouse_area(space().width(Length::Fill).height(Length::Fill)).on_press(Message::PinsToggle);
+    Some(iced::widget::stack![away, placed].into())
+}
 
 fn members(app: &App, pal: Pal) -> Element<'_, Message> {
     let server = &app.server;

@@ -1384,7 +1384,7 @@ const ROLE_COLORS: [&str; 20] = [
 ];
 
 /// The permissions a role can grant: the label, what it lets a member do, and its bit.
-const PERMISSIONS: [(&str, &str, u32); 8] = [
+const PERMISSIONS: [(&str, &str, u32); 9] = [
     (
         "Administrator",
         "Has every permission, even ones switched off. Turning it on asks first.",
@@ -1409,6 +1409,11 @@ const PERMISSIONS: [(&str, &str, u32); 8] = [
         "Manage messages",
         "Allows members to delete other members' messages.",
         common::perm::MANAGE_MESSAGES,
+    ),
+    (
+        "Pin messages",
+        "Allows members to pin and unpin messages in the channels. Manage messages allows it too.",
+        common::perm::PIN_MESSAGES,
     ),
     (
         "Bypass ignore",
