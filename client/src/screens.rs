@@ -357,6 +357,24 @@ fn channel_sync_screen() {
 }
 
 #[test]
+fn access_lists_screen() {
+    let mut app = chat_app();
+    app.server.roles = vec![
+        common::RoleInfo { id: 2, name: "Moderator".into(), color: "#2ecc71".into(), permissions: 0, position: 2, mentionable: false, hoisted: false },
+        common::RoleInfo { id: 0, name: "@everyone".into(), color: "#95a5a6".into(), permissions: 0, position: -1_000_000_000, mentionable: false, hoisted: false },
+    ];
+    app.server.member_ids = [("alice".to_string(), "u1".to_string())].into_iter().collect();
+    app.server.category_overrides = vec![
+        common::CategoryOverride { category_id: 1, role: 0, view: Some(false), send: None },
+        common::CategoryOverride { category_id: 1, role: 2, view: Some(true), send: Some(true) },
+    ];
+    app.server.member_category_overrides = vec![common::MemberCategoryOverride { category_id: 1, member: "u1".into(), view: Some(true), send: None }];
+    let _ = app.update(Message::CategoryEditOpen(1, "Text".into()));
+    let _ = app.update(Message::EditSectionPick(crate::app::EditSection::Permissions));
+    save_at(&app, "access-lists", 1100.0, 700.0);
+}
+
+#[test]
 fn category_private_locked_screen() {
     let mut app = chat_app();
     app.server.category_overrides = vec![common::CategoryOverride { category_id: 1, role: 0, view: Some(false), send: None }];

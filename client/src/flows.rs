@@ -343,6 +343,26 @@ fn a_channel_outside_a_category_has_nothing_to_sync() {
 }
 
 #[test]
+fn the_channel_add_users_or_roles_flow_works() {
+    use crate::app::AccessTarget;
+    let mut app = app();
+    app.server.channels = vec![chan(2, "dev")];
+    app.server.roles = vec![common::RoleInfo { id: 3, name: "Helper".into(), color: String::new(), permissions: 0, position: 1, mentionable: false, hoisted: false }];
+    app.server.member_ids = [("alice".to_string(), "u1".to_string())].into_iter().collect();
+    let _ = app.update(Message::ChannelEditOpen(2));
+    let _ = app.update(Message::EditSectionPick(crate::app::EditSection::Permissions));
+    let _ = app.update(Message::AccessAddOpen(AccessTarget::Channel(2)));
+    assert!(app.access_add.is_some(), "the dialog opens");
+    let _ = app.update(Message::AccessAddToggle(common::Subject::Role(3), true));
+    let _ = app.update(Message::AccessAddToggle(common::Subject::Member("u1".into()), true));
+    let _ = app.update(Message::AccessAddDone);
+    assert!(app.access_add.is_none());
+    assert_eq!(app.access_value(AccessTarget::Channel(2), common::Subject::Role(3)), (Some(true), None));
+    assert_eq!(app.access_value(AccessTarget::Channel(2), common::Subject::Member("u1".into())), (Some(true), None));
+    assert!(app.edit_dirty(), "the save bar appears");
+}
+
+#[test]
 fn saving_clears_the_permission_draft() {
     use crate::app::AccessTarget;
     let mut app = app();

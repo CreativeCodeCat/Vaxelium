@@ -213,10 +213,10 @@ impl App {
                 }
             }
             Message::AccessAddDone => {
-                let picked = self.access_add.take().map(|a| a.picked).unwrap_or_default();
-                if let Some((category, _, _)) = self.category_edit.clone() {
-                    let target = crate::app::AccessTarget::Category(category);
-                    for subject in picked {
+                // Added to whichever channel or category the dialog was opened for.
+                if let Some(add) = self.access_add.take() {
+                    let target = add.target;
+                    for subject in add.picked {
                         let (_, send) = self.access_value(target, subject.clone());
                         let _ = self.update(Message::AccessDraftSet { target, subject, view: Some(true), send });
                     }
