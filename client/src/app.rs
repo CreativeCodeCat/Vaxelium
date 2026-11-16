@@ -70,6 +70,7 @@ pub enum UserSection {
     #[default]
     Account,
     Profile,
+    Linked,
 }
 
 /// A section of the server settings page.
@@ -148,6 +149,8 @@ pub struct LoginForm {
     pub error: Option<String>,
     /// True while a login with Discord waits for the browser to come back.
     pub discord_waiting: bool,
+    /// True once the email option is chosen, which shows the email and password fields.
+    pub email_open: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -203,6 +206,12 @@ pub struct Account {
     pub avatar_error: Option<String>,
     /// A picture picked or removed but not saved yet: the new base64 PNG, or empty to remove.
     pub avatar_draft: Option<String>,
+    /// The Discord name linked to the account (None when not linked), whether it can be unlinked,
+    /// the last error, and whether an unlink is in progress.
+    pub discord: Option<String>,
+    pub can_unlink_discord: bool,
+    pub discord_error: Option<String>,
+    pub discord_busy: bool,
 }
 
 /// How a person looks in lists and messages: their picture (base64 PNG, or empty) and banner colour.
@@ -491,6 +500,8 @@ pub enum Message {
     LoginEmail(String),
     LoginPassword(String),
     LoginToggle,
+    LoginEmailOpen,
+    LoginEmailClose,
     LoginSubmit,
     LoginDone(Result<String, CmdError>),
     DiscordLogin,
@@ -611,6 +622,9 @@ pub enum Message {
     UserSettingsOpen,
     UserSettingsClose,
     ProfileLoaded(Result<Profile, CmdError>),
+    LinkedLoaded(Result<crate::backend::LinkedAccounts, CmdError>),
+    DiscordUnlink,
+    DiscordUnlinked(Result<(), CmdError>),
     AccountEdit(Field),
     AccountEditCancel,
     AccountNameInput(String),
@@ -2128,6 +2142,7 @@ impl App {
                     let acc = &self.account;
                     acc.about_bio != acc.bio || acc.about_banner != acc.banner || acc.avatar_draft.is_some()
                 }
+                UserSection::Linked => false,
             },
             Page::Server => {
                 match self.shown_server_section() {

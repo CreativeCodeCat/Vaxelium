@@ -108,6 +108,14 @@ fn login_screen() {
 }
 
 #[test]
+fn login_email_screen() {
+    let mut app = app();
+    app.login.email_open = true;
+    let mut ui = simulate(&app);
+    save(&mut ui, &app, "login-email");
+}
+
+#[test]
 fn chat_screen() {
     let app = chat_app();
     let mut ui = simulate(&app);
@@ -615,6 +623,16 @@ fn profile_tab_screen() {
     app.account.about_bio = app.account.bio.clone();
     app.account.about_banner = app.account.banner.clone();
     save_at(&app, "profile-tab", 1100.0, 700.0);
+}
+
+#[test]
+fn linked_accounts_screen() {
+    let mut app = chat_app();
+    app.page = Page::User;
+    app.user_section = crate::app::UserSection::Linked;
+    app.account.discord = Some("Sky".into());
+    app.account.can_unlink_discord = true;
+    save_at(&app, "linked-accounts", 1100.0, 700.0);
 }
 
 #[test]

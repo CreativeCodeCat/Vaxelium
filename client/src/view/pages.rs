@@ -53,65 +53,132 @@ pub fn input_style(pal: Pal) -> impl Fn(&Theme, text_input::Status) -> text_inpu
     }
 }
 
+/// A full-width button with rounded corners, for the login page.
+fn wide_button<'a>(label: &str, msg: Message, bg: Color, fg: Color) -> Element<'a, Message> {
+    button(container(text(label.to_string()).size(15).color(fg)).width(Length::Fill).align_x(iced::alignment::Horizontal::Center))
+        .width(Length::Fill)
+        .padding(crate::util::pad2(12.0, 14.0))
+        .on_press(msg)
+        .style(move |_: &Theme, status: iced::widget::button::Status| {
+            let shade = match status {
+                iced::widget::button::Status::Hovered => Color { a: 0.85, ..bg },
+                _ => bg,
+            };
+            iced::widget::button::Style {
+                background: Some(Background::Color(shade)),
+                text_color: fg,
+                border: border::rounded(8.0),
+                ..iced::widget::button::Style::default()
+            }
+        })
+        .into()
+}
+
+/// A line, the word "or", and another line.
+fn or_divider<'a>(pal: Pal) -> Element<'a, Message> {
+    let line = Color { a: 0.35, ..pal.text_muted };
+    row![divider(line), muted_text("or", 12.0, pal.text_muted), divider(line)]
+        .spacing(10)
+        .align_y(iced::alignment::Vertical::Center)
+        .into()
+}
+
+/// The login page has two views. The chooser offers email or Discord. Choosing email shows only the
+/// email form, with a way back to the chooser.
 pub fn login(app: &App, pal: Pal) -> Element<'_, Message> {
     let login_form = &app.login;
-    let mut items: Vec<Element<'_, Message>> = vec![
-        text(if login_form.register { "Create an account" } else { "Welcome back!" }).size(26).color(pal.text_strong).into(),
-        muted_text("One account works on every Vaxelium server.", 14.0, pal.text_muted),
-    ];
-    if login_form.register {
+    let blurple = Color::from_rgb8(0x58, 0x65, 0xF2);
+    let mut items: Vec<Element<'_, Message>> = Vec::new();
+
+    if login_form.email_open {
+        items.push(link("← Back", Message::LoginEmailClose, pal.link));
+        items.push(text(if login_form.register { "Create your account" } else { "Log in with email" }).size(26).color(pal.text_strong).into());
+        items.push(muted_text("One account works on every Vaxelium server.", 14.0, pal.text_muted));
+        if login_form.register {
+            items.push(field(
+                "Display name",
+                text_input("your name", &login_form.name)
+                    .on_input(Message::LoginName)
+                    .padding(10)
+                    .style(input_style(pal))
+                    .into(),
+            ));
+        }
         items.push(field(
-            "Display name",
-            text_input("your name", &login_form.name)
-                .on_input(Message::LoginName)
+            "Email",
+            text_input("you@example.com", &login_form.email)
+                .on_input(Message::LoginEmail)
+                .on_submit(Message::LoginSubmit)
                 .padding(10)
                 .style(input_style(pal))
                 .into(),
         ));
-    }
-    items.push(field(
-        "Email",
-        text_input("you@example.com", &login_form.email)
-            .on_input(Message::LoginEmail)
-            .on_submit(Message::LoginSubmit)
-            .padding(10)
-            .style(input_style(pal))
+        items.push(field(
+            "Password",
+            text_input("password", &login_form.password)
+                .secure(true)
+                .on_input(Message::LoginPassword)
+                .on_submit(Message::LoginSubmit)
+                .padding(10)
+                .style(input_style(pal))
+                .into(),
+        ));
+        items.push(
+            row![
+                iced::widget::checkbox(app.remember).on_toggle(Message::Remember),
+                text("Keep me logged in on this computer").size(14).color(pal.text),
+            ]
+            .spacing(8)
+            .align_y(iced::alignment::Vertical::Center)
             .into(),
-    ));
-    items.push(field(
-        "Password",
-        text_input("password", &login_form.password)
-            .secure(true)
-            .on_input(Message::LoginPassword)
-            .on_submit(Message::LoginSubmit)
-            .padding(10)
-            .style(input_style(pal))
+        );
+        items.push(wide_button(
+            if login_form.register { "Register" } else { "Log in" },
+            Message::LoginSubmit,
+            pal.accent,
+            pal.on_color,
+        ));
+        items.push(
+            row![
+                muted_text(if login_form.register { "Already have an account?" } else { "Need an account?" }, 14.0, pal.text_muted),
+                link(if login_form.register { "Log in" } else { "Register" }, Message::LoginToggle, pal.link),
+            ]
+            .spacing(6)
+            .align_y(iced::alignment::Vertical::Center)
             .into(),
-    ));
-    items.push(
-        row![
-            iced::widget::checkbox(app.remember).on_toggle(Message::Remember),
-            text("Keep me logged in on this computer").size(14).color(pal.text),
-        ]
-        .spacing(8)
-        .align_y(iced::alignment::Vertical::Center)
-        .into(),
-    );
-    items.push(solid(if login_form.register { "Register" } else { "Log in" }, Message::LoginSubmit, pal.accent, pal.on_color, None));
-    let discord_label = if login_form.discord_waiting { "Waiting for Discord…" } else { "Continue with Discord" };
-    items.push(solid(discord_label, Message::DiscordLogin, Color::from_rgb8(0x58, 0x65, 0xF2), Color::WHITE, None));
-    if login_form.discord_waiting {
-        items.push(muted_text("Finish logging in to Discord in your browser.", 13.0, pal.text_muted));
+        );
+    } else {
+        items.push(text(if login_form.register { "Create an account" } else { "Welcome back!" }).size(26).color(pal.text_strong).into());
+        items.push(muted_text("One account works on every Vaxelium server.", 14.0, pal.text_muted));
+        items.push(wide_button(
+            if login_form.register { "Register with Email" } else { "Log in with Email" },
+            Message::LoginEmailOpen,
+            pal.accent,
+            pal.on_color,
+        ));
+        items.push(or_divider(pal));
+        let discord_label = if login_form.discord_waiting {
+            "Waiting for Discord…"
+        } else if login_form.register {
+            "Register with Discord"
+        } else {
+            "Log in with Discord"
+        };
+        items.push(wide_button(discord_label, Message::DiscordLogin, blurple, Color::WHITE));
+        if login_form.discord_waiting {
+            items.push(muted_text("Finish logging in to Discord in your browser.", 13.0, pal.text_muted));
+        }
+        items.push(
+            row![
+                iced::widget::checkbox(app.remember).on_toggle(Message::Remember),
+                text("Keep me logged in on this computer").size(14).color(pal.text),
+            ]
+            .spacing(8)
+            .align_y(iced::alignment::Vertical::Center)
+            .into(),
+        );
     }
-    items.push(
-        row![
-            muted_text(if login_form.register { "Already have an account?" } else { "Need an account?" }, 14.0, pal.text_muted),
-            link(if login_form.register { "Log in" } else { "Register" }, Message::LoginToggle, pal.link),
-        ]
-        .spacing(6)
-        .align_y(iced::alignment::Vertical::Center)
-        .into(),
-    );
+
     if let Some(error) = &login_form.error {
         items.push(text(error.clone()).size(13).color(pal.red).into());
         if error.contains(CERT_CHANGED) {
@@ -279,7 +346,11 @@ fn user_nav<'a>(active: UserSection, pal: Pal) -> Element<'a, Message> {
     };
     container(column![
         text("USER SETTINGS").size(12).color(pal.text_muted),
-        Column::new().spacing(4).push(tab("Account", UserSection::Account)).push(tab("Profile", UserSection::Profile)),
+        Column::new()
+            .spacing(4)
+            .push(tab("Account", UserSection::Account))
+            .push(tab("Profile", UserSection::Profile))
+            .push(tab("Linked accounts", UserSection::Linked)),
     ]
     .spacing(8))
     .padding(crate::util::pad2(24.0, 12.0))
@@ -287,6 +358,23 @@ fn user_nav<'a>(active: UserSection, pal: Pal) -> Element<'a, Message> {
     .height(Length::Fill)
     .style(move |_: &Theme| round(pal.sidebar_bg, 0.0))
     .into()
+}
+
+/// The Discord link: its state, and an Unlink button when the account can still log in without it.
+fn linked_accounts_view<'a>(acc: &crate::app::Account, pal: Pal) -> Element<'a, Message> {
+    let (desc, action): (String, Option<Element<'a, Message>>) = match &acc.discord {
+        Some(name) if acc.can_unlink_discord => (
+            format!("Connected as {name}."),
+            Some(solid(if acc.discord_busy { "Unlinking…" } else { "Unlink" }, Message::DiscordUnlink, pal.red, pal.on_color, None)),
+        ),
+        Some(name) => (format!("Connected as {name}. This account signs in with Discord only, so the link cannot be removed."), None),
+        None => ("Not connected. Log in with Discord using the email on this account to link it.".to_string(), None),
+    };
+    let mut items: Vec<Element<'a, Message>> = vec![setting_row("Discord", Some(&desc), space().width(Length::Fixed(0.0)).into(), action, pal)];
+    if let Some(error) = &acc.discord_error {
+        items.push(text(error.clone()).size(13).color(pal.red).into());
+    }
+    Column::with_children(items).spacing(12).into()
 }
 
 /// The settings content: a column with a sensible maximum width, so long rows do not stretch.
@@ -496,6 +584,7 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
             let dirty = acc.draft_name.is_some() || acc.draft_username.is_some() || acc.draft_email.is_some() || acc.draft_theme.is_some();
             (settings_column(main), dirty)
         }
+        UserSection::Linked => (settings_column(vec![page_title("Linked accounts", pal), linked_accounts_view(acc, pal)]), false),
         UserSection::Profile => {
             // The bar appears only when the bio or banner differ from what is saved.
             let dirty = acc.about_bio != acc.bio || acc.about_banner != acc.banner || acc.avatar_draft.is_some();
@@ -508,7 +597,8 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     if dirty {
         let (reset, save) = match app.user_section {
             UserSection::Account => (Message::AccountReset, Message::AccountSave),
-            UserSection::Profile => (Message::AboutReset, Message::AboutSave),
+            // Linked accounts saves each change as it happens, so it never shows the bar.
+            UserSection::Profile | UserSection::Linked => (Message::AboutReset, Message::AboutSave),
         };
         layers.push(unsaved_bar(app, pal, reset, save, "Careful – you have unsaved changes!"));
     }
