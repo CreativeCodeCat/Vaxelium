@@ -657,20 +657,6 @@ pub fn resize_edges<'a>() -> Element<'a, Message> {
     .into()
 }
 
-/// Lines that start with "- " or "* " become bullet points in a bio.
-fn with_bullets(body: &str) -> String {
-    body.lines()
-        .map(|line| {
-            let trimmed = line.trim_start();
-            match trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")) {
-                Some(rest) => format!("• {rest}"),
-                None => line.to_string(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 /// The profile card, when one is open: a banner, the name, the bio and the member's roles here.
 pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     let view = app.card.as_ref()?;
@@ -791,7 +777,7 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     items.push(container(text("ABOUT ME").size(11).color(pal.text_muted)).padding(crate::util::pad(12.0, 14.0, 4.0, 14.0)).into());
     let bio: Element<'_, Message> = match (card, &view.error, view.loading) {
         (Some(c), _, _) if c.bio.is_empty() => text("No bio yet.").size(13).color(pal.text_muted).into(),
-        (Some(c), _, _) => super::linked_text(&with_bullets(&c.bio), 13.0, pal.text, pal),
+        (Some(c), _, _) => super::bio_text(&c.bio, 13.0, pal.text, pal),
         (None, _, true) => text("Loading…").size(13).color(pal.text_muted).into(),
         (None, Some(err), _) => text(format!("Profile unavailable: {err}")).size(13).color(pal.text_muted).into(),
         (None, None, false) => text("Profile unavailable.").size(13).color(pal.text_muted).into(),
@@ -1071,15 +1057,5 @@ mod placement_tests {
         assert_eq!(keep_on_screen(Point::new(100.0, 50.0), Size::new(200.0, 300.0), window), Point::new(100.0, 50.0));
         // A menu taller than the window stays at the top margin rather than going off the top.
         assert_eq!(keep_on_screen(Point::new(10.0, 10.0), Size::new(200.0, 900.0), window).y, 8.0);
-    }
-}
-
-#[cfg(test)]
-mod bio_tests {
-    use super::with_bullets;
-
-    #[test]
-    fn dash_and_star_lines_become_bullets_and_others_stay() {
-        assert_eq!(with_bullets("Hi\n- one\n  * two\nlast"), "Hi\n• one\n• two\nlast");
     }
 }

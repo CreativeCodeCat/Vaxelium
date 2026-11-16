@@ -163,6 +163,60 @@ pub fn linked_text<'a>(body: &str, size: f32, color: Color, pal: Pal) -> Element
     iced::widget::rich_text(spans).size(size).on_link_click(Message::OpenLink).into()
 }
 
+/// A bio: bold, italic, lists and links, as `bio::styled` and `bio::lists` format it.
+pub fn bio_text<'a>(body: &str, size: f32, color: Color, pal: Pal) -> Element<'a, Message> {
+    use crate::bio::Style;
+    use iced::font::{Style as FontStyle, Weight};
+    use iced::widget::text::Span;
+
+    let (plain, styles) = crate::bio::styled(&crate::bio::lists(body));
+    let links = link_ranges(&plain);
+    // What decides how a character looks: its style, and whether it is inside a link.
+    let key_at = |k: usize, pos: usize| {
+        let style = styles.get(k).copied().unwrap_or_default();
+        (style, links.iter().any(|r| r.contains(&pos)))
+    };
+    let make = |piece: &str, (style, is_link): (Style, bool)| -> Span<'static, String> {
+        let mut font = iced::Font::DEFAULT;
+        if style.bold {
+            font.weight = Weight::Bold;
+        }
+        if style.italic {
+            font.style = FontStyle::Italic;
+        }
+        let span = iced::widget::span(piece.to_string()).font(font);
+        if is_link {
+            span.color(pal.link).underline(true).link(piece.to_string())
+        } else {
+            let span = span.color(color);
+            if style.underline {
+                span.underline(true)
+            } else {
+                span
+            }
+        }
+    };
+
+    // Runs of characters that look the same become one span each.
+    let mut spans: Vec<Span<'static, String>> = Vec::new();
+    let mut run: Option<((Style, bool), usize)> = None;
+    for (k, (pos, _)) in plain.char_indices().enumerate() {
+        let key = key_at(k, pos);
+        match run {
+            Some((current, start)) if current == key => run = Some((current, start)),
+            Some((current, start)) => {
+                spans.push(make(&plain[start..pos], current));
+                run = Some((key, pos));
+            }
+            None => run = Some((key, pos)),
+        }
+    }
+    if let Some((current, start)) = run {
+        spans.push(make(&plain[start..], current));
+    }
+    iced::widget::rich_text(spans).size(size).on_link_click(Message::OpenLink).into()
+}
+
 pub fn divider<'a>(color: Color) -> Element<'a, Message> {
     container(space()).width(Length::Fill).height(Length::Fixed(1.0)).style(move |_: &Theme| round(color, 0.0)).into()
 }
