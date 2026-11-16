@@ -1036,8 +1036,10 @@ fn messages<'a>(app: &'a App, pal: Pal, entries: Vec<Entry>, search: &Search) ->
                 prev_author = None;
             }
             Entry::Chat(m) => {
-                let grouped =
-                    prev_author.as_deref() == Some(m.author.as_str()) && at.saturating_sub(prev_at) < GROUP_GAP_SECS;
+                // A reply always shows its author, so its preview has a name under it.
+                let grouped = m.reply.is_none()
+                    && prev_author.as_deref() == Some(m.author.as_str())
+                    && at.saturating_sub(prev_at) < GROUP_GAP_SECS;
                 prev_author = Some(m.author.clone());
                 out.push(chat_message(app, pal, m, grouped, now));
             }
@@ -1158,6 +1160,9 @@ fn chat_message<'a>(app: &'a App, pal: Pal, m: ChatMessage, grouped: bool, now: 
     };
 
     let mut content = Column::new().spacing(2).width(Length::Fill);
+    if let Some(reply) = &m.reply {
+        content = content.push(reply_preview(app, reply, pal));
+    }
     if !grouped {
         content = content.push(
             row![
@@ -1215,14 +1220,24 @@ fn chat_message<'a>(app: &'a App, pal: Pal, m: ChatMessage, grouped: bool, now: 
     if hovered && !editing && m.id != 0 {
         line = line.push(toolbar(app, pal, m.id, app.can_delete(&m)));
     }
+    // A message jumped to from a reply is lit up for a moment.
+    let background = if app.jump_flash == Some(m.id) {
+        Color { a: 0.18, ..pal.accent }
+    } else if hovered {
+        pal.hover_bg
+    } else {
+        Color::TRANSPARENT
+    };
     let padded = container(line)
+        .id(crate::app::message_id(m.id))
         .padding(crate::util::pad2(if grouped { 1.0 } else { 6.0 }, 16.0))
         .width(Length::Fill)
-        .style(move |_: &Theme| round(if hovered { pal.hover_bg } else { Color::TRANSPARENT }, 0.0));
+        .style(move |_: &Theme| round(background, 0.0));
     let area = mouse_area(padded)
         .on_enter(Message::Hover(Some(m.id)))
         .on_exit(Message::Hover(None));
-    if m.id != 0 && (app.can_edit(&m) || app.can_delete(&m)) {
+    // Every saved message has a menu, if only to reply to it.
+    if m.id != 0 {
         area.on_right_press(Message::OpenMenu(crate::app::MenuKind::Message(m.id)))
             .into()
     } else {
@@ -1230,9 +1245,38 @@ fn chat_message<'a>(app: &'a App, pal: Pal, m: ChatMessage, grouped: bool, now: 
     }
 }
 
+/// The line above a reply: who wrote the message it answers and how it starts. A click on it scrolls to
+/// that message. A deleted original says so, and cannot be clicked.
+fn reply_preview<'a>(app: &App, reply: &common::ReplyRef, pal: Pal) -> Element<'a, Message> {
+    let arrow = icons::icon(icons::REPLY, 13.0, pal.text_muted);
+    if reply.author_id.is_empty() {
+        return row![
+            arrow,
+            text("Original message was deleted").size(13).color(pal.text_muted)
+        ]
+        .spacing(6)
+        .align_y(iced::alignment::Vertical::Center)
+        .into();
+    }
+    let colour = app.member_color(&reply.author_id).unwrap_or(pal.text_strong);
+    let line = row![
+        arrow,
+        text(format!("@{}", reply.author)).size(13).color(colour),
+        text(reply.text.clone())
+            .size(13)
+            .color(pal.text_muted)
+            .wrapping(iced::widget::text::Wrapping::None),
+    ]
+    .spacing(6)
+    .align_y(iced::alignment::Vertical::Center);
+    mouse_area(container(line).clip(true))
+        .on_press(Message::JumpTo(reply.id))
+        .interaction(iced::mouse::Interaction::Pointer)
+        .into()
+}
+
 /// The toolbar that floats over a hovered message: quick reactions, the picker and more.
 fn toolbar<'a>(app: &'a App, pal: Pal, id: i64, can_delete: bool) -> Element<'a, Message> {
-    let _ = app;
     let mut items = row![].spacing(2).align_y(iced::alignment::Vertical::Center);
     for e in QUICK_REACTIONS {
         items = items.push(ghost(
@@ -1248,6 +1292,14 @@ fn toolbar<'a>(app: &'a App, pal: Pal, id: i64, can_delete: bool) -> Element<'a,
         pal.selected_bg,
         4.0,
     ));
+    if app.may_send_here() {
+        items = items.push(ghost(
+            icons::icon(icons::REPLY, 16.0, pal.text),
+            Some(Message::ReplyStart(id)),
+            pal.selected_bg,
+            4.0,
+        ));
+    }
     if can_delete {
         items = items.push(ghost(
             icons::icon(icons::GEAR, 16.0, pal.text),
@@ -1523,6 +1575,30 @@ fn composer(app: &App, pal: Pal) -> Element<'_, Message> {
     if let Some(menu) = if can_send { mention_menu(app, pal) } else { None } {
         col = col.push(container(menu).padding(crate::util::pad(0.0, 16.0, 6.0, 16.0)));
     }
+    // While replying, a bar above the box says to whom, with a button to stop.
+    if let Some(m) = app.replying_to.filter(|_| can_send).and_then(|id| app.find_message(id)) {
+        let bar = row![
+            text("Replying to ").size(13).color(pal.text_muted),
+            text(m.author.clone()).size(13).color(author_color(app, &m, &pal)),
+            space().width(Length::Fill),
+            ghost(
+                icons::icon(icons::CLOSE, 14.0, pal.text_muted),
+                Some(Message::ReplyCancel),
+                pal.selected_bg,
+                4.0
+            ),
+        ]
+        .align_y(iced::alignment::Vertical::Center);
+        col = col.push(
+            container(
+                container(bar)
+                    .padding(crate::util::pad2(4.0, 12.0))
+                    .width(Length::Fill)
+                    .style(move |_: &Theme| round(pal.sidebar_bg, 8.0)),
+            )
+            .padding(crate::util::pad(0.0, 16.0, 4.0, 46.0)),
+        );
+    }
     let mut col = col
         .push(if can_send {
             row![icons::icon(icons::PLUS, 18.0, pal.text_muted), box_]
@@ -1532,8 +1608,9 @@ fn composer(app: &App, pal: Pal) -> Element<'_, Message> {
             row![box_].align_y(iced::alignment::Vertical::Center)
         })
         .padding(crate::util::pad(0.0, 16.0, 20.0, 16.0));
-    // The length of the message, at the bottom right, while something is typed.
-    if !app.input.is_empty() {
+    // The length of the message, at the bottom right. It shows even when empty, so the layout does not
+    // jump when typing starts.
+    if can_send {
         col = col.push(
             row![
                 space().width(Length::Fill),

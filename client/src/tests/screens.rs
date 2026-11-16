@@ -71,6 +71,7 @@ fn chat_app() -> App {
             timestamp: ts,
             edited: id == 2,
             reactions: Vec::new(),
+            reply: None,
         })
     };
     let now = crate::util::now();
@@ -354,6 +355,7 @@ fn markdown_message_screen() {
             timestamp: now,
             edited: false,
             reactions: Vec::new(),
+            reply: None,
         })],
     );
     save_at(&app, "markdown-message", 1100.0, 900.0);
@@ -383,6 +385,7 @@ fn math_message_screen() {
             timestamp: now,
             edited: false,
             reactions: Vec::new(),
+            reply: None,
         })],
     );
     save_at(&app, "math-message", 1100.0, 800.0);
@@ -405,6 +408,7 @@ fn math_layout_screen() {
             timestamp: now,
             edited: false,
             reactions: Vec::new(),
+            reply: None,
         })],
     );
     save_at(&app, "math-layout", 1100.0, 800.0);
@@ -426,6 +430,7 @@ fn dragging_across_message_text_selects_it() {
             timestamp: now,
             edited: false,
             reactions: Vec::new(),
+            reply: None,
         })],
     );
     // The pointer moves as a real drag does: press here, then move and release there. The messages the
@@ -450,6 +455,7 @@ fn click_away_clears_selection() {
             timestamp: now,
             edited: false,
             reactions: Vec::new(),
+            reply: None,
         })],
     );
     drag(&mut app, &[(440.0, 240.0), (560.0, 240.0)]);
@@ -485,6 +491,7 @@ fn clicking_a_link_in_a_message_still_opens_it() {
             timestamp: now,
             edited: false,
             reactions: Vec::new(),
+            reply: None,
         })],
     );
     let mut ui = simulate(&app);
@@ -516,6 +523,7 @@ fn dragging_over_several_lines_selects_them() {
             timestamp: now,
             edited: false,
             reactions: Vec::new(),
+            reply: None,
         })],
     );
     drag(&mut app, &[(440.0, 240.0), (700.0, 275.0)]);
@@ -538,6 +546,7 @@ fn dragging_across_markdown_blocks_selects_them() {
             timestamp: now,
             edited: false,
             reactions: Vec::new(),
+            reply: None,
         })],
     );
     drag(&mut app, &[(440.0, 240.0), (520.0, 312.0)]);
@@ -561,6 +570,7 @@ fn html_elements_message_screen() {
             timestamp: now,
             edited: false,
             reactions: Vec::new(),
+            reply: None,
         })],
     );
     save_at(&app, "html-elements", 1100.0, 700.0);
@@ -583,6 +593,7 @@ fn clicking_a_details_summary_opens_it() {
             timestamp: now,
             edited: false,
             reactions: Vec::new(),
+            reply: None,
         })],
     );
     // A click on the summary, which sits at the top of the message. A button needs the press and the
@@ -619,6 +630,7 @@ fn small_caps_screen() {
             timestamp: now,
             edited: false,
             reactions: Vec::new(),
+            reply: None,
         })],
     );
     save_at(&app, "small-caps", 1100.0, 700.0);
@@ -1425,6 +1437,7 @@ fn latex_sample_screen() {
             timestamp: crate::util::now(),
             edited: false,
             reactions: Vec::new(),
+            reply: None,
         })],
     );
     save_at(&app, "latex-sample", 1100.0, 1500.0);
@@ -1443,6 +1456,7 @@ fn two_messages(app: &mut App) {
             timestamp: now,
             edited: false,
             reactions: Vec::new(),
+            reply: None,
         })
     };
     app.messages.insert(
@@ -1485,4 +1499,65 @@ fn drag_into_gap_selects() {
     drag(&mut app, &[(420.0, 240.0), (420.0, 296.0)]);
     let sel = app.text_sel.clone().expect("a selection");
     assert_eq!((sel.focus.0, sel.focus.1), (20, 1));
+}
+
+#[test]
+fn reply_screen() {
+    let mut app = chat_app();
+    two_messages(&mut app);
+    // carol's message answers bob's first one.
+    if let Some(Entry::Chat(m)) = app.messages.get_mut(&1).and_then(|l| l.get_mut(1)) {
+        m.reply = Some(common::ReplyRef {
+            id: 20,
+            author: "bob".into(),
+            author_id: "id-bob".into(),
+            text: common::reply_preview("First message line\n\nIts second paragraph"),
+        });
+    }
+    let _ = app.update(Message::ReplyStart(21));
+    assert_eq!(app.replying_to, Some(21));
+    save_at(&app, "reply", 1100.0, 700.0);
+
+    // Escape stops the reply.
+    let _ = app.update(Message::Escape);
+    assert_eq!(app.replying_to, None);
+
+    // A jump lights up the original; one that is not loaded says so instead.
+    let _ = app.update(Message::JumpTo(20));
+    assert_eq!(app.jump_flash, Some(20));
+    let _ = app.update(Message::JumpFlashEnd);
+    assert_eq!(app.jump_flash, None);
+    let _ = app.update(Message::JumpTo(999));
+    assert_eq!(app.jump_flash, None);
+    assert!(app.status.contains("too far back"));
+}
+
+#[test]
+fn reply_follows_original() {
+    let mut app = chat_app();
+    two_messages(&mut app);
+    if let Some(Entry::Chat(m)) = app.messages.get_mut(&1).and_then(|l| l.get_mut(1)) {
+        m.reply = Some(common::ReplyRef {
+            id: 20,
+            author: "bob".into(),
+            author_id: "id-bob".into(),
+            text: "old".into(),
+        });
+    }
+    let reply = |app: &App| match app.messages[&1]
+        .iter()
+        .find(|e| matches!(e, Entry::Chat(m) if m.id == 21))
+    {
+        Some(Entry::Chat(m)) => m.reply.clone().unwrap(),
+        _ => panic!("no reply"),
+    };
+    // What the edit and delete handlers do to the replies of a message.
+    app.update_replies(1, 20, Some("new text"));
+    assert_eq!(reply(&app).text, "new text");
+    app.update_replies(1, 20, None);
+    assert!(
+        reply(&app).author_id.is_empty(),
+        "a deleted original is no longer shown"
+    );
+    save_at(&app, "reply-deleted", 1100.0, 700.0);
 }

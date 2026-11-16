@@ -36,6 +36,8 @@ pub const AUTH_PROBE: Duration = Duration::from_secs(10);
 pub const UNSAVED_FLASH: Duration = Duration::from_millis(1200);
 const FLASH_STEP: Duration = Duration::from_millis(80);
 pub const MESSAGES_ID: &str = "messages";
+/// How long a message jumped to from a reply stays lit up.
+const JUMP_FLASH: std::time::Duration = std::time::Duration::from_millis(1500);
 pub const SEARCH_ID: &str = "search";
 pub const COMPOSER_ID: &str = "composer";
 pub const NEW_CHANNEL_ID: &str = "new-channel";
@@ -432,6 +434,10 @@ pub struct App {
     pub search: String,
     pub search_more: bool,
     pub editing: Option<(i64, String)>,
+    /// The message the composer is replying to, if any.
+    pub replying_to: Option<i64>,
+    /// The message just jumped to from a reply, which is lit up for a moment.
+    pub jump_flash: Option<i64>,
     pub pending_delete: Option<i64>,
     pub input: String,
     /// The editor that shows `input` and takes the typing. `input` is kept in step with it.
@@ -701,6 +707,14 @@ pub enum Message {
     SearchChanged(String),
     SearchOpen,
     Hover(Option<i64>),
+    /// Start replying to a message.
+    ReplyStart(i64),
+    /// Stop replying, keeping the text typed so far.
+    ReplyCancel,
+    /// Scroll to a message, from the preview above a reply.
+    JumpTo(i64),
+    /// The light on a jumped-to message goes out.
+    JumpFlashEnd,
     SearchFilter(&'static str),
     /// Picks a suggestion: the word being typed is replaced by this filter.
     SearchPick(String),
@@ -998,6 +1012,8 @@ impl App {
             search: String::new(),
             search_more: false,
             editing: None,
+            replying_to: None,
+            jump_flash: None,
             pending_delete: None,
             input: String::new(),
             composer: iced::widget::text_editor::Content::new(),
@@ -1299,6 +1315,8 @@ impl App {
                 }
                 let previous = self.server.channel_id;
                 if channel.id != previous {
+                    // A reply belongs to the channel it was started in.
+                    self.replying_to = None;
                     if let Some(list) = self.messages.get(&previous) {
                         self.read_marks.insert(previous, list.len());
                     }
@@ -1313,7 +1331,7 @@ impl App {
                 // A message sent from a member's card goes out as soon as their conversation is open.
                 if is_dm_channel(&channel.name) {
                     if let Some(text) = self.pending_card_send.take() {
-                        let _ = self.backend.send_main(ClientMsg::Say { text });
+                        let _ = self.backend.send_main(ClientMsg::Say { text, reply_to: None });
                     }
                 }
                 if !is_dm_channel(&channel.name) {
@@ -1359,6 +1377,11 @@ impl App {
                 if self.editing.as_ref().is_some_and(|(e, _)| *e == id) {
                     self.editing = None;
                 }
+                if self.replying_to == Some(id) {
+                    self.replying_to = None;
+                }
+                // Replies to it still show they were replies, but no longer what they answered.
+                self.update_replies(channel_id, id, None);
             }
             ServerMsg::MessageEdited { channel_id, id, text } => {
                 if let Some(list) = self.messages.get_mut(&channel_id) {
@@ -1371,6 +1394,7 @@ impl App {
                         }
                     }
                 }
+                self.update_replies(channel_id, id, Some(&text));
             }
             ServerMsg::Activity { channel_id } => {
                 // A channel not in the list is a direct message: refresh the list so it appears.
@@ -2054,6 +2078,12 @@ impl App {
             MenuKind::Message(id) => {
                 let mut items = Vec::new();
                 if let Some(m) = self.find_message(id) {
+                    if self.may_send_here() {
+                        items.push(item("Reply", Some(crate::icons::REPLY), false, Message::ReplyStart(id)));
+                        if self.can_edit(&m) || self.can_delete(&m) {
+                            items.push(MenuItem::Divider);
+                        }
+                    }
                     if self.can_edit(&m) {
                         items.push(item(
                             "Edit Message",
@@ -2521,6 +2551,9 @@ impl App {
         if self.unsaved_flash.is_some() {
             subs.push(iced::time::every(FLASH_STEP).map(|_| Message::FlashTick));
         }
+        if self.jump_flash.is_some() {
+            subs.push(iced::time::every(JUMP_FLASH).map(|_| Message::JumpFlashEnd));
+        }
         if self.auth_down {
             subs.push(iced::time::every(AUTH_PROBE).map(|_| Message::AuthProbe));
         }
@@ -2695,6 +2728,94 @@ impl App {
             },
             _ => false,
         }
+    }
+}
+
+impl App {
+    /// Updates the previews of replies to message `id` after it was edited (`Some(text)`) or deleted
+    /// (`None`).
+    pub(crate) fn update_replies(&mut self, channel_id: i64, id: i64, text: Option<&str>) {
+        let Some(list) = self.messages.get_mut(&channel_id) else {
+            return;
+        };
+        for e in list.iter_mut() {
+            if let Entry::Chat(m) = e {
+                if let Some(r) = m.reply.as_mut().filter(|r| r.id == id) {
+                    match text {
+                        Some(text) => r.text = common::reply_preview(text),
+                        None => {
+                            r.author_id.clear();
+                            r.text.clear();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Scrolls the message list so message `id` is near the top, and lights it up for a moment. A
+    /// message that is not loaded cannot be reached, which the status line says.
+    pub(crate) fn jump_to(&mut self, id: i64) -> Task<Message> {
+        if self.find_message(id).is_none() {
+            self.status = "That message is too far back to show.".into();
+            return Task::none();
+        }
+        self.jump_flash = Some(id);
+        let find = iced::advanced::widget::operate(FindOffset {
+            target: message_id(id),
+            content_top: None,
+            found: None,
+        })
+        .then(|offset: Option<f32>| match offset {
+            Some(y) => operation::scroll_to(MESSAGES_ID, operation::AbsoluteOffset { x: None, y: Some(y) }),
+            None => Task::none(),
+        });
+        find
+    }
+}
+
+/// The widget id of a message in the list, so it can be found to scroll to.
+pub fn message_id(id: i64) -> iced::widget::Id {
+    iced::widget::Id::from(format!("message-{id}"))
+}
+
+/// Finds how far down the message list a message is, as a scroll offset that puts it a little below
+/// the top.
+struct FindOffset {
+    target: iced::widget::Id,
+    content_top: Option<f32>,
+    found: Option<f32>,
+}
+
+impl iced::advanced::widget::Operation<Option<f32>> for FindOffset {
+    fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn iced::advanced::widget::Operation<Option<f32>>)) {
+        operate(self);
+    }
+
+    fn scrollable(
+        &mut self,
+        id: Option<&iced::widget::Id>,
+        _bounds: iced::Rectangle,
+        content_bounds: iced::Rectangle,
+        _translation: iced::Vector,
+        _state: &mut dyn iced::advanced::widget::operation::Scrollable,
+    ) {
+        if id == Some(&iced::widget::Id::new(MESSAGES_ID)) {
+            self.content_top = Some(content_bounds.y);
+        }
+    }
+
+    fn container(&mut self, id: Option<&iced::widget::Id>, bounds: iced::Rectangle) {
+        if id == Some(&self.target) {
+            if let Some(top) = self.content_top {
+                // The list's content is laid out unscrolled, so this is the offset that brings it to the top.
+                self.found = Some((bounds.y - top - 48.0).max(0.0));
+            }
+        }
+    }
+
+    fn finish(&self) -> iced::advanced::widget::operation::Outcome<Option<f32>> {
+        iced::advanced::widget::operation::Outcome::Some(self.found)
     }
 }
 
