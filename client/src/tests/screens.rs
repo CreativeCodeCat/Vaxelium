@@ -102,10 +102,13 @@ fn chat_app() -> App {
 
 fn save(ui: &mut iced_test::Simulator<'_, Message>, app: &App, name: &str) {
     let path = shots_dir().join(format!("{name}.png"));
-    for old in std::fs::read_dir(shots_dir()).into_iter().flatten().flatten() {
-        if old.file_name().to_string_lossy().starts_with(name) {
-            let _ = std::fs::remove_file(old.path());
-        }
+    // Only this picture's own files go, not those of a longer name that starts the same way.
+    for own in [
+        format!("{name}.png"),
+        format!("{name}-wgpu.png"),
+        format!("{name}-tiny-skia.png"),
+    ] {
+        let _ = std::fs::remove_file(shots_dir().join(own));
     }
     std::fs::create_dir_all(shots_dir()).unwrap();
     let theme = crate::theme::iced_theme(&app.prefs.theme);
@@ -1609,4 +1612,140 @@ fn pins_empty_screen() {
     save_at(&app, "pins-empty", 1100.0, 700.0);
     let _ = app.update(Message::Escape);
     assert!(!app.pins_open, "Escape closes it");
+}
+
+#[test]
+fn automod_screen() {
+    let mut app = chat_app();
+    with_roles(&mut app);
+    let _ = app.update(Message::ServerSettingsOpen);
+    let _ = app.update(Message::ServerSectionPick(crate::app::ServerSection::AutoMod));
+    // The rules arrive from the server and fill the page.
+    app.automod = Some(common::AutoMod {
+        blocked_words: vec!["spoiler".into()],
+        block_links: true,
+        spam_filter: false,
+        names: common::NameRule::default(),
+        alert_channel: None,
+    });
+    app.automod_reset();
+    assert!(!app.automod_dirty());
+
+    // A change shows the unsaved bar; resetting puts the saved rules back.
+    let _ = app.update(Message::AutoModSpam(true));
+    assert!(app.automod_dirty());
+    save_at(&app, "automod", 1100.0, 700.0);
+    let _ = app.update(Message::AutoModReset);
+    assert!(!app.automod_dirty() && !app.automod_spam);
+    assert_eq!(app.automod_draft().blocked_words, vec!["spoiler".to_string()]);
+}
+
+#[test]
+fn automod_refusal_keeps_text() {
+    let mut app = chat_app();
+    two_messages(&mut app);
+    app.server.channel_id = 1;
+    app.main.welcomed = true;
+    app.set_input("buy now https://spam.example".into());
+    let _ = app.update(Message::Send);
+    assert!(app.input.is_empty(), "sent");
+    let refuse = |app: &mut App, text: &str| {
+        let _ = app.update(Message::Event(crate::backend::Event::Net {
+            dm: false,
+            addr: app.main.addr.clone().unwrap_or_default(),
+            id: app.main.id.unwrap_or_default(),
+            msg: common::ServerMsg::Error { text: text.into() },
+        }));
+    };
+    refuse(&mut app, "AutoMod: links are not allowed here");
+    // The refused message shows in the chat, for this member only, instead of the red status line.
+    let notice = app.messages[&1].iter().find_map(|e| match e {
+        Entry::Notice { id, text, reason, .. } => Some((*id, text.clone(), reason.clone())),
+        _ => None,
+    });
+    let (id, text, reason) = notice.expect("a notice in the chat");
+    assert_eq!(text, "buy now https://spam.example");
+    assert_eq!(reason, "links are not allowed here");
+    assert!(!app.status.contains("links"), "no red status line");
+
+    // A refusal with nothing sent (a blocked name) shows just the reason.
+    refuse(&mut app, "AutoMod: your name is not allowed on this server.");
+    save_at(&app, "automod-notice", 1100.0, 700.0);
+
+    // Dismissing removes only that notice.
+    let _ = app.update(Message::DismissNotice(id));
+    let left = app.messages[&1]
+        .iter()
+        .filter(|e| matches!(e, Entry::Notice { .. }))
+        .count();
+    assert_eq!(left, 1);
+}
+
+#[test]
+fn automod_names_screen() {
+    let mut app = chat_app();
+    with_roles(&mut app);
+    let _ = app.update(Message::ServerSettingsOpen);
+    let _ = app.update(Message::ServerSectionPick(crate::app::ServerSection::AutoMod));
+    let channel = app.server.channels.first().map(|c| c.id);
+    app.automod = Some(common::AutoMod {
+        names: common::NameRule {
+            enabled: true,
+            words: vec!["admin*".into(), "*mod*".into()],
+            block_interactions: true,
+            send_alert: true,
+            ..common::NameRule::default()
+        },
+        alert_channel: channel,
+        ..common::AutoMod::default()
+    });
+    app.automod_reset();
+    assert!(!app.automod_dirty(), "the page matches what is saved");
+    assert_eq!(
+        app.automod_draft().names.words,
+        vec!["admin*".to_string(), "*mod*".to_string()]
+    );
+
+    // Allowing a role and turning the alert off are unsaved changes.
+    let _ = app.update(Message::NamesRole(2, true));
+    assert!(app.automod_dirty());
+    assert_eq!(app.automod_draft().names.allowed_roles, vec![2]);
+    let _ = app.update(Message::NamesRole(2, false));
+    assert!(!app.automod_dirty());
+    let _ = app.update(Message::NamesAlert(false));
+    assert!(app.automod_dirty());
+    let _ = app.update(Message::AutoModChannel(None));
+    assert_eq!(app.automod_draft().alert_channel, None);
+    let _ = app.update(Message::AutoModReset);
+    assert!(app.names_alert);
+    assert_eq!(app.automod_channel, channel);
+
+    // The rule starts closed, as a summary; Edit opens it.
+    assert!(!app.names_editing);
+    save_at(&app, "automod-names-closed", 1100.0, 1400.0);
+    let _ = app.update(Message::NamesEdit(true));
+    let _ = app.update(Message::NamesRole(2, true));
+    save_at(&app, "automod-names", 1100.0, 1400.0);
+}
+
+#[test]
+fn automod_alert_screen() {
+    let mut app = chat_app();
+    two_messages(&mut app);
+    app.messages.get_mut(&1).unwrap().push(Entry::Chat(ChatMessage {
+        id: 30,
+        channel_id: 1,
+        channel: "general".into(),
+        author: "AutoMod".into(),
+        author_id: common::AUTOMOD_ID.into(),
+        text: "Flagged the name of **Dummy** (matched `dumm*`).".into(),
+        timestamp: crate::util::now(),
+        edited: false,
+        reactions: Vec::new(),
+        reply: None,
+        pinned: false,
+    }));
+    // Hovering it shows no toolbar, as no member wrote it.
+    app.hover = Some(30);
+    save_at(&app, "automod-alert", 1100.0, 700.0);
 }

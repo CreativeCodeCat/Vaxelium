@@ -140,3 +140,36 @@ pub fn hex_color(hex: &str) -> Option<Color> {
     let value = u32::from_str_radix(digits, 16).ok()?;
     Some(Color::from_rgb8((value >> 16) as u8, (value >> 8) as u8, value as u8))
 }
+
+/// A name as plain lower-case letters, for sorting: styled Unicode letters such as 𝙲𝚛𝚎𝚊𝚝𝚎 (bold,
+/// italic, monospace and the like) and full-width letters count as the plain letters they look like.
+pub fn sort_key(name: &str) -> String {
+    name.chars().map(plain_letter).collect::<String>().to_lowercase()
+}
+
+/// The plain letter or digit a styled one stands for, or the character as it is.
+fn plain_letter(c: char) -> char {
+    let code = c as u32;
+    let from = |base: u32, offset: u32| char::from_u32(base + offset).unwrap_or(c);
+    match code {
+        // The mathematical letters come in sets of 52: A to Z, then a to z.
+        0x1D400..=0x1D6A3 => {
+            let i = (code - 0x1D400) % 52;
+            if i < 26 {
+                from('A' as u32, i)
+            } else {
+                from('a' as u32, i - 26)
+            }
+        }
+        // The mathematical digits come in sets of 10.
+        0x1D7CE..=0x1D7FF => from('0' as u32, (code - 0x1D7CE) % 10),
+        0xFF21..=0xFF3A => from('A' as u32, code - 0xFF21),
+        0xFF41..=0xFF5A => from('a' as u32, code - 0xFF41),
+        0xFF10..=0xFF19 => from('0' as u32, code - 0xFF10),
+        _ => c,
+    }
+}
+
+#[cfg(test)]
+#[path = "tests/util.rs"]
+mod tests;
