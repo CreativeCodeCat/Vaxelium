@@ -285,6 +285,35 @@ impl App {
         word.strip_prefix('@').map(str::to_string)
     }
 
+    /// Every `@` mention in a message that should stand out: role pings in the role's colour, and members
+    /// in their highest coloured role's colour (`role` is 0 for a member).
+    pub fn mentions(&self, text: &str) -> Vec<RolePing> {
+        let mut found = self.role_pings(text);
+        for (name, id) in &self.server.member_ids {
+            let needle = format!("@{name}");
+            let color = self.member_color(id);
+            let mut from = 0;
+            while let Some(at) = text[from..].find(&needle) {
+                let start = from + at;
+                let end = start + needle.len();
+                let next = text[end..].chars().next();
+                let whole = !next.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '-');
+                // A role with the same name as a member keeps its own ping.
+                let taken = found.iter().any(|p| p.range.start < end && start < p.range.end);
+                if whole && !taken {
+                    found.push(RolePing {
+                        range: start..end,
+                        role: 0,
+                        color,
+                    });
+                }
+                from = end;
+            }
+        }
+        found.sort_by_key(|ping| ping.range.start);
+        found
+    }
+
     /// True when a message pings a role this viewer holds.
     pub fn pings_me(&self, text: &str) -> bool {
         let held = self.server.member_roles.get(&self.user_id);
