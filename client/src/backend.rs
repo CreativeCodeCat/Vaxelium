@@ -4,14 +4,15 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender};
+use std::net::TcpListener;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use common::{is_valid_email, AuthReply, AuthRequest, ClientMsg, ServerMsg};
+use common::{is_valid_email, AuthReply, AuthRequest, ClientMsg, ServerMsg, DISCORD_CALLBACK_PORT};
 
 use crate::discover::FoundServer;
 use crate::net::{self, Connection, NetEvent};
-use crate::{auth_client, keychain};
+use crate::{auth_client, discord_login, keychain};
 
 /// How long to wait before trying a server again after its direct messages could not be reached.
 const DM_RETRY: Duration = Duration::from_secs(30);
@@ -359,18 +360,44 @@ impl Backend {
             }
         };
         match self.auth(request)? {
-            AuthReply::Session { token, name } => {
-                if remember {
-                    if let Err(e) = keychain::store(&name, &token) {
-                        eprintln!("could not save your login to the keychain: {e}");
-                    }
-                }
-                self.set_session(token, name.clone(), remember);
-                Ok(name)
-            }
+            AuthReply::Session { token, name } => Ok(self.finish_login(token, name, remember)),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
         }
+    }
+
+    /// Logs in with a Discord account. Opens Discord in the browser, and waits for Discord to send the
+    /// browser back to a listener on this computer. Then the code is checked with the auth service.
+    pub fn discord_login(&self, remember: bool) -> Result<String, CmdError> {
+        let listener = TcpListener::bind(("127.0.0.1", DISCORD_CALLBACK_PORT)).map_err(|_| {
+            CmdError::new("Another Discord login is already waiting. Finish that one in your browser first.")
+        })?;
+        let redirect_uri = format!("http://127.0.0.1:{DISCORD_CALLBACK_PORT}/callback");
+        let (url, state) = match self.auth(AuthRequest::DiscordStart { redirect_uri: redirect_uri.clone() })? {
+            AuthReply::DiscordUrl { url, state } => (url, state),
+            AuthReply::Error { text } => return Err(CmdError::new(text)),
+            _ => return Err(CmdError::new("Unexpected reply from the auth service.")),
+        };
+        if let Err(e) = discord_login::open_browser(&url) {
+            return Err(CmdError::new(format!("Could not open your browser ({e}). Open this address to log in: {url}")));
+        }
+        let code = discord_login::wait_for_code(&listener, &state, Duration::from_secs(180)).map_err(CmdError::new)?;
+        match self.auth(AuthRequest::DiscordLogin { code, redirect_uri })? {
+            AuthReply::Session { token, name } => Ok(self.finish_login(token, name, remember)),
+            AuthReply::Error { text } => Err(CmdError::new(text)),
+            _ => Err(CmdError::new("Unexpected reply from the auth service.")),
+        }
+    }
+
+    /// Keeps a new login: saves it to the keychain when asked to, and makes it the session.
+    fn finish_login(&self, token: String, name: String, remember: bool) -> String {
+        if remember {
+            if let Err(e) = keychain::store(&name, &token) {
+                eprintln!("could not save your login to the keychain: {e}");
+            }
+        }
+        self.set_session(token, name.clone(), remember);
+        name
     }
 
     /// Checks a login saved from an earlier run. If the auth service cannot be reached, the saved
