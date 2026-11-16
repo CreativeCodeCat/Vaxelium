@@ -7,7 +7,7 @@
 
 ## Message text selection
 
-- [ ] Clicking outside a message clears the selection (only Escape does now).
+- [x] Clicking outside a message clears the selection (only Escape does now).
 - [ ] A selection can span more than one message.
 - [x] Ctrl+C in the composer copies the composer's own selection, not a selection in a message.
 - [ ] Dragging through the gap between blocks (paragraphs, code blocks, lists) keeps extending the selection.

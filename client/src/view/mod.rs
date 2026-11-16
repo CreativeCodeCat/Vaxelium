@@ -19,7 +19,6 @@ use crate::icons;
 use crate::theme::Pal;
 use crate::util::{initial, name_color};
 
-
 /// The height of the titlebar, in pixels.
 pub const TITLEBAR_HEIGHT: f32 = 32.0;
 
@@ -66,14 +65,25 @@ pub fn round(bg: Color, radius: f32) -> container::Style {
 }
 
 /// A transparent button that shows `hover` behind it when the pointer is over it.
-pub fn ghost<'a>(content: impl Into<Element<'a, Message>>, msg: Option<Message>, hover: Color, radius: f32) -> Element<'a, Message> {
-    let mut b = button(content).padding(crate::util::pad2(2.0, 4.0)).style(move |_: &Theme, status: button::Status| {
-        let bg = match status {
-            button::Status::Hovered | button::Status::Pressed => Some(Background::Color(hover)),
-            _ => None,
-        };
-        button::Style { background: bg, border: border::rounded(radius), ..button::Style::default() }
-    });
+pub fn ghost<'a>(
+    content: impl Into<Element<'a, Message>>,
+    msg: Option<Message>,
+    hover: Color,
+    radius: f32,
+) -> Element<'a, Message> {
+    let mut b = button(content)
+        .padding(crate::util::pad2(2.0, 4.0))
+        .style(move |_: &Theme, status: button::Status| {
+            let bg = match status {
+                button::Status::Hovered | button::Status::Pressed => Some(Background::Color(hover)),
+                _ => None,
+            };
+            button::Style {
+                background: bg,
+                border: border::rounded(radius),
+                ..button::Style::default()
+            }
+        });
     if let Some(m) = msg {
         b = b.on_press(m);
     }
@@ -82,16 +92,22 @@ pub fn ghost<'a>(content: impl Into<Element<'a, Message>>, msg: Option<Message>,
 
 /// A filled button in a colour, with text in another.
 pub fn solid<'a>(label: &str, msg: Message, bg: Color, fg: Color, width: Option<f32>) -> Element<'a, Message> {
-    let mut b = button(container(text(label.to_string()).size(14).color(fg)).align_x(iced::alignment::Horizontal::Center))
-        .padding(crate::util::pad2(8.0, 14.0))
-        .on_press(msg)
-        .style(move |_: &Theme, status: button::Status| {
-            let shade = match status {
-                button::Status::Hovered => Color { a: 0.85, ..bg },
-                _ => bg,
-            };
-            button::Style { background: Some(Background::Color(shade)), text_color: fg, border: border::rounded(6.0), ..button::Style::default() }
-        });
+    let mut b =
+        button(container(text(label.to_string()).size(14).color(fg)).align_x(iced::alignment::Horizontal::Center))
+            .padding(crate::util::pad2(8.0, 14.0))
+            .on_press(msg)
+            .style(move |_: &Theme, status: button::Status| {
+                let shade = match status {
+                    button::Status::Hovered => Color { a: 0.85, ..bg },
+                    _ => bg,
+                };
+                button::Style {
+                    background: Some(Background::Color(shade)),
+                    text_color: fg,
+                    border: border::rounded(6.0),
+                    ..button::Style::default()
+                }
+            });
     if let Some(w) = width {
         b = b.width(Length::Fixed(w));
     }
@@ -102,7 +118,11 @@ pub fn solid<'a>(label: &str, msg: Message, bg: Color, fg: Color, width: Option<
 pub fn link<'a>(label: &str, msg: Message, color: Color) -> Element<'a, Message> {
     button(text(label.to_string()).size(14).color(color))
         .padding(crate::util::pad2(2.0, 4.0))
-        .style(|_: &Theme, _| button::Style { background: None, text_color: Color::WHITE, ..button::Style::default() })
+        .style(|_: &Theme, _| button::Style {
+            background: None,
+            text_color: Color::WHITE,
+            ..button::Style::default()
+        })
         .on_press(msg)
         .into()
 }
@@ -127,12 +147,18 @@ pub fn link_ranges(body: &str) -> Vec<std::ops::Range<usize>> {
             continue;
         }
         // Only at the start of the text or after a space or an opening bracket, so a link inside another one is not found twice.
-        let after_opener = body[..start].ends_with(|c: char| c.is_whitespace() || matches!(c, '(' | '[' | '<' | '"' | '\''));
+        let after_opener =
+            body[..start].ends_with(|c: char| c.is_whitespace() || matches!(c, '(' | '[' | '<' | '"' | '\''));
         if start > 0 && !after_opener {
             continue;
         }
         let mut end = start + rest.find(char::is_whitespace).unwrap_or(rest.len());
-        while end > start && matches!(body.as_bytes()[end - 1], b'.' | b',' | b')' | b'!' | b'?' | b';' | b':' | b'"' | b'\'') {
+        while end > start
+            && matches!(
+                body.as_bytes()[end - 1],
+                b'.' | b',' | b')' | b'!' | b'?' | b';' | b':' | b'"' | b'\''
+            )
+        {
             end -= 1;
         }
         if end - start > "https://".len() {
@@ -156,13 +182,21 @@ pub fn linked_text<'a>(body: &str, size: f32, color: Color, pal: Pal) -> Element
             spans.push(iced::widget::span(body[at..range.start].to_string()).color(color));
         }
         let url = body[range.clone()].to_string();
-        spans.push(iced::widget::span(url.clone()).color(pal.link).underline(true).link(url));
+        spans.push(
+            iced::widget::span(url.clone())
+                .color(pal.link)
+                .underline(true)
+                .link(url),
+        );
         at = range.end;
     }
     if at < body.len() {
         spans.push(iced::widget::span(body[at..].to_string()).color(color));
     }
-    iced::widget::rich_text(spans).size(size).on_link_click(Message::OpenLink).into()
+    iced::widget::rich_text(spans)
+        .size(size)
+        .on_link_click(Message::OpenLink)
+        .into()
 }
 
 /// A bio: bold, italic, lists and links, as `bio::styled` and `bio::lists` format it.
@@ -216,16 +250,27 @@ pub fn bio_text<'a>(body: &str, size: f32, color: Color, pal: Pal) -> Element<'a
     if let Some((current, start)) = run {
         spans.push(make(&plain[start..], current));
     }
-    iced::widget::rich_text(spans).size(size).on_link_click(Message::OpenLink).into()
+    iced::widget::rich_text(spans)
+        .size(size)
+        .on_link_click(Message::OpenLink)
+        .into()
 }
 
 pub fn divider<'a>(color: Color) -> Element<'a, Message> {
-    container(space()).width(Length::Fill).height(Length::Fixed(1.0)).style(move |_: &Theme| round(color, 0.0)).into()
+    container(space())
+        .width(Length::Fill)
+        .height(Length::Fixed(1.0))
+        .style(move |_: &Theme| round(color, 0.0))
+        .into()
 }
 
 /// A panel: a column with a background.
 pub fn panel<'a>(content: impl Into<Element<'a, Message>>, width: Length, bg: Color) -> Element<'a, Message> {
-    container(content).width(width).height(Length::Fill).style(move |_: &Theme| round(bg, 0.0)).into()
+    container(content)
+        .width(width)
+        .height(Length::Fill)
+        .style(move |_: &Theme| round(bg, 0.0))
+        .into()
 }
 
 /// A text label in the app's muted colour.
@@ -278,7 +323,11 @@ fn body(app: &App, pal: Pal) -> Element<'_, Message> {
             let main: Element<'_, Message> = if app.home && app.chat_ready() {
                 chat::home(app, pal)
             } else if app.chat_ready() {
-                if app.members_view { chat::members_page(app, pal) } else { chat::channel(app, pal) }
+                if app.members_view {
+                    chat::members_page(app, pal)
+                } else {
+                    chat::channel(app, pal)
+                }
             } else {
                 pages::server_status(app, pal)
             };
@@ -295,7 +344,11 @@ fn titlebar(app: &App, pal: Pal) -> Element<'_, Message> {
     } else if app.home {
         app.channel_label()
     } else {
-        format!("{}  ·  {}", app.channel_label(), app.selected_name().unwrap_or_default())
+        format!(
+            "{}  ·  {}",
+            app.channel_label(),
+            app.selected_name().unwrap_or_default()
+        )
     };
     let drag = mouse_area(
         container(text(title).size(13).color(pal.text))
@@ -325,7 +378,12 @@ fn titlebar_button<'a>(icon: &'static str, msg: Message, fg: Color, hover: Color
                 button::Status::Hovered => Some(Background::Color(hover)),
                 _ => None,
             };
-            button::Style { background: bg, text_color: fg, border: border::rounded(0.0), ..button::Style::default() }
+            button::Style {
+                background: bg,
+                text_color: fg,
+                border: border::rounded(0.0),
+                ..button::Style::default()
+            }
         })
         .into()
 }
@@ -395,19 +453,5 @@ pub fn drag_cursor() -> mouse::Interaction {
 }
 
 #[cfg(test)]
-mod link_tests {
-    use super::link_ranges;
-
-    #[test]
-    fn finds_web_links_and_leaves_out_trailing_punctuation() {
-        let body = "see https://example.com/a, or (http://x.org/b). not a link: ftp://no ahttps://no";
-        let found: Vec<&str> = link_ranges(body).into_iter().map(|r| &body[r]).collect();
-        assert_eq!(found, vec!["https://example.com/a", "http://x.org/b"]);
-    }
-
-    #[test]
-    fn a_link_inside_another_is_not_found_twice() {
-        let body = "https://a.example/http://b.example";
-        assert_eq!(link_ranges(body).len(), 1);
-    }
-}
+#[path = "../tests/view.rs"]
+mod tests;

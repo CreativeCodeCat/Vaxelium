@@ -154,7 +154,12 @@ impl App {
         }
         // @everyone is held by everyone, so its permissions apply first.
         let held = self.server.member_roles.get(&self.user_id);
-        let everyone = self.server.roles.iter().find(|r| r.id == common::EVERYONE_ROLE).map_or(0, |r| r.permissions);
+        let everyone = self
+            .server
+            .roles
+            .iter()
+            .find(|r| r.id == common::EVERYONE_ROLE)
+            .map_or(0, |r| r.permissions);
         let bits = self
             .server
             .roles
@@ -173,11 +178,10 @@ impl App {
     /// @everyone's colour. `None` when there is no colour to show.
     pub fn member_color(&self, member_id: &str) -> Option<iced::Color> {
         let held = self.server.member_roles.get(member_id);
-        let own = self
-            .server
-            .roles
-            .iter()
-            .find(|r| r.id != common::EVERYONE_ROLE && !r.color.is_empty() && held.is_some_and(|h| h.contains(&r.id)));
+        let own =
+            self.server.roles.iter().find(|r| {
+                r.id != common::EVERYONE_ROLE && !r.color.is_empty() && held.is_some_and(|h| h.contains(&r.id))
+            });
         let role = own.or_else(|| self.server.roles.iter().find(|r| r.id == common::EVERYONE_ROLE))?;
         crate::util::hex_color(&role.color)
     }
@@ -197,7 +201,12 @@ impl App {
         let held = self.server.member_roles.get(&self.user_id);
         let mine = |role: i64| role == common::EVERYONE_ROLE || held.is_some_and(|h| h.contains(&role));
         let mut allowed = false;
-        for o in self.server.overrides.iter().filter(|o| o.channel_id == self.server.channel_id && mine(o.role)) {
+        for o in self
+            .server
+            .overrides
+            .iter()
+            .filter(|o| o.channel_id == self.server.channel_id && mine(o.role))
+        {
             match o.send {
                 Some(false) => return false,
                 Some(true) => allowed = true,
@@ -231,7 +240,7 @@ impl App {
     }
 
     /// The highest role a member holds that is shown in its own group in the member list.
-    pub fn top_hoisted_role_by_name(&self, name: &str) -> Option<&common::RoleInfo> {
+    pub fn top_hoisted_role(&self, name: &str) -> Option<&common::RoleInfo> {
         let held = self.server.member_roles.get(self.server.member_ids.get(name)?)?;
         self.server.roles.iter().find(|r| r.hoisted && held.contains(&r.id))
     }
@@ -239,7 +248,12 @@ impl App {
     /// The `@name` pings in a message, for roles anyone may ping: where each is, which role, and its colour.
     pub fn role_pings(&self, text: &str) -> Vec<RolePing> {
         let mut found = Vec::new();
-        for role in self.server.roles.iter().filter(|r| r.mentionable && r.id != common::EVERYONE_ROLE) {
+        for role in self
+            .server
+            .roles
+            .iter()
+            .filter(|r| r.mentionable && r.id != common::EVERYONE_ROLE)
+        {
             if !crate::search::mention_in(text, &role.name) {
                 continue;
             }
@@ -251,7 +265,11 @@ impl App {
                 let end = start + needle.len();
                 let next = text[end..].chars().next();
                 if !next.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '-') {
-                    found.push(RolePing { range: start..end, role: role.id, color });
+                    found.push(RolePing {
+                        range: start..end,
+                        role: role.id,
+                        color,
+                    });
                 }
                 from = end;
             }
@@ -270,7 +288,9 @@ impl App {
     /// True when a message pings a role this viewer holds.
     pub fn pings_me(&self, text: &str) -> bool {
         let held = self.server.member_roles.get(&self.user_id);
-        self.role_pings(text).iter().any(|p| held.is_some_and(|h| h.contains(&p.role)))
+        self.role_pings(text)
+            .iter()
+            .any(|p| held.is_some_and(|h| h.contains(&p.role)))
     }
 
     /// The name of a direct message's other member, from this server's list or another server's.
@@ -311,21 +331,33 @@ impl App {
             return Some(own.other_id.clone());
         }
         let link = self.main.addr.as_ref().and_then(|a| self.dm_links.get(a))?;
-        link.dms.iter().find(|d| d.channel == *channel).map(|d| d.other_id.clone())
+        link.dms
+            .iter()
+            .find(|d| d.channel == *channel)
+            .map(|d| d.other_id.clone())
     }
 
     pub(crate) fn server_label(&self, addr: &str, server_name: &str) -> String {
         if !server_name.is_empty() {
             return server_name.to_string();
         }
-        self.prefs.servers.iter().find(|s| s.addr == addr).map(|s| s.name.clone()).unwrap_or_else(|| addr.to_string())
+        self.prefs
+            .servers
+            .iter()
+            .find(|s| s.addr == addr)
+            .map(|s| s.name.clone())
+            .unwrap_or_else(|| addr.to_string())
     }
 
     /// Every conversation with this person, on every server, in a stable order.
     pub fn person_targets(&self, other_id: &str) -> Vec<Target> {
         let mut out = Vec::new();
         for (addr, link) in &self.dm_links {
-            for dm in link.dms.iter().filter(|d| d.other_id == other_id && !self.blocked_on(addr, other_id)) {
+            for dm in link
+                .dms
+                .iter()
+                .filter(|d| d.other_id == other_id && !self.blocked_on(addr, other_id))
+            {
                 out.push(Target {
                     addr: addr.clone(),
                     channel: dm.channel.clone(),
@@ -375,7 +407,11 @@ impl App {
         };
         let mut entries = Vec::new();
         for (index, target) in self.person_targets(&person).iter().enumerate() {
-            let Some(history) = self.dm_links.get(&target.addr).and_then(|l| l.history.get(&target.channel)) else {
+            let Some(history) = self
+                .dm_links
+                .get(&target.addr)
+                .and_then(|l| l.history.get(&target.channel))
+            else {
                 continue;
             };
             for message in history {
@@ -414,7 +450,12 @@ impl App {
             return perm::ALL;
         }
         let held = self.server.member_roles.get(member_id);
-        let everyone = self.server.roles.iter().find(|r| r.id == common::EVERYONE_ROLE).map_or(0, |r| r.permissions);
+        let everyone = self
+            .server
+            .roles
+            .iter()
+            .find(|r| r.id == common::EVERYONE_ROLE)
+            .map_or(0, |r| r.permissions);
         self.server
             .roles
             .iter()
@@ -445,7 +486,13 @@ impl App {
     /// Saves which members of the open server are protected, as the server has just reported them.
     /// Returns true when the saved list changed.
     pub fn remember_protected(&mut self) -> bool {
-        let mut protected: Vec<String> = self.server.member_ids.values().filter(|id| self.is_protected(id)).cloned().collect();
+        let mut protected: Vec<String> = self
+            .server
+            .member_ids
+            .values()
+            .filter(|id| self.is_protected(id))
+            .cloned()
+            .collect();
         protected.sort();
         let Some(server) = self.selected.and_then(|i| self.prefs.servers.get_mut(i)) else {
             return false;
@@ -464,7 +511,10 @@ impl App {
 
     /// True when this account is ignored on the open server. A protected account is never ignored.
     pub fn is_ignored_here(&self, account_id: &str) -> bool {
-        !self.is_protected(account_id) && self.selected_server().is_some_and(|s| s.ignored.iter().any(|id| id == account_id))
+        !self.is_protected(account_id)
+            && self
+                .selected_server()
+                .is_some_and(|s| s.ignored.iter().any(|id| id == account_id))
     }
 
     /// Which server a direct message id belongs to, and its real id there.
@@ -490,12 +540,20 @@ impl App {
     /// when they say anything, otherwise the server-wide permission does.
     pub fn channel_permission(&self, channel: i64, bit: u32) -> bool {
         let held = self.server.member_roles.get(&self.user_id);
-        let member = self.server.member_channel_overrides.iter().find(|o| o.channel_id == channel && o.member == self.user_id).map(|o| o.setting());
+        let member = self
+            .server
+            .member_channel_overrides
+            .iter()
+            .find(|o| o.channel_id == channel && o.member == self.user_id)
+            .map(|o| o.setting());
         let roles: Vec<common::Setting> = self
             .server
             .overrides
             .iter()
-            .filter(|o| o.channel_id == channel && (o.role == common::EVERYONE_ROLE || held.is_some_and(|h| h.contains(&o.role))))
+            .filter(|o| {
+                o.channel_id == channel
+                    && (o.role == common::EVERYONE_ROLE || held.is_some_and(|h| h.contains(&o.role)))
+            })
             .map(|o| o.setting())
             .collect();
         common::grant(member, &roles, bit).unwrap_or(self.my_permissions() & bit != 0)
@@ -504,12 +562,20 @@ impl App {
     /// Whether this account may do something in a category, decided like [`Self::channel_permission`].
     pub fn category_permission(&self, category: i64, bit: u32) -> bool {
         let held = self.server.member_roles.get(&self.user_id);
-        let member = self.server.member_category_overrides.iter().find(|o| o.category_id == category && o.member == self.user_id).map(|o| o.setting());
+        let member = self
+            .server
+            .member_category_overrides
+            .iter()
+            .find(|o| o.category_id == category && o.member == self.user_id)
+            .map(|o| o.setting());
         let roles: Vec<common::Setting> = self
             .server
             .category_overrides
             .iter()
-            .filter(|o| o.category_id == category && (o.role == common::EVERYONE_ROLE || held.is_some_and(|h| h.contains(&o.role))))
+            .filter(|o| {
+                o.category_id == category
+                    && (o.role == common::EVERYONE_ROLE || held.is_some_and(|h| h.contains(&o.role)))
+            })
             .map(|o| o.setting())
             .collect();
         common::grant(member, &roles, bit).unwrap_or(self.my_permissions() & bit != 0)

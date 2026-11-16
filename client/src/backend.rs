@@ -15,8 +15,11 @@ use crate::{auth_client, discord_login, keychain};
 
 /// Opens a Discord login page in the browser, or says how to open it by hand.
 fn open_discord(url: &str) -> Result<(), CmdError> {
-    discord_login::open_browser(url)
-        .map_err(|e| CmdError::new(format!("Could not open your browser ({e}). Open this address to log in: {url}")))
+    discord_login::open_browser(url).map_err(|e| {
+        CmdError::new(format!(
+            "Could not open your browser ({e}). Open this address to log in: {url}"
+        ))
+    })
 }
 
 /// How long to wait before trying a server again after its direct messages could not be reached.
@@ -34,11 +37,17 @@ pub struct CmdError {
 
 impl CmdError {
     pub fn new(message: impl Into<String>) -> Self {
-        Self { message: message.into(), auth_down: false }
+        Self {
+            message: message.into(),
+            auth_down: false,
+        }
     }
 
     fn unreachable(message: String) -> Self {
-        Self { message, auth_down: true }
+        Self {
+            message,
+            auth_down: true,
+        }
     }
 }
 
@@ -102,9 +111,19 @@ pub struct Restored {
 #[derive(Debug, Clone)]
 pub enum Event {
     /// A message from the open server (`dm` is false) or from a direct message connection.
-    Net { dm: bool, addr: String, id: u64, msg: ServerMsg },
+    Net {
+        dm: bool,
+        addr: String,
+        id: u64,
+        msg: ServerMsg,
+    },
     /// A connection ended.
-    Closed { dm: bool, addr: String, id: u64, reason: String },
+    Closed {
+        dm: bool,
+        addr: String,
+        id: u64,
+        reason: String,
+    },
     /// A direct message connection came up or went down.
     DmLink { addr: String, id: u64, up: bool },
     /// A server answered a discovery request.
@@ -142,7 +161,11 @@ pub struct Backend {
 
 impl Backend {
     pub fn new(events: Sender<Event>, config_dir: PathBuf) -> Self {
-        Self { inner: Arc::new(Mutex::new(Inner::default())), events, config_dir }
+        Self {
+            inner: Arc::new(Mutex::new(Inner::default())),
+            events,
+            config_dir,
+        }
     }
 
     /// A sender for events, for background work that reports back to the app.
@@ -176,11 +199,21 @@ impl Backend {
             while let Ok(event) = rx.recv() {
                 match event {
                     NetEvent::Server(msg) => {
-                        let _ = backend.events.send(Event::Net { dm, addr: addr.clone(), id, msg });
+                        let _ = backend.events.send(Event::Net {
+                            dm,
+                            addr: addr.clone(),
+                            id,
+                            msg,
+                        });
                     }
                     NetEvent::Disconnected(reason) => {
                         backend.forget_link(dm, &addr, id);
-                        let _ = backend.events.send(Event::Closed { dm, addr: addr.clone(), id, reason });
+                        let _ = backend.events.send(Event::Closed {
+                            dm,
+                            addr: addr.clone(),
+                            id,
+                            reason,
+                        });
                         break;
                     }
                 }
@@ -201,14 +234,20 @@ impl Backend {
             let mut inner = self.lock();
             if inner.dm.get(addr).is_some_and(|l| l.id == id) {
                 inner.dm.remove(addr);
-                inner.dm_retry_at.insert(addr.to_string(), Instant::now() + DM_DROP_RETRY);
+                inner
+                    .dm_retry_at
+                    .insert(addr.to_string(), Instant::now() + DM_DROP_RETRY);
                 true
             } else {
                 false
             }
         };
         if dropped {
-            let _ = self.events.send(Event::DmLink { addr: addr.to_string(), id, up: false });
+            let _ = self.events.send(Event::DmLink {
+                addr: addr.to_string(),
+                id,
+                up: false,
+            });
         }
     }
 
@@ -245,17 +284,26 @@ impl Backend {
 
     pub fn send_main(&self, msg: ClientMsg) -> Result<(), CmdError> {
         let inner = self.lock();
-        let link = inner.main.as_ref().ok_or_else(|| CmdError::new("Not connected to a server."))?;
-        link.conn.outgoing.send(msg).map_err(|_| CmdError::new("Not connected to a server."))
+        let link = inner
+            .main
+            .as_ref()
+            .ok_or_else(|| CmdError::new("Not connected to a server."))?;
+        link.conn
+            .outgoing
+            .send(msg)
+            .map_err(|_| CmdError::new("Not connected to a server."))
     }
 
     /// Sets this account's status on every server it is connected to.
     /// Tells every server this client is connected to the status text, so everyone connected sees it.
-    pub fn set_profile_status_everywhere(&self, text: &str) {
+    pub fn broadcast_status(&self, text: &str) {
         let inner = self.lock();
         let links = inner.main.iter().chain(inner.dm.values());
         for link in links {
-            let _ = link.conn.outgoing.send(ClientMsg::SetProfileStatus { text: text.to_string() });
+            let _ = link
+                .conn
+                .outgoing
+                .send(ClientMsg::SetProfileStatus { text: text.to_string() });
         }
     }
 
@@ -273,7 +321,10 @@ impl Backend {
             .dm
             .get(addr)
             .ok_or_else(|| CmdError::new("Not connected to that server."))?;
-        link.conn.outgoing.send(msg).map_err(|_| CmdError::new("Not connected to that server."))
+        link.conn
+            .outgoing
+            .send(msg)
+            .map_err(|_| CmdError::new("Not connected to that server."))
     }
 
     /// Starts a background connection to each of these servers that has none yet. Each one is made
@@ -351,7 +402,13 @@ impl Backend {
     }
 
     /// Registers or logs in with the auth service. With `name` set, the account is registered.
-    pub fn login(&self, email: String, password: String, name: Option<String>, remember: bool) -> Result<String, CmdError> {
+    pub fn login(
+        &self,
+        email: String,
+        password: String,
+        name: Option<String>,
+        remember: bool,
+    ) -> Result<String, CmdError> {
         let email = email.trim().to_string();
         let request = match name {
             Some(name) => {
@@ -363,7 +420,9 @@ impl Backend {
                     return Err(CmdError::new("Enter a valid email address."));
                 }
                 if password.chars().count() < MIN_PASSWORD_LEN {
-                    return Err(CmdError::new(format!("Password must be at least {MIN_PASSWORD_LEN} characters.")));
+                    return Err(CmdError::new(format!(
+                        "Password must be at least {MIN_PASSWORD_LEN} characters."
+                    )));
                 }
                 AuthRequest::Register { name, email, password }
             }
@@ -418,7 +477,9 @@ impl Backend {
     fn wait_discord(&self, state: &str) -> Result<AuthReply, CmdError> {
         let deadline = Instant::now() + Duration::from_secs(10 * 60);
         loop {
-            match self.auth(AuthRequest::DiscordPoll { state: state.to_string() })? {
+            match self.auth(AuthRequest::DiscordPoll {
+                state: state.to_string(),
+            })? {
                 AuthReply::DiscordPending => {
                     if Instant::now() >= deadline {
                         return Err(CmdError::new("The Discord login took too long. Try again."));
@@ -464,14 +525,24 @@ impl Backend {
     /// Checks a login saved from an earlier run. If the auth service cannot be reached, the saved
     /// login is used anyway, so the chat server can still accept it.
     pub fn restore(&self, saved_name: &str) -> Restored {
-        let none = |error: Option<String>| Restored { user: None, auth_down: false, error, notice: None };
+        let none = |error: Option<String>| Restored {
+            user: None,
+            auth_down: false,
+            error,
+            notice: None,
+        };
         let Some(token) = keychain::load(saved_name) else {
             return none(None);
         };
         match self.auth(AuthRequest::Verify { token: token.clone() }) {
             Ok(AuthReply::Verified { name, .. }) => {
                 self.set_session(token, name.clone(), true);
-                Restored { user: Some(name), auth_down: false, error: None, notice: None }
+                Restored {
+                    user: Some(name),
+                    auth_down: false,
+                    error: None,
+                    notice: None,
+                }
             }
             Ok(AuthReply::Error { text }) => none(Some(format!("Your saved login has ended: {text}"))),
             Ok(_) => none(Some("Unexpected reply from the auth service.".into())),
@@ -481,7 +552,10 @@ impl Backend {
                     user: Some(saved_name.to_string()),
                     auth_down: true,
                     error: None,
-                    notice: Some(format!("Auth service unreachable ({}). Using your saved login.", e.message)),
+                    notice: Some(format!(
+                        "Auth service unreachable ({}). Using your saved login.",
+                        e.message
+                    )),
                 }
             }
         }
@@ -543,10 +617,29 @@ impl Backend {
     pub fn profile_card(&self, id: &str) -> Result<Card, CmdError> {
         // The session lets the card list the servers the two of you share.
         let token = self.token().unwrap_or_default();
-        match self.auth(AuthRequest::ProfileCard { id: id.to_string(), token })? {
-            AuthReply::ProfileCard { name, username, bio, banner, avatar, created, status, mutual } => {
-                Ok(Card { name, username, bio, banner, avatar, status, created, mutual })
-            }
+        match self.auth(AuthRequest::ProfileCard {
+            id: id.to_string(),
+            token,
+        })? {
+            AuthReply::ProfileCard {
+                name,
+                username,
+                bio,
+                banner,
+                avatar,
+                created,
+                status,
+                mutual,
+            } => Ok(Card {
+                name,
+                username,
+                bio,
+                banner,
+                avatar,
+                status,
+                created,
+                mutual,
+            }),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
         }
@@ -571,7 +664,17 @@ impl Backend {
     /// Stores the name the auth service now reports, and moves the saved login to it.
     fn apply_profile(&self, reply: AuthReply) -> Result<Profile, CmdError> {
         match reply {
-            AuthReply::Profile { name, username, email, verified, can_verify, bio, banner, avatar, has_password } => {
+            AuthReply::Profile {
+                name,
+                username,
+                email,
+                verified,
+                can_verify,
+                bio,
+                banner,
+                avatar,
+                has_password,
+            } => {
                 let (old, token, remember) = {
                     let mut inner = self.lock();
                     let old = std::mem::replace(&mut inner.user, name.clone());
@@ -583,7 +686,17 @@ impl Backend {
                     }
                     keychain::forget(&old);
                 }
-                Ok(Profile { name, username, email, verified, can_verify, bio, banner, avatar, has_password })
+                Ok(Profile {
+                    name,
+                    username,
+                    email,
+                    verified,
+                    can_verify,
+                    bio,
+                    banner,
+                    avatar,
+                    has_password,
+                })
             }
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
@@ -614,7 +727,13 @@ impl Backend {
     pub fn linked_accounts(&self) -> Result<LinkedAccounts, CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
         match self.auth(AuthRequest::LinkedAccounts { token })? {
-            AuthReply::LinkedAccounts { discord, can_unlink_discord } => Ok(LinkedAccounts { discord, can_unlink_discord }),
+            AuthReply::LinkedAccounts {
+                discord,
+                can_unlink_discord,
+            } => Ok(LinkedAccounts {
+                discord,
+                can_unlink_discord,
+            }),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
         }
@@ -632,11 +751,14 @@ impl Backend {
 
     pub fn change_email(&self, password: String, new_email: String) -> Result<String, CmdError> {
         let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
-        match self.auth(AuthRequest::ChangeEmail { token, password, new_email })? {
+        match self.auth(AuthRequest::ChangeEmail {
+            token,
+            password,
+            new_email,
+        })? {
             AuthReply::EmailChanged { email } => Ok(email),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
         }
     }
-
 }

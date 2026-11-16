@@ -8,7 +8,7 @@ use std::sync::mpsc;
 use common::{ChatMessage, DirectMessage};
 use iced::Size;
 
-use crate::app::{App, Message, MenuKind, Page};
+use crate::app::{App, MenuKind, Message, Page};
 use crate::backend::Backend;
 use crate::model::Entry;
 use crate::prefs::{Prefs, ServerPref};
@@ -22,7 +22,15 @@ fn app() -> App {
     let dir = std::env::temp_dir().join("vaxelium-screens");
     let backend = Backend::new(tx, dir);
     let mut prefs = Prefs::default();
-    prefs.servers = vec![ServerPref { name: "Home".into(), addr: "127.0.0.1:7878".into(), icon: None, id: None, ignored: Vec::new(), protected: Vec::new(), linked: false }];
+    prefs.servers = vec![ServerPref {
+        name: "Home".into(),
+        addr: "127.0.0.1:7878".into(),
+        icon: None,
+        id: None,
+        ignored: Vec::new(),
+        protected: Vec::new(),
+        linked: false,
+    }];
     App::new(backend, prefs, Vec::new(), HashMap::new())
 }
 
@@ -35,7 +43,16 @@ fn chat_app() -> App {
     app.main.addr = Some("127.0.0.1:7878".into());
     app.main.welcomed = true;
     app.server.name = "Home".into();
-    app.server.channels = vec![common::ChannelRef { id: 1, name: "general".into() }, common::ChannelRef { id: 2, name: "random".into() }];
+    app.server.channels = vec![
+        common::ChannelRef {
+            id: 1,
+            name: "general".into(),
+        },
+        common::ChannelRef {
+            id: 2,
+            name: "random".into(),
+        },
+    ];
     app.server.channel = "general".into();
     app.server.channel_id = 1;
     app.server.user_id = "u1".into();
@@ -93,7 +110,6 @@ fn save(ui: &mut iced_test::Simulator<'_, Message>, app: &App, name: &str) {
     let snap = ui.snapshot(&theme).expect("screenshot");
     // The first call writes the picture and reports it as different; that is expected here.
     let _ = snap.matches_image(&path).expect("save screenshot");
-
 }
 
 /// A mouse drag: press at the first point, move through the rest, release at the last. Each step is
@@ -106,7 +122,12 @@ fn drag(app: &mut App, points: &[(f32, f32)]) {
         iced::Event::Mouse(Mouse::ButtonPressed(Button::Left)),
     )];
     for &(x, y) in rest {
-        steps.push((iced::Point::new(x, y), iced::Event::Mouse(Mouse::CursorMoved { position: iced::Point::new(x, y) })));
+        steps.push((
+            iced::Point::new(x, y),
+            iced::Event::Mouse(Mouse::CursorMoved {
+                position: iced::Point::new(x, y),
+            }),
+        ));
     }
     let (last, _) = *steps.last().expect("at least the press");
     steps.push((last, iced::Event::Mouse(Mouse::ButtonReleased(Button::Left))));
@@ -124,7 +145,11 @@ fn drag(app: &mut App, points: &[(f32, f32)]) {
 }
 
 fn simulate(app: &App) -> iced_test::Simulator<'_, Message> {
-    iced_test::Simulator::with_size(iced::Settings::default(), Size::new(1100.0, 700.0), crate::view::view(app))
+    iced_test::Simulator::with_size(
+        iced::Settings::default(),
+        Size::new(1100.0, 700.0),
+        crate::view::view(app),
+    )
 }
 
 #[test]
@@ -166,7 +191,9 @@ fn server_icon_screen() {
         *p = image::Rgba([(x * 2) as u8, 120, (y * 2) as u8, 255]);
     }
     let mut png = std::io::Cursor::new(Vec::new());
-    image::DynamicImage::ImageRgba8(img).write_to(&mut png, image::ImageFormat::Png).unwrap();
+    image::DynamicImage::ImageRgba8(img)
+        .write_to(&mut png, image::ImageFormat::Png)
+        .unwrap();
     let b64 = base64::engine::general_purpose::STANDARD.encode(png.into_inner());
     let mut app = chat_app();
     app.prefs.servers[0].icon = Some(b64.clone());
@@ -197,7 +224,13 @@ fn direct_messages_screen() {
     let mut app = chat_app();
     app.home = true;
     app.server.channel = "dm-1".into();
-    app.server.dms = vec![DirectMessage { channel_id: 5, channel: "dm-1".into(), name: "bob".into(), last_message: 1, other_id: "u2".into() }];
+    app.server.dms = vec![DirectMessage {
+        channel_id: 5,
+        channel: "dm-1".into(),
+        name: "bob".into(),
+        last_message: 1,
+        other_id: "u2".into(),
+    }];
     let mut ui = simulate(&app);
     save(&mut ui, &app, "dms");
 }
@@ -222,7 +255,7 @@ fn discover_screen() {
 
 fn save_at(app: &App, name: &str, w: f32, h: f32) {
     let settings = iced::Settings {
-        fonts: vec![include_bytes!("../ui/fonts/NotoSans-Subset.ttf").as_slice().into()],
+        fonts: vec![include_bytes!("../../ui/fonts/NotoSans-Subset.ttf").as_slice().into()],
         default_font: iced::Font::with_name("Noto Sans"),
         ..iced::Settings::default()
     };
@@ -274,14 +307,32 @@ fn server_profile_multiline_screen() {
 fn categories_screen() {
     let mut app = chat_app();
     app.server.channels = vec![
-        common::ChannelRef { id: 1, name: "general".into() },
-        common::ChannelRef { id: 2, name: "random".into() },
-        common::ChannelRef { id: 3, name: "dev".into() },
+        common::ChannelRef {
+            id: 1,
+            name: "general".into(),
+        },
+        common::ChannelRef {
+            id: 2,
+            name: "random".into(),
+        },
+        common::ChannelRef {
+            id: 3,
+            name: "dev".into(),
+        },
     ];
     app.server.categories = vec![common::CategoryInfo {
         id: 1,
         name: "Voice and text".into(),
-        channels: vec![common::ChannelRef { id: 3, name: "dev".into() }, common::ChannelRef { id: 2, name: "random".into() }],
+        channels: vec![
+            common::ChannelRef {
+                id: 3,
+                name: "dev".into(),
+            },
+            common::ChannelRef {
+                id: 2,
+                name: "random".into(),
+            },
+        ],
     }];
     save_at(&app, "categories", 1100.0, 700.0);
 }
@@ -359,6 +410,41 @@ fn dragging_across_message_text_selects_it() {
     // widgets send are then applied to the app, which draws the selection.
     drag(&mut app, &[(440.0, 240.0), (560.0, 240.0)]);
     save_at(&app, "text-selection", 1100.0, 700.0);
+}
+
+#[test]
+fn click_away_clears_selection() {
+    let mut app = chat_app();
+    let now = crate::util::now();
+    app.messages.insert(
+        1,
+        vec![Entry::Chat(ChatMessage {
+            id: 15,
+            channel_id: 1,
+            channel: "general".into(),
+            author: "bob".into(),
+            author_id: "u2".into(),
+            text: "Select some **bold** words here".into(),
+            timestamp: now,
+            edited: false,
+            reactions: Vec::new(),
+        })],
+    );
+    drag(&mut app, &[(440.0, 240.0), (560.0, 240.0)]);
+    // The window's release event comes through a subscription, which the simulator does not run.
+    let _ = app.update(Message::MouseReleased);
+    assert!(app.text_sel.is_some(), "the drag should select text");
+
+    // A press on other text in the same message starts a new selection rather than clearing it.
+    drag(&mut app, &[(460.0, 240.0)]);
+    let _ = app.update(Message::MouseReleased);
+    assert!(app.text_sel.is_some(), "a press on the text starts a new selection");
+
+    drag(&mut app, &[(700.0, 450.0)]);
+    assert!(
+        app.text_sel.is_none(),
+        "a click away from the text should clear the selection"
+    );
 }
 
 #[test]
@@ -470,7 +556,8 @@ fn clicking_a_details_summary_opens_it() {
             channel: "general".into(),
             author: "bob".into(),
             author_id: "u2".into(),
-            text: "<details>\n<summary>Click to expand</summary>\n\nThis is hidden expandable content.\n</details>".into(),
+            text: "<details>\n<summary>Click to expand</summary>\n\nThis is hidden expandable content.\n</details>"
+                .into(),
             timestamp: now,
             edited: false,
             reactions: Vec::new(),
@@ -518,8 +605,24 @@ fn small_caps_screen() {
 #[test]
 fn collapsed_category_screen() {
     let mut app = chat_app();
-    app.server.channels = vec![common::ChannelRef { id: 1, name: "general".into() }, common::ChannelRef { id: 2, name: "random".into() }];
-    app.server.categories = vec![common::CategoryInfo { id: 7, name: "Community".into(), channels: vec![common::ChannelRef { id: 3, name: "dev".into() }] }];
+    app.server.channels = vec![
+        common::ChannelRef {
+            id: 1,
+            name: "general".into(),
+        },
+        common::ChannelRef {
+            id: 2,
+            name: "random".into(),
+        },
+    ];
+    app.server.categories = vec![common::CategoryInfo {
+        id: 7,
+        name: "Community".into(),
+        channels: vec![common::ChannelRef {
+            id: 3,
+            name: "dev".into(),
+        }],
+    }];
     app.collapsed_categories.insert(7);
     save_at(&app, "collapsed", 1100.0, 700.0);
 }
@@ -535,9 +638,33 @@ fn channel_edit_screen() {
 fn channel_permissions_screen() {
     let mut app = chat_app();
     app.server.roles = vec![
-        common::RoleInfo { id: 1, name: "Admin".into(), color: "#e91e63".into(), permissions: common::perm::ALL, position: 3, mentionable: false, hoisted: false },
-        common::RoleInfo { id: 2, name: "Moderator".into(), color: "#2ecc71".into(), permissions: common::perm::MANAGE_MESSAGES, position: 2, mentionable: false, hoisted: false },
-        common::RoleInfo { id: 0, name: "@everyone".into(), color: "#95a5a6".into(), permissions: 0, position: -1_000_000_000, mentionable: false, hoisted: false },
+        common::RoleInfo {
+            id: 1,
+            name: "Admin".into(),
+            color: "#e91e63".into(),
+            permissions: common::perm::ALL,
+            position: 3,
+            mentionable: false,
+            hoisted: false,
+        },
+        common::RoleInfo {
+            id: 2,
+            name: "Moderator".into(),
+            color: "#2ecc71".into(),
+            permissions: common::perm::MANAGE_MESSAGES,
+            position: 2,
+            mentionable: false,
+            hoisted: false,
+        },
+        common::RoleInfo {
+            id: 0,
+            name: "@everyone".into(),
+            color: "#95a5a6".into(),
+            permissions: 0,
+            position: -1_000_000_000,
+            mentionable: false,
+            hoisted: false,
+        },
     ];
     let _ = app.update(Message::ChannelEditOpen(1));
     let _ = app.update(Message::EditSectionPick(crate::app::EditSection::Permissions));
@@ -565,7 +692,15 @@ fn category_access_unsaved_screen() {
     let mut app = chat_app();
     let _ = app.update(Message::CategoryEditOpen(1, "Text".into()));
     let _ = app.update(Message::EditSectionPick(crate::app::EditSection::Permissions));
-    let _ = app.update(Message::AccessDraftSet { target: crate::app::AccessTarget::Category(1), subject: common::Subject::Role(0), setting: common::Setting { view: Some(false), send: None, ..Default::default() } });
+    let _ = app.update(Message::AccessDraftSet {
+        target: crate::app::AccessTarget::Category(1),
+        subject: common::Subject::Role(0),
+        setting: common::Setting {
+            view: Some(false),
+            send: None,
+            ..Default::default()
+        },
+    });
     save_at(&app, "category-access-unsaved", 1100.0, 700.0);
 }
 
@@ -573,11 +708,40 @@ fn category_access_unsaved_screen() {
 fn access_add_roles_screen() {
     let mut app = chat_app();
     app.server.roles = vec![
-        common::RoleInfo { id: 2, name: "Moderator".into(), color: "#2ecc71".into(), permissions: 0, position: 2, mentionable: false, hoisted: false },
-        common::RoleInfo { id: 3, name: "Helper".into(), color: "#e91e63".into(), permissions: 0, position: 1, mentionable: false, hoisted: false },
-        common::RoleInfo { id: 0, name: "@everyone".into(), color: "#95a5a6".into(), permissions: 0, position: -1_000_000_000, mentionable: false, hoisted: false },
+        common::RoleInfo {
+            id: 2,
+            name: "Moderator".into(),
+            color: "#2ecc71".into(),
+            permissions: 0,
+            position: 2,
+            mentionable: false,
+            hoisted: false,
+        },
+        common::RoleInfo {
+            id: 3,
+            name: "Helper".into(),
+            color: "#e91e63".into(),
+            permissions: 0,
+            position: 1,
+            mentionable: false,
+            hoisted: false,
+        },
+        common::RoleInfo {
+            id: 0,
+            name: "@everyone".into(),
+            color: "#95a5a6".into(),
+            permissions: 0,
+            position: -1_000_000_000,
+            mentionable: false,
+            hoisted: false,
+        },
     ];
-    app.server.member_ids = [("alice".to_string(), "u1".to_string()), ("bob".to_string(), "u2".to_string())].into_iter().collect();
+    app.server.member_ids = [
+        ("alice".to_string(), "u1".to_string()),
+        ("bob".to_string(), "u2".to_string()),
+    ]
+    .into_iter()
+    .collect();
     let _ = app.update(Message::CategoryEditOpen(1, "Text".into()));
     let _ = app.update(Message::EditSectionPick(crate::app::EditSection::Permissions));
     let _ = app.update(Message::AccessAddOpen(crate::app::AccessTarget::Category(1)));
@@ -591,9 +755,19 @@ fn channel_sync_screen() {
     app.server.categories = vec![common::CategoryInfo {
         id: 7,
         name: "Community".into(),
-        channels: vec![common::ChannelRef { id: 1, name: "general".into() }],
+        channels: vec![common::ChannelRef {
+            id: 1,
+            name: "general".into(),
+        }],
     }];
-    app.server.category_overrides = vec![common::CategoryOverride { category_id: 7, role: 0, view: Some(false), send: None, manage_channels: None, manage_messages: None }];
+    app.server.category_overrides = vec![common::CategoryOverride {
+        category_id: 7,
+        role: 0,
+        view: Some(false),
+        send: None,
+        manage_channels: None,
+        manage_messages: None,
+    }];
     let _ = app.update(Message::ChannelEditOpen(1));
     let _ = app.update(Message::EditSectionPick(crate::app::EditSection::Permissions));
     save_at(&app, "channel-sync", 1100.0, 700.0);
@@ -603,15 +777,52 @@ fn channel_sync_screen() {
 fn access_lists_screen() {
     let mut app = chat_app();
     app.server.roles = vec![
-        common::RoleInfo { id: 2, name: "Moderator".into(), color: "#2ecc71".into(), permissions: 0, position: 2, mentionable: false, hoisted: false },
-        common::RoleInfo { id: 0, name: "@everyone".into(), color: "#95a5a6".into(), permissions: 0, position: -1_000_000_000, mentionable: false, hoisted: false },
+        common::RoleInfo {
+            id: 2,
+            name: "Moderator".into(),
+            color: "#2ecc71".into(),
+            permissions: 0,
+            position: 2,
+            mentionable: false,
+            hoisted: false,
+        },
+        common::RoleInfo {
+            id: 0,
+            name: "@everyone".into(),
+            color: "#95a5a6".into(),
+            permissions: 0,
+            position: -1_000_000_000,
+            mentionable: false,
+            hoisted: false,
+        },
     ];
     app.server.member_ids = [("alice".to_string(), "u1".to_string())].into_iter().collect();
     app.server.category_overrides = vec![
-        common::CategoryOverride { category_id: 1, role: 0, view: Some(false), send: None, manage_channels: None, manage_messages: None },
-        common::CategoryOverride { category_id: 1, role: 2, view: Some(true), send: Some(true), manage_channels: None, manage_messages: None },
+        common::CategoryOverride {
+            category_id: 1,
+            role: 0,
+            view: Some(false),
+            send: None,
+            manage_channels: None,
+            manage_messages: None,
+        },
+        common::CategoryOverride {
+            category_id: 1,
+            role: 2,
+            view: Some(true),
+            send: Some(true),
+            manage_channels: None,
+            manage_messages: None,
+        },
     ];
-    app.server.member_category_overrides = vec![common::MemberCategoryOverride { category_id: 1, member: "u1".into(), view: Some(true), send: None, manage_channels: None, manage_messages: None }];
+    app.server.member_category_overrides = vec![common::MemberCategoryOverride {
+        category_id: 1,
+        member: "u1".into(),
+        view: Some(true),
+        send: None,
+        manage_channels: None,
+        manage_messages: None,
+    }];
     let _ = app.update(Message::CategoryEditOpen(1, "Text".into()));
     let _ = app.update(Message::EditSectionPick(crate::app::EditSection::Permissions));
     save_at(&app, "access-lists", 1100.0, 700.0);
@@ -620,7 +831,14 @@ fn access_lists_screen() {
 #[test]
 fn category_private_locked_screen() {
     let mut app = chat_app();
-    app.server.category_overrides = vec![common::CategoryOverride { category_id: 1, role: 0, view: Some(false), send: None, manage_channels: None, manage_messages: None }];
+    app.server.category_overrides = vec![common::CategoryOverride {
+        category_id: 1,
+        role: 0,
+        view: Some(false),
+        send: None,
+        manage_channels: None,
+        manage_messages: None,
+    }];
     let _ = app.update(Message::CategoryEditOpen(1, "Text".into()));
     let _ = app.update(Message::EditSectionPick(crate::app::EditSection::Permissions));
     save_at(&app, "category-private-locked", 1100.0, 700.0);
@@ -630,12 +848,42 @@ fn category_private_locked_screen() {
 fn category_permissions_screen() {
     let mut app = chat_app();
     app.server.roles = vec![
-        common::RoleInfo { id: 2, name: "Moderator".into(), color: "#2ecc71".into(), permissions: common::perm::MANAGE_MESSAGES, position: 2, mentionable: false, hoisted: false },
-        common::RoleInfo { id: 0, name: "@everyone".into(), color: "#95a5a6".into(), permissions: 0, position: -1_000_000_000, mentionable: false, hoisted: false },
+        common::RoleInfo {
+            id: 2,
+            name: "Moderator".into(),
+            color: "#2ecc71".into(),
+            permissions: common::perm::MANAGE_MESSAGES,
+            position: 2,
+            mentionable: false,
+            hoisted: false,
+        },
+        common::RoleInfo {
+            id: 0,
+            name: "@everyone".into(),
+            color: "#95a5a6".into(),
+            permissions: 0,
+            position: -1_000_000_000,
+            mentionable: false,
+            hoisted: false,
+        },
     ];
     app.server.category_overrides = vec![
-        common::CategoryOverride { category_id: 1, role: 0, view: Some(false), send: None, manage_channels: None, manage_messages: None },
-        common::CategoryOverride { category_id: 1, role: 2, view: Some(true), send: Some(true), manage_channels: None, manage_messages: None },
+        common::CategoryOverride {
+            category_id: 1,
+            role: 0,
+            view: Some(false),
+            send: None,
+            manage_channels: None,
+            manage_messages: None,
+        },
+        common::CategoryOverride {
+            category_id: 1,
+            role: 2,
+            view: Some(true),
+            send: Some(true),
+            manage_channels: None,
+            manage_messages: None,
+        },
     ];
     let _ = app.update(Message::CategoryEditOpen(1, "Text".into()));
     let _ = app.update(Message::EditSectionPick(crate::app::EditSection::Permissions));
@@ -661,30 +909,86 @@ fn unsaved_bar_screen() {
 fn dragging_category_screen() {
     use crate::app::{Dnd, DragItem, DropTarget};
     let mut app = chat_app();
-    app.server.channels = vec![common::ChannelRef { id: 1, name: "general".into() }];
+    app.server.channels = vec![common::ChannelRef {
+        id: 1,
+        name: "general".into(),
+    }];
     app.server.categories = vec![
-        common::CategoryInfo { id: 1, name: "Community".into(), channels: Vec::new() },
-        common::CategoryInfo { id: 2, name: "Games".into(), channels: Vec::new() },
+        common::CategoryInfo {
+            id: 1,
+            name: "Community".into(),
+            channels: Vec::new(),
+        },
+        common::CategoryInfo {
+            id: 2,
+            name: "Games".into(),
+            channels: Vec::new(),
+        },
     ];
-    app.dnd = Some(Dnd { item: DragItem::Category(1), start: iced::Point::ORIGIN, moved: true, over: Some(DropTarget::End) });
+    app.dnd = Some(Dnd {
+        item: DragItem::Category(1),
+        start: iced::Point::ORIGIN,
+        moved: true,
+        over: Some(DropTarget::End),
+    });
     save_at(&app, "dragging-category", 1100.0, 700.0);
 }
 
 fn with_roles(app: &mut App) {
     use common::{perm, RoleInfo};
     app.server.roles = vec![
-        RoleInfo { id: 1, name: "Admin".into(), color: "#e91e63".into(), permissions: perm::ALL, position: 3, mentionable: false, hoisted: false },
-        RoleInfo { id: 2, name: "Moderator".into(), color: "#2ecc71".into(), permissions: perm::MANAGE_MESSAGES, position: 2, mentionable: false, hoisted: false },
-        RoleInfo { id: 3, name: "Helper".into(), color: String::new(), permissions: 0, position: 1, mentionable: false, hoisted: false },
-        RoleInfo { id: 0, name: "@everyone".into(), color: "#95a5a6".into(), permissions: 0, position: -1_000_000_000, mentionable: false, hoisted: false },
+        RoleInfo {
+            id: 1,
+            name: "Admin".into(),
+            color: "#e91e63".into(),
+            permissions: perm::ALL,
+            position: 3,
+            mentionable: false,
+            hoisted: false,
+        },
+        RoleInfo {
+            id: 2,
+            name: "Moderator".into(),
+            color: "#2ecc71".into(),
+            permissions: perm::MANAGE_MESSAGES,
+            position: 2,
+            mentionable: false,
+            hoisted: false,
+        },
+        RoleInfo {
+            id: 3,
+            name: "Helper".into(),
+            color: String::new(),
+            permissions: 0,
+            position: 1,
+            mentionable: false,
+            hoisted: false,
+        },
+        RoleInfo {
+            id: 0,
+            name: "@everyone".into(),
+            color: "#95a5a6".into(),
+            permissions: 0,
+            position: -1_000_000_000,
+            mentionable: false,
+            hoisted: false,
+        },
     ];
     app.server.online = vec!["alice".into(), "bob".into(), "carol".into(), "erin".into()];
     app.server.offline = vec!["dan".into()];
-    app.server.member_ids = [("alice", "u1"), ("bob", "u2"), ("carol", "u3"), ("erin", "u5"), ("dan", "u4")]
+    app.server.member_ids = [
+        ("alice", "u1"),
+        ("bob", "u2"),
+        ("carol", "u3"),
+        ("erin", "u5"),
+        ("dan", "u4"),
+    ]
+    .into_iter()
+    .map(|(n, i)| (n.to_string(), i.to_string()))
+    .collect();
+    app.server.member_roles = [("u2".to_string(), vec![2]), ("u5".to_string(), vec![1, 3])]
         .into_iter()
-        .map(|(n, i)| (n.to_string(), i.to_string()))
         .collect();
-    app.server.member_roles = [("u2".to_string(), vec![2]), ("u5".to_string(), vec![1, 3])].into_iter().collect();
 }
 
 #[test]
@@ -735,7 +1039,10 @@ fn roles_unsaved_bar_screen() {
 fn member_roles_checklist_screen() {
     let mut app = chat_app();
     with_roles(&mut app);
-    let _ = app.update(Message::OpenMenu(MenuKind::User { name: "bob".into(), can_message: true }));
+    let _ = app.update(Message::OpenMenu(MenuKind::User {
+        name: "bob".into(),
+        can_message: true,
+    }));
     let _ = app.update(Message::RolesMenuOpen);
     save_at(&app, "member-roles-menu", 1100.0, 700.0);
 }
@@ -745,7 +1052,10 @@ fn member_roles_flyout_left_screen() {
     let mut app = chat_app();
     with_roles(&mut app);
     app.cursor = iced::Point::new(900.0, 300.0);
-    let _ = app.update(Message::OpenMenu(MenuKind::User { name: "bob".into(), can_message: true }));
+    let _ = app.update(Message::OpenMenu(MenuKind::User {
+        name: "bob".into(),
+        can_message: true,
+    }));
     let _ = app.update(Message::RolesMenuOpen);
     save_at(&app, "member-roles-left", 1100.0, 700.0);
 }
@@ -812,10 +1122,20 @@ fn member_profile_card_screen() {
     with_roles(&mut app);
     app.server.member_ids.insert("bob".into(), "id-bob".into());
     app.server.member_roles.insert("id-bob".into(), vec![1, 2]);
-    app.server.member_status.insert("id-bob".into(), common::PresenceStatus::Online);
+    app.server
+        .member_status
+        .insert("id-bob".into(), common::PresenceStatus::Online);
     app.server.badges = vec![
-        common::Badge { id: 1, name: "Early Adopter".into(), color: "#f1c40f".into() },
-        common::Badge { id: 2, name: "Helper".into(), color: "#2ecc71".into() },
+        common::Badge {
+            id: 1,
+            name: "Early Adopter".into(),
+            color: "#f1c40f".into(),
+        },
+        common::Badge {
+            id: 2,
+            name: "Helper".into(),
+            color: "#2ecc71".into(),
+        },
     ];
     app.server.member_badges.insert("id-bob".into(), vec![1]);
     app.card = Some(crate::app::CardView {
@@ -845,10 +1165,20 @@ fn bio_formatting_card_screen() {
     with_roles(&mut app);
     app.server.member_ids.insert("bob".into(), "id-bob".into());
     app.server.member_roles.insert("id-bob".into(), vec![1, 2]);
-    app.server.member_status.insert("id-bob".into(), common::PresenceStatus::Online);
+    app.server
+        .member_status
+        .insert("id-bob".into(), common::PresenceStatus::Online);
     app.server.badges = vec![
-        common::Badge { id: 1, name: "Early Adopter".into(), color: "#f1c40f".into() },
-        common::Badge { id: 2, name: "Helper".into(), color: "#2ecc71".into() },
+        common::Badge {
+            id: 1,
+            name: "Early Adopter".into(),
+            color: "#f1c40f".into(),
+        },
+        common::Badge {
+            id: 2,
+            name: "Helper".into(),
+            color: "#2ecc71".into(),
+        },
     ];
     app.server.member_badges.insert("id-bob".into(), vec![1]);
     app.card = Some(crate::app::CardView {
@@ -955,7 +1285,9 @@ fn hovers_during_sweep(app: &App) -> usize {
             ui.simulate([Event::Mouse(mouse::Event::CursorMoved { position: p })]);
         }
     }
-    ui.into_messages().filter(|m| matches!(m, Message::Hover(Some(_)))).count()
+    ui.into_messages()
+        .filter(|m| matches!(m, Message::Hover(Some(_))))
+        .count()
 }
 
 #[test]
@@ -994,7 +1326,12 @@ fn clicking_own_status_opens_the_status_menu() {
         }
     }
     let messages: Vec<Message> = ui.into_messages().collect();
-    assert!(messages.iter().any(|m| matches!(m, Message::OpenMenu(crate::app::MenuKind::Status))), "clicking the status should open its menu");
+    assert!(
+        messages
+            .iter()
+            .any(|m| matches!(m, Message::OpenMenu(crate::app::MenuKind::Status))),
+        "clicking the status should open its menu"
+    );
 }
 
 #[test]

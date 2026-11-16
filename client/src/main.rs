@@ -7,19 +7,21 @@ mod backend;
 mod bio;
 mod discord_login;
 mod discover;
-mod icons;
+#[cfg(test)]
+#[path = "tests/flows.rs"]
+mod flows;
 mod highlight;
+mod icons;
 mod keychain;
 mod latex;
 mod markdown;
 mod model;
 mod net;
 mod prefs;
-mod search;
 #[cfg(test)]
-mod flows;
-#[cfg(test)]
+#[path = "tests/screens.rs"]
 mod screens;
+mod search;
 mod theme;
 mod tray;
 mod trust;
@@ -41,27 +43,30 @@ static EVENTS: Mutex<Option<mpsc::Receiver<Event>>> = Mutex::new(None);
 
 /// Forwards the backend's events into the app's message loop, as they arrive.
 pub fn events_stream() -> impl Stream<Item = Event> {
-    iced::stream::channel(64, |mut output: iced::futures::channel::mpsc::Sender<Event>| async move {
-        let rx = EVENTS.lock().unwrap_or_else(|e| e.into_inner()).take();
-        let Some(rx) = rx else {
-            return;
-        };
-        // The receiver blocks, so it reads on its own thread and hands events to the async side.
-        let (tx, mut from_thread) = iced::futures::channel::mpsc::unbounded();
-        std::thread::spawn(move || {
-            while let Ok(event) = rx.recv() {
-                if tx.unbounded_send(event).is_err() {
+    iced::stream::channel(
+        64,
+        |mut output: iced::futures::channel::mpsc::Sender<Event>| async move {
+            let rx = EVENTS.lock().unwrap_or_else(|e| e.into_inner()).take();
+            let Some(rx) = rx else {
+                return;
+            };
+            // The receiver blocks, so it reads on its own thread and hands events to the async side.
+            let (tx, mut from_thread) = iced::futures::channel::mpsc::unbounded();
+            std::thread::spawn(move || {
+                while let Ok(event) = rx.recv() {
+                    if tx.unbounded_send(event).is_err() {
+                        break;
+                    }
+                }
+            });
+            use iced::futures::StreamExt;
+            while let Some(event) = from_thread.next().await {
+                if output.send(event).await.is_err() {
                     break;
                 }
             }
-        });
-        use iced::futures::StreamExt;
-        while let Some(event) = from_thread.next().await {
-            if output.send(event).await.is_err() {
-                break;
-            }
-        }
-    })
+        },
+    )
 }
 
 /// The emoji catalog for the picker: (category, name, base emoji), and the skin tone variants.
@@ -134,7 +139,9 @@ pub fn main_window_settings() -> window::Settings {
 
 /// The window icon, from the app's icon file.
 fn app_icon() -> Option<window::Icon> {
-    let img = image::load_from_memory(include_bytes!("../icons/icon.png")).ok()?.to_rgba8();
+    let img = image::load_from_memory(include_bytes!("../icons/icon.png"))
+        .ok()?
+        .to_rgba8();
     let (w, h) = img.dimensions();
     window::icon::from_rgba(img.into_raw(), w, h).ok()
 }

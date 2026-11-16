@@ -44,8 +44,8 @@ const POLL: Duration = Duration::from_millis(100);
 /// starts the thread. Returns the connection and the stream of what the server sends. The stream
 /// ends with a `Disconnected` event.
 pub fn connect(addr: &str, first: ClientMsg) -> Result<(Connection, Receiver<NetEvent>), String> {
-    let (mut stream, fingerprint) = common::tls::connect_blocking(addr, Duration::from_secs(4))
-        .map_err(|e| format!("could not connect: {e}"))?;
+    let (mut stream, fingerprint) =
+        common::tls::connect_blocking(addr, Duration::from_secs(4)).map_err(|e| format!("could not connect: {e}"))?;
     // Check the certificate before the login is sent.
     trust::check(&format!("server:{addr}"), &fingerprint)?;
 
@@ -64,15 +64,17 @@ pub fn connect(addr: &str, first: ClientMsg) -> Result<(Connection, Receiver<Net
         }
     });
 
-    Ok((Connection { outgoing: out_tx, socket }, in_rx))
+    Ok((
+        Connection {
+            outgoing: out_tx,
+            socket,
+        },
+        in_rx,
+    ))
 }
 
 /// Runs until the connection ends. Returns why, or None when the app has already let go of it.
-fn pump(
-    stream: &mut common::tls::Stream,
-    out_rx: &Receiver<ClientMsg>,
-    in_tx: &Sender<NetEvent>,
-) -> Option<String> {
+fn pump(stream: &mut common::tls::Stream, out_rx: &Receiver<ClientMsg>, in_tx: &Sender<NetEvent>) -> Option<String> {
     let mut pending: Vec<u8> = Vec::new();
     let mut chunk = [0u8; 4096];
     loop {
@@ -80,7 +82,9 @@ fn pump(
         loop {
             match out_rx.try_recv() {
                 Ok(msg) => {
-                    let Ok(mut line) = serde_json::to_string(&msg) else { continue };
+                    let Ok(mut line) = serde_json::to_string(&msg) else {
+                        continue;
+                    };
                     line.push('\n');
                     if let Err(e) = stream.write_all(line.as_bytes()) {
                         return Some(e.to_string());

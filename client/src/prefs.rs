@@ -48,7 +48,11 @@ pub struct Layout {
 
 impl Default for Layout {
     fn default() -> Self {
-        Self { channels: 250.0, dms: 250.0, members: 250.0 }
+        Self {
+            channels: 250.0,
+            dms: 250.0,
+            members: 250.0,
+        }
     }
 }
 

@@ -55,7 +55,10 @@ pub fn pick_avatar() -> Result<Option<String>, CmdError> {
 }
 
 pub fn pick_server_icon() -> Result<Option<String>, CmdError> {
-    let Some(path) = rfd::FileDialog::new().add_filter("Images", &["png", "jpg", "jpeg"]).pick_file() else {
+    let Some(path) = rfd::FileDialog::new()
+        .add_filter("Images", &["png", "jpg", "jpeg"])
+        .pick_file()
+    else {
         return Ok(None);
     };
     icon_png_base64(&path).map(Some).map_err(CmdError::new)

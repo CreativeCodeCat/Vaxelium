@@ -9,17 +9,30 @@ use crate::theme::Pal;
 
 /// Padding for top, right, bottom and left, in pixels.
 pub fn pad(top: f32, right: f32, bottom: f32, left: f32) -> Padding {
-    Padding { top, right, bottom, left }
+    Padding {
+        top,
+        right,
+        bottom,
+        left,
+    }
 }
 
 /// Padding for vertical and horizontal, in pixels.
 pub fn pad2(vertical: f32, horizontal: f32) -> Padding {
-    Padding { top: vertical, right: horizontal, bottom: vertical, left: horizontal }
+    Padding {
+        top: vertical,
+        right: horizontal,
+        bottom: vertical,
+        left: horizontal,
+    }
 }
 
 /// The first letter of a name, upper case.
 pub fn initial(name: &str) -> String {
-    name.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_else(|| "?".into())
+    name.chars()
+        .next()
+        .map(|c| c.to_uppercase().to_string())
+        .unwrap_or_else(|| "?".into())
 }
 
 /// A stable colour for a name, so the same person always looks the same.
@@ -33,7 +46,10 @@ pub fn name_color(pal: &Pal, name: &str) -> Color {
 
 /// The current time, in Unix seconds.
 pub fn now() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 /// A join date such as "3 March 2024", or "Unknown" when the account's creation time is not known.
@@ -57,7 +73,10 @@ pub fn open_url(url: &str) {
 
 /// The local time for a Unix timestamp in seconds.
 fn local(ts: u64) -> DateTime<Local> {
-    Local.timestamp_opt(ts as i64, 0).earliest().unwrap_or_else(|| Local.timestamp_opt(0, 0).unwrap())
+    Local
+        .timestamp_opt(ts as i64, 0)
+        .earliest()
+        .unwrap_or_else(|| Local.timestamp_opt(0, 0).unwrap())
 }
 
 /// Short time, e.g. "14:05", in local time.

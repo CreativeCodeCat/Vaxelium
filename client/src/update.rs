@@ -5,7 +5,9 @@ use iced::widget::operation;
 use iced::window;
 use iced::Task;
 
-use crate::app::{offload, App, AccountSaved, Field, Message, Page, Picker, ADD_ADDR_ID, COMPOSER_ID, EDIT_ID, NEW_CHANNEL_ID};
+use crate::app::{
+    offload, AccountSaved, App, Field, Message, Page, Picker, ADD_ADDR_ID, COMPOSER_ID, EDIT_ID, NEW_CHANNEL_ID,
+};
 
 impl App {
     /// Handles every message that is not an event, a window action or a drag.
@@ -123,7 +125,10 @@ impl App {
                 self.account.delete_error = None;
                 let backend = self.backend.clone();
                 let password = self.account.delete_input.clone();
-                return Task::perform(offload(move || backend.delete_account(password)), Message::AccountDeleted);
+                return Task::perform(
+                    offload(move || backend.delete_account(password)),
+                    Message::AccountDeleted,
+                );
             }
             Message::AccountDeleted(result) => {
                 self.account.delete_busy = false;
@@ -154,7 +159,12 @@ impl App {
                     self.remember = true;
                     self.dm_tick();
                     let saved = self.prefs.session.clone();
-                    if let Some(index) = saved.and_then(|s| self.prefs.servers.iter().position(|p| Some(&p.addr) == s.server.as_ref())) {
+                    if let Some(index) = saved.and_then(|s| {
+                        self.prefs
+                            .servers
+                            .iter()
+                            .position(|p| Some(&p.addr) == s.server.as_ref())
+                    }) {
                         return self.select_server(index);
                     }
                 } else {
@@ -212,7 +222,11 @@ impl App {
                 return self.connect_selected();
             }
             Message::AddServerOpen => {
-                self.add_server = crate::app::AddServer { open: true, addr: String::new(), error: None };
+                self.add_server = crate::app::AddServer {
+                    open: true,
+                    addr: String::new(),
+                    error: None,
+                };
                 return operation::focus(ADD_ADDR_ID);
             }
             Message::AddServerClose => self.add_server.open = false,
@@ -235,7 +249,7 @@ impl App {
             Message::HomeOpen => {
                 self.home = true;
                 self.page = Page::None;
-                self.list_direct_messages_everywhere();
+                self.list_all_dms();
             }
             Message::OpenPerson(id) => self.open_person(&id),
             Message::NewDmName(v) => self.dm_new_name = v,
@@ -253,7 +267,10 @@ impl App {
                 let _ = self.backend.send_main(ClientMsg::OpenDm { name });
             }
             Message::DmServerPick(choice) => {
-                let targets = self.current_person().map(|p| self.person_targets(&p)).unwrap_or_default();
+                let targets = self
+                    .current_person()
+                    .map(|p| self.person_targets(&p))
+                    .unwrap_or_default();
                 if let Some(t) = targets.get(choice.index).cloned() {
                     let _ = self.open_dm_on(&t.addr, &t.channel);
                 }
@@ -261,7 +278,12 @@ impl App {
 
             // ----- channels -----
             Message::DndPress(item) => {
-                self.dnd = Some(crate::app::Dnd { item, start: self.cursor, moved: false, over: None });
+                self.dnd = Some(crate::app::Dnd {
+                    item,
+                    start: self.cursor,
+                    moved: false,
+                    over: None,
+                });
             }
             Message::DndOver(target) => {
                 // Only members who may move the dragged item get drop targets, so nothing lights up for them.
@@ -291,15 +313,28 @@ impl App {
             }
             Message::ChannelEditClose => return self.close_channel_edit(),
             Message::EditSectionPick(section) => self.edit_section = section,
-            Message::AccessDraftSet { target, subject, setting } => {
+            Message::AccessDraftSet {
+                target,
+                subject,
+                setting,
+            } => {
                 if self.access_draft.as_ref().map_or(true, |d| d.target != target) {
-                    self.access_draft = Some(crate::app::AccessDraft { target, subjects: Default::default() });
+                    self.access_draft = Some(crate::app::AccessDraft {
+                        target,
+                        subjects: Default::default(),
+                    });
                 }
                 if let Some(draft) = self.access_draft.as_mut() {
                     draft.subjects.insert(subject, setting);
                 }
             }
-            Message::AccessAddOpen(target) => self.access_add = Some(crate::app::AccessAdd { target, query: String::new(), picked: Default::default() }),
+            Message::AccessAddOpen(target) => {
+                self.access_add = Some(crate::app::AccessAdd {
+                    target,
+                    query: String::new(),
+                    picked: Default::default(),
+                })
+            }
             Message::AccessAddClose => self.access_add = None,
             Message::AccessAddQuery(query) => {
                 if let Some(add) = self.access_add.as_mut() {
@@ -322,7 +357,11 @@ impl App {
                     for subject in add.picked {
                         let mut setting = self.access_value(target, subject.clone());
                         setting.view = Some(true);
-                        let _ = self.update(Message::AccessDraftSet { target, subject, setting });
+                        let _ = self.update(Message::AccessDraftSet {
+                            target,
+                            subject,
+                            setting,
+                        });
                     }
                 }
             }
@@ -401,7 +440,10 @@ impl App {
                 if let Some((id, old, new)) = self.rename_channel.clone() {
                     let new = new.trim().to_string();
                     if !new.is_empty() && new != old {
-                        let _ = self.backend.send_main(ClientMsg::RenameChannel { channel: id, new_name: new });
+                        let _ = self.backend.send_main(ClientMsg::RenameChannel {
+                            channel: id,
+                            new_name: new,
+                        });
                     }
                 }
             }
@@ -422,7 +464,10 @@ impl App {
                 if let Some((id, old, new)) = self.category_edit.clone() {
                     let new = new.trim().to_string();
                     if !new.is_empty() && new != old {
-                        let _ = self.backend.send_main(ClientMsg::RenameCategory { category: id, new_name: new });
+                        let _ = self.backend.send_main(ClientMsg::RenameCategory {
+                            category: id,
+                            new_name: new,
+                        });
                     }
                 }
             }
@@ -507,13 +552,19 @@ impl App {
                 self.card = None;
                 let blocked = self.server.member_ids.get(&name).is_some_and(|id| self.is_blocked(id));
                 if blocked {
-                    self.status = format!("You have blocked {name}. Unblock them from the member list to message them.");
+                    self.status =
+                        format!("You have blocked {name}. Unblock them from the member list to message them.");
                     return Task::none();
                 }
                 self.home = true;
                 // An existing conversation opens straight away, so it loads without a click. Its messages
                 // are then sent as soon as it has loaded.
-                let existing = self.server.member_ids.get(&name).cloned().filter(|id| !self.person_targets(id).is_empty());
+                let existing = self
+                    .server
+                    .member_ids
+                    .get(&name)
+                    .cloned()
+                    .filter(|id| !self.person_targets(id).is_empty());
                 match existing {
                     Some(id) => self.open_person(&id),
                     None => {
@@ -566,7 +617,9 @@ impl App {
                     return Task::none();
                 }
                 let typing = !self.input.trim().is_empty() && self.server.channel_id != 0;
-                let due = self.last_typing_sent.is_none_or(|at| at.elapsed() >= crate::app::TYPING_SEND_EVERY);
+                let due = self
+                    .last_typing_sent
+                    .is_none_or(|at| at.elapsed() >= crate::app::TYPING_SEND_EVERY);
                 if typing && due {
                     self.last_typing_sent = Some(std::time::Instant::now());
                     let _ = self.backend.send_main(ClientMsg::Typing);
@@ -583,7 +636,12 @@ impl App {
             }
             Message::MentionPick(name) => {
                 // Replace the @ word being typed with the picked name, and leave a space after it.
-                let start = self.input.char_indices().rev().find(|(_, c)| c.is_whitespace()).map_or(0, |(i, c)| i + c.len_utf8());
+                let start = self
+                    .input
+                    .char_indices()
+                    .rev()
+                    .find(|(_, c)| c.is_whitespace())
+                    .map_or(0, |(i, c)| i + c.len_utf8());
                 let next = format!("{}@{name} ", &self.input[..start]);
                 self.set_input(next);
                 return operation::focus(COMPOSER_ID);
@@ -608,7 +666,13 @@ impl App {
             Message::React(id, emoji) => {
                 self.menu = None;
                 self.picker = None;
-                self.message_action(id, ClientMsg::React { id, emoji: emoji.clone() });
+                self.message_action(
+                    id,
+                    ClientMsg::React {
+                        id,
+                        emoji: emoji.clone(),
+                    },
+                );
             }
             Message::PickerOpen(id) => {
                 if self.picker.as_ref().is_some_and(|p| p.message == id) {
@@ -685,8 +749,20 @@ impl App {
                 Ok(p) => {
                     // Keep the picture and banner the member list and messages use in step with the account.
                     let created = self.profiles.get(&self.user_id).map_or(0, |look| look.created);
-                    let status = self.profiles.get(&self.user_id).map(|look| look.status.clone()).unwrap_or_default();
-                    self.profiles.insert(self.user_id.clone(), crate::app::ProfileLook { avatar: p.avatar.clone(), banner: p.banner.clone(), created, status });
+                    let status = self
+                        .profiles
+                        .get(&self.user_id)
+                        .map(|look| look.status.clone())
+                        .unwrap_or_default();
+                    self.profiles.insert(
+                        self.user_id.clone(),
+                        crate::app::ProfileLook {
+                            avatar: p.avatar.clone(),
+                            banner: p.banner.clone(),
+                            created,
+                            status,
+                        },
+                    );
                     self.user = Some(p.name);
                     self.account.username = Some(p.username);
                     self.account.email = p.email;
@@ -717,7 +793,11 @@ impl App {
                         "acc-name"
                     }
                     Field::Username => {
-                        acc.username_input = acc.draft_username.clone().or_else(|| acc.username.clone()).unwrap_or_default();
+                        acc.username_input = acc
+                            .draft_username
+                            .clone()
+                            .or_else(|| acc.username.clone())
+                            .unwrap_or_default();
                         "acc-username"
                     }
                     Field::Email => {
@@ -805,7 +885,12 @@ impl App {
                 }
             }
             Message::CardStatusStart => {
-                let current = self.card.as_ref().and_then(|v| v.card.as_ref()).map(|c| c.status.clone()).unwrap_or_default();
+                let current = self
+                    .card
+                    .as_ref()
+                    .and_then(|v| v.card.as_ref())
+                    .map(|c| c.status.clone())
+                    .unwrap_or_default();
                 self.card_status_draft = Some(current);
                 self.card_status_error = None;
             }
@@ -826,11 +911,14 @@ impl App {
                 self.card_status_draft = Some(String::new());
                 self.card_status_error = None;
                 let backend = self.backend.clone();
-                return Task::perform(offload(move || backend.set_status_text(String::new())), Message::CardStatusDone);
+                return Task::perform(
+                    offload(move || backend.set_status_text(String::new())),
+                    Message::CardStatusDone,
+                );
             }
             Message::CardStatusDone(result) => match result {
                 Ok(text) => {
-                    self.backend.set_profile_status_everywhere(&text);
+                    self.backend.broadcast_status(&text);
                     self.card_status_draft = None;
                     if let Some(look) = self.profiles.get_mut(&self.user_id) {
                         look.status = text.clone();
@@ -887,7 +975,15 @@ impl App {
             }
             Message::CardLoaded(id, result) => {
                 if let Ok(card) = &result {
-                    self.profiles.insert(id.clone(), crate::app::ProfileLook { avatar: card.avatar.clone(), banner: card.banner.clone(), created: card.created, status: card.status.clone() });
+                    self.profiles.insert(
+                        id.clone(),
+                        crate::app::ProfileLook {
+                            avatar: card.avatar.clone(),
+                            banner: card.banner.clone(),
+                            created: card.created,
+                            status: card.status.clone(),
+                        },
+                    );
                 }
                 if let Some(view) = self.card.as_mut().filter(|v| v.id == id) {
                     view.loading = false;
@@ -922,7 +1018,15 @@ impl App {
                 for (id, card) in found {
                     self.profile_pending.remove(&id);
                     if let Some(card) = card {
-                        self.profiles.insert(id, crate::app::ProfileLook { avatar: card.avatar, banner: card.banner, created: card.created, status: card.status });
+                        self.profiles.insert(
+                            id,
+                            crate::app::ProfileLook {
+                                avatar: card.avatar,
+                                banner: card.banner,
+                                created: card.created,
+                                status: card.status,
+                            },
+                        );
                     }
                 }
             }
@@ -946,8 +1050,20 @@ impl App {
             Message::AvatarDone(result) => match result {
                 Ok(avatar) => {
                     let created = self.profiles.get(&self.user_id).map(|p| p.created).unwrap_or(0);
-                    let status = self.profiles.get(&self.user_id).map(|look| look.status.clone()).unwrap_or_default();
-                    self.profiles.insert(self.user_id.clone(), crate::app::ProfileLook { avatar: avatar.clone(), banner: self.account.banner.clone(), created, status });
+                    let status = self
+                        .profiles
+                        .get(&self.user_id)
+                        .map(|look| look.status.clone())
+                        .unwrap_or_default();
+                    self.profiles.insert(
+                        self.user_id.clone(),
+                        crate::app::ProfileLook {
+                            avatar: avatar.clone(),
+                            banner: self.account.banner.clone(),
+                            created,
+                            status,
+                        },
+                    );
                     self.account.avatar = avatar;
                     self.account.avatar_draft = None;
                     self.account.avatar_error = None;
@@ -968,7 +1084,10 @@ impl App {
                 }
                 self.account.about_busy = true;
                 self.account.about_error = None;
-                let (bio, banner) = (self.account.about_bio.trim().to_string(), self.account.about_banner.clone());
+                let (bio, banner) = (
+                    self.account.about_bio.trim().to_string(),
+                    self.account.about_banner.clone(),
+                );
                 let backend = self.backend.clone();
                 let about = Task::perform(offload(move || backend.set_about(bio, banner)), Message::AboutDone);
                 // A picture change is saved with the rest.
@@ -1006,7 +1125,11 @@ impl App {
                 self.role_form = None;
                 self.role_error = None;
                 // The owner starts on the profile; everyone else who can open the page starts on roles.
-                self.server_section = if self.can(common::perm::MANAGE_SERVER) { crate::app::ServerSection::Profile } else { crate::app::ServerSection::Roles };
+                self.server_section = if self.can(common::perm::MANAGE_SERVER) {
+                    crate::app::ServerSection::Profile
+                } else {
+                    crate::app::ServerSection::Roles
+                };
                 self.page = Page::Server;
             }
             Message::ServerSettingsClose => return self.close_settings(),
@@ -1124,7 +1247,10 @@ impl App {
                     self.admin_grant_pending = true;
                     return Task::none();
                 }
-                let locked = self.role_form.as_ref().is_some_and(|d| crate::view::pages::everyone_keeps(self, d.id, bit));
+                let locked = self
+                    .role_form
+                    .as_ref()
+                    .is_some_and(|d| crate::view::pages::everyone_keeps(self, d.id, bit));
                 if let Some(draft) = self.role_form.as_mut().filter(|_| !locked) {
                     if on {
                         draft.permissions |= bit;
@@ -1156,7 +1282,8 @@ impl App {
             }
             Message::RoleSave => {
                 if let Some(draft) = self.role_form.clone() {
-                    let risky = !crate::view::pages::lockout_risk(self, &draft).is_empty() || crate::view::pages::grants_administrator(self, &draft);
+                    let risky = !crate::view::pages::lockout_risk(self, &draft).is_empty()
+                        || crate::view::pages::grants_administrator(self, &draft);
                     if risky {
                         self.role_save_warning = true;
                     } else {
@@ -1218,7 +1345,9 @@ impl App {
             }
             Message::IconPicked(result) => match result {
                 Ok(Some(png)) => {
-                    let _ = self.backend.send_main(ClientMsg::SetServerIcon { png_base64: Some(png) });
+                    let _ = self
+                        .backend
+                        .send_main(ClientMsg::SetServerIcon { png_base64: Some(png) });
                 }
                 Ok(None) => {}
                 Err(e) => self.server_form.icon_error = Some(e.message),
@@ -1244,7 +1373,7 @@ impl App {
 
     /// Keeps the session of a remembered login up to date on disk.
     pub(crate) fn remember_session_now(&mut self) {
-        self.save_prefs_with_session();
+        self.save_session_prefs();
     }
 
     /// Escape closes the topmost thing that is open.
@@ -1292,7 +1421,8 @@ impl App {
         if !self.is_logged_in() {
             return;
         }
-        let Some(idle) = crate::app::auto_idle_change(self.auto_status, self.last_active.elapsed(), self.auto_idle) else {
+        let Some(idle) = crate::app::auto_idle_change(self.auto_status, self.last_active.elapsed(), self.auto_idle)
+        else {
             return;
         };
         self.auto_idle = idle;
@@ -1307,12 +1437,23 @@ impl App {
         self.card_roles_open = false;
         self.card_badges_open = false;
         self.card_list_search.clear();
-        self.card = Some(crate::app::CardView { id: id.clone(), name, at, loading: true, card: None, error: None, above });
+        self.card = Some(crate::app::CardView {
+            id: id.clone(),
+            name,
+            at,
+            loading: true,
+            card: None,
+            error: None,
+            above,
+        });
         let backend = self.backend.clone();
-        Task::perform(offload(move || {
-            let result = backend.profile_card(&id);
-            (id, result)
-        }), |(id, result)| Message::CardLoaded(id, result))
+        Task::perform(
+            offload(move || {
+                let result = backend.profile_card(&id);
+                (id, result)
+            }),
+            |(id, result)| Message::CardLoaded(id, result),
+        )
     }
 
     fn reset_bio_editor(&mut self) {
@@ -1352,17 +1493,52 @@ impl App {
     fn save_access(&mut self) {
         use crate::app::AccessTarget;
         use common::Subject;
-        let Some(draft) = self.access_draft.take() else { return };
+        let Some(draft) = self.access_draft.take() else {
+            return;
+        };
         for (subject, setting) in draft.subjects.clone() {
             if setting == self.server_access(draft.target, &subject) {
                 continue;
             }
-            let common::Setting { view, send, manage_channels, manage_messages } = setting;
+            let common::Setting {
+                view,
+                send,
+                manage_channels,
+                manage_messages,
+            } = setting;
             let msg = match (draft.target, subject) {
-                (AccessTarget::Channel(channel), Subject::Role(role)) => ClientMsg::SetChannelOverride { channel, role, view, send, manage_channels, manage_messages },
-                (AccessTarget::Channel(channel), Subject::Member(member)) => ClientMsg::SetChannelMemberOverride { channel, member, view, send, manage_channels, manage_messages },
-                (AccessTarget::Category(category), Subject::Role(role)) => ClientMsg::SetCategoryOverride { category, role, view, send, manage_channels, manage_messages },
-                (AccessTarget::Category(category), Subject::Member(member)) => ClientMsg::SetCategoryMemberOverride { category, member, view, send, manage_channels, manage_messages },
+                (AccessTarget::Channel(channel), Subject::Role(role)) => ClientMsg::SetChannelOverride {
+                    channel,
+                    role,
+                    view,
+                    send,
+                    manage_channels,
+                    manage_messages,
+                },
+                (AccessTarget::Channel(channel), Subject::Member(member)) => ClientMsg::SetChannelMemberOverride {
+                    channel,
+                    member,
+                    view,
+                    send,
+                    manage_channels,
+                    manage_messages,
+                },
+                (AccessTarget::Category(category), Subject::Role(role)) => ClientMsg::SetCategoryOverride {
+                    category,
+                    role,
+                    view,
+                    send,
+                    manage_channels,
+                    manage_messages,
+                },
+                (AccessTarget::Category(category), Subject::Member(member)) => ClientMsg::SetCategoryMemberOverride {
+                    category,
+                    member,
+                    view,
+                    send,
+                    manage_channels,
+                    manage_messages,
+                },
             };
             let _ = self.backend.send_main(msg);
         }
@@ -1427,7 +1603,15 @@ impl App {
         let backend = self.backend.clone();
         Task::perform(
             offload(move || {
-                let mut out = AccountSaved { profile: None, email: None, name_saved: false, username_saved: false, email_saved: false, error: None, auth_down: false };
+                let mut out = AccountSaved {
+                    profile: None,
+                    email: None,
+                    name_saved: false,
+                    username_saved: false,
+                    email_saved: false,
+                    error: None,
+                    auth_down: false,
+                };
                 let name_change = name.filter(|n| *n != current_name);
                 let username_change = username.filter(|u| *u != current_username);
                 if name_change.is_some() || username_change.is_some() {
@@ -1473,7 +1657,7 @@ impl App {
         if let Some(p) = saved.profile {
             self.user = Some(p.name);
             self.account.username = Some(p.username);
-            self.save_prefs_with_session();
+            self.save_session_prefs();
         }
         if saved.name_saved {
             self.account.draft_name = None;

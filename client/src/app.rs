@@ -272,11 +272,18 @@ pub struct Menu {
 
 #[derive(Debug, Clone)]
 pub enum MenuItem {
-    Action { label: String, icon: Option<&'static str>, danger: bool, msg: Message },
+    Action {
+        label: String,
+        icon: Option<&'static str>,
+        danger: bool,
+        msg: Message,
+    },
     Heading(String),
     Divider,
     /// The Roles entry of a member's menu. Opens a checklist of roles for that member (by account id).
-    Roles { member: String },
+    Roles {
+        member: String,
+    },
 }
 
 /// The emoji picker for one message.
@@ -301,7 +308,10 @@ pub enum DropTarget {
     /// After the last category.
     End,
     /// Before this channel, in the category it is in (`None` for the uncategorized list).
-    Channel { id: i64, category: Option<i64> },
+    Channel {
+        id: i64,
+        category: Option<i64>,
+    },
 }
 
 /// A press on a channel or category that may turn into a drag. If it does not move, it is a click.
@@ -326,13 +336,23 @@ pub struct Drag {
 /// What a menu is opened for. Its items are built when it opens.
 #[derive(Debug, Clone)]
 pub enum MenuKind {
-    Channel { id: i64, name: String, unread: bool },
-    User { name: String, can_message: bool },
+    Channel {
+        id: i64,
+        name: String,
+        unread: bool,
+    },
+    User {
+        name: String,
+        can_message: bool,
+    },
     Rail(usize),
     Message(i64),
     Server,
     Theme,
-    Category { id: i64, name: String },
+    Category {
+        id: i64,
+        name: String,
+    },
     /// Your own status, from the user bar.
     Status,
 }
@@ -515,11 +535,18 @@ pub enum Message {
     CursorMoved(Point),
     MouseReleased,
     /// The mouse was pressed on, or dragged over, a block of text in a message.
-    TextStep { message: i64, block: usize, step: crate::view::selectable::Step },
+    TextStep {
+        message: i64,
+        block: usize,
+        step: crate::view::selectable::Step,
+    },
     /// Ctrl+C, which copies the selected text of a message.
     CopySelectedText,
     /// A click on the summary of a `<details>` section.
-    ToggleDetails { message: i64, index: usize },
+    ToggleDetails {
+        message: i64,
+        index: usize,
+    },
     Escape,
     FlashTick,
     /// The tray icon was clicked, or its Show or Hide item chosen: show or hide the window.
@@ -583,7 +610,11 @@ pub enum Message {
     ChannelEditOpen(i64),
     ChannelEditClose,
     /// Change a role's View and Send on the open channel or category edit page. Saved with its bar.
-    AccessDraftSet { target: AccessTarget, subject: common::Subject, setting: common::Setting },
+    AccessDraftSet {
+        target: AccessTarget,
+        subject: common::Subject,
+        setting: common::Setting,
+    },
     /// Fill the open channel's unsaved permissions with its category's. Save applies them.
     ChannelSyncWithCategory(i64),
     /// Save the open edit page's name and permission changes.
@@ -711,9 +742,15 @@ pub enum Message {
     RoleDraftPerm(u32, bool),
     RoleDraftMentionable(bool),
     /// Open a member's profile card, and close it.
-    CardOpen { id: String, name: String },
+    CardOpen {
+        id: String,
+        name: String,
+    },
     /// Opens a profile card above the user bar (your own name there).
-    CardOpenAbove { id: String, name: String },
+    CardOpenAbove {
+        id: String,
+        name: String,
+    },
     /// Typing in the message box on a member's card.
     CardMessageInput(String),
     /// Pressing Enter in the message box: opens the conversation with the text ready to send.
@@ -730,7 +767,11 @@ pub enum Message {
     BadgeCreate,
     BadgeDelete(i64),
     /// Gives a member a badge, or takes it away (from a member's card, by an admin).
-    SetMemberBadge { user: String, badge: i64, on: bool },
+    SetMemberBadge {
+        user: String,
+        badge: i64,
+        on: bool,
+    },
     CardLoaded(String, Result<crate::backend::Card, CmdError>),
     CardClose,
     /// Start, change or cancel editing your own status text on your profile card.
@@ -837,7 +878,9 @@ pub fn too_long_status() -> String {
 /// An editor showing `text` with the cursor at its end, so typing continues the text.
 pub fn editor_at_end(text: &str) -> iced::widget::text_editor::Content {
     let mut content = iced::widget::text_editor::Content::with_text(text);
-    content.perform(iced::widget::text_editor::Action::Move(iced::widget::text_editor::Motion::DocumentEnd));
+    content.perform(iced::widget::text_editor::Action::Move(
+        iced::widget::text_editor::Motion::DocumentEnd,
+    ));
     content
 }
 
@@ -857,7 +900,12 @@ impl App {
         }
     }
 
-    pub fn new(backend: Backend, prefs: Prefs, emoji: Vec<(String, String, String)>, skin: HashMap<String, [String; 5]>) -> Self {
+    pub fn new(
+        backend: Backend,
+        prefs: Prefs,
+        emoji: Vec<(String, String, String)>,
+        skin: HashMap<String, [String; 5]>,
+    ) -> Self {
         Self {
             backend,
             prefs,
@@ -978,7 +1026,10 @@ impl App {
     /// Clears the view of the open server, keeping the list of servers.
     pub(crate) fn reset_server_view(&mut self, addr: Option<String>) {
         self.members_view = false;
-        let server = addr.as_ref().and_then(|a| self.prefs.servers.iter().find(|s| s.addr == *a)).cloned();
+        let server = addr
+            .as_ref()
+            .and_then(|a| self.prefs.servers.iter().find(|s| s.addr == *a))
+            .cloned();
         let channel = addr
             .as_ref()
             .and_then(|a| self.prefs.last_channels.get(a).cloned())
@@ -1003,7 +1054,10 @@ impl App {
     }
 
     pub(crate) fn fresh_main(&self) -> MainConn {
-        MainConn { seq: self.main.seq, ..MainConn::default() }
+        MainConn {
+            seq: self.main.seq,
+            ..MainConn::default()
+        }
     }
 
     /// Switches to a channel by its id, unless it is already open.
@@ -1020,7 +1074,12 @@ impl App {
         if name.is_empty() || name == self.server.channel {
             return;
         }
-        send_main(self, ClientMsg::Join { channel: name.to_string() });
+        send_main(
+            self,
+            ClientMsg::Join {
+                channel: name.to_string(),
+            },
+        );
     }
 
     /// Opens the channel named by an in: filter, when it is a channel of the open server.
@@ -1028,10 +1087,13 @@ impl App {
         if !self.chat_ready() || self.current_person().is_some() || is_dm_channel(&self.server.channel) {
             return None;
         }
-        Search::parse(&self.search)
-            .channels
-            .iter()
-            .find_map(|name| self.server.channels.iter().find(|c| c.name.to_lowercase() == *name).cloned())
+        Search::parse(&self.search).channels.iter().find_map(|name| {
+            self.server
+                .channels
+                .iter()
+                .find(|c| c.name.to_lowercase() == *name)
+                .cloned()
+        })
     }
 
     /// Connects to the server that is selected, in the background.
@@ -1044,10 +1106,17 @@ impl App {
         }
         let seq = self.main.seq + 1;
         self.reset_server_view(Some(addr.clone()));
-        self.main = MainConn { seq, addr: Some(addr.clone()), connecting: true, ..MainConn::default() };
+        self.main = MainConn {
+            seq,
+            addr: Some(addr.clone()),
+            connecting: true,
+            ..MainConn::default()
+        };
         let backend = self.backend.clone();
         let addr2 = addr.clone();
-        Task::perform(offload(move || backend.connect_main(&addr2)), move |r| Message::Connected(seq, r))
+        Task::perform(offload(move || backend.connect_main(&addr2)), move |r| {
+            Message::Connected(seq, r)
+        })
     }
 
     pub(crate) fn select_server(&mut self, index: usize) -> Task<Message> {
@@ -1062,7 +1131,11 @@ impl App {
             if self.main.id.is_some() && is_dm_channel(&self.server.channel) {
                 // Go back to the last channel used here, if it still exists, else the first one.
                 // Joining by name would create a channel that was deleted, so join by id.
-                let last = self.main.addr.as_ref().and_then(|a| self.prefs.last_channels.get(a).cloned());
+                let last = self
+                    .main
+                    .addr
+                    .as_ref()
+                    .and_then(|a| self.prefs.last_channels.get(a).cloned());
                 let target = last
                     .and_then(|name| self.server.channels.iter().find(|c| c.name == name).map(|c| c.id))
                     .or_else(|| self.server.channels.first().map(|c| c.id));
@@ -1107,17 +1180,30 @@ impl App {
         if !self.is_logged_in() {
             return;
         }
-        self.backend.dm_connect_all(self.prefs.servers.iter().map(|s| s.addr.clone()).collect());
+        self.backend
+            .dm_connect_all(self.prefs.servers.iter().map(|s| s.addr.clone()).collect());
     }
 
     pub(crate) fn handle_main(&mut self, msg: ServerMsg) -> Task<Message> {
         match msg {
-            ServerMsg::Welcome { server_id, name, user_id, server_name, server_description, server_icon, server_public } => {
+            ServerMsg::Welcome {
+                server_id,
+                name,
+                user_id,
+                server_name,
+                server_description,
+                server_icon,
+                server_public,
+            } => {
                 // The address must still be the same server. A different one here is refused.
                 let known = self.selected_server().and_then(|s| s.id.clone());
-                if known.as_deref().is_some_and(|k| !server_id.is_empty() && k != server_id) {
+                if known
+                    .as_deref()
+                    .is_some_and(|k| !server_id.is_empty() && k != server_id)
+                {
                     self.disconnect_main();
-                    self.main.error = Some("This address now belongs to a different server. Remove it and add it again.".into());
+                    self.main.error =
+                        Some("This address now belongs to a different server. Remove it and add it again.".into());
                     return Task::none();
                 }
                 if let Some(server) = self.selected.and_then(|i| self.prefs.servers.get_mut(i)) {
@@ -1143,7 +1229,12 @@ impl App {
                 self.save_prefs();
                 self.status = format!("Connected as {name}");
                 send_main(self, ClientMsg::ListChannels);
-                send_main(self, ClientMsg::SetStatus { status: self.effective_status() });
+                send_main(
+                    self,
+                    ClientMsg::SetStatus {
+                        status: self.effective_status(),
+                    },
+                );
                 // Other people's cards show the servers shared with you, so tell the auth service which
                 // servers you are in. Sent from a thread, since it waits on the auth service.
                 let servers: Vec<String> = self.prefs.servers.iter().map(|s| s.addr.clone()).collect();
@@ -1161,7 +1252,7 @@ impl App {
             }
             ServerMsg::Joined { channel, history } => {
                 if is_dm_channel(&channel.name) {
-                    self.list_direct_messages_everywhere();
+                    self.list_all_dms();
                 }
                 let previous = self.server.channel_id;
                 if channel.id != previous {
@@ -1171,7 +1262,8 @@ impl App {
                 }
                 self.unread.remove(&channel.id);
                 self.pinged.remove(&channel.id);
-                self.messages.insert(channel.id, history.into_iter().map(Entry::Chat).collect());
+                self.messages
+                    .insert(channel.id, history.into_iter().map(Entry::Chat).collect());
                 self.server.channel = channel.name.clone();
                 self.members_view = false;
                 self.server.channel_id = channel.id;
@@ -1200,14 +1292,21 @@ impl App {
                 if message.channel_id != self.server.channel_id && self.pings_me(&message.text) {
                     self.pinged.insert(message.channel_id);
                 }
-                self.messages.entry(message.channel_id).or_default().push(Entry::Chat(message));
+                self.messages
+                    .entry(message.channel_id)
+                    .or_default()
+                    .push(Entry::Chat(message));
                 if in_open_dm {
                     if let Some(person) = self.current_person() {
                         self.fetch_person(&person);
                     }
                 }
             }
-            ServerMsg::Reactions { channel_id, id, reactions } => {
+            ServerMsg::Reactions {
+                channel_id,
+                id,
+                reactions,
+            } => {
                 self.set_reactions(channel_id, id, reactions);
             }
             ServerMsg::MessageDeleted { channel_id, id } => {
@@ -1265,12 +1364,24 @@ impl App {
                 }
                 // Open a channel that exists: the last one used here, else general, else the first.
                 // Nothing is created: a channel is only made when it is asked for by name.
-                if (!self.main.joined_initial || (self.server.channel_id == 0 && !is_dm_channel(&self.server.channel))) && self.chat_ready() {
+                if (!self.main.joined_initial || (self.server.channel_id == 0 && !is_dm_channel(&self.server.channel)))
+                    && self.chat_ready()
+                {
                     self.main.joined_initial = true;
-                    let last = self.main.addr.as_ref().and_then(|a| self.prefs.last_channels.get(a).cloned());
+                    let last = self
+                        .main
+                        .addr
+                        .as_ref()
+                        .and_then(|a| self.prefs.last_channels.get(a).cloned());
                     let pick = last
                         .filter(|l| self.server.channels.iter().any(|c| &c.name == l))
-                        .or_else(|| self.server.channels.iter().find(|c| c.name == "general").map(|c| c.name.clone()))
+                        .or_else(|| {
+                            self.server
+                                .channels
+                                .iter()
+                                .find(|c| c.name == "general")
+                                .map(|c| c.name.clone())
+                        })
                         .or_else(|| self.server.channels.first().map(|c| c.name.clone()));
                     match pick {
                         Some(name) => send_main(self, ClientMsg::Join { channel: name }),
@@ -1278,7 +1389,10 @@ impl App {
                     }
                 }
             }
-            ServerMsg::Categories { categories, uncategorized } => {
+            ServerMsg::Categories {
+                categories,
+                uncategorized,
+            } => {
                 self.server.categories = categories;
                 self.server.uncategorized = uncategorized;
                 // The edit page follows its category's name, and closes if the category is gone.
@@ -1360,10 +1474,10 @@ impl App {
                 }
             }
             ServerMsg::System { channel_id, text } => {
-                self.messages
-                    .entry(channel_id)
-                    .or_default()
-                    .push(Entry::System { text, at: crate::util::now() });
+                self.messages.entry(channel_id).or_default().push(Entry::System {
+                    text,
+                    at: crate::util::now(),
+                });
             }
             ServerMsg::Error { text } => {
                 if self.page == Page::Server {
@@ -1411,10 +1525,14 @@ impl App {
         self.profile_pending.extend(ids.iter().cloned());
         let backend = self.backend.clone();
         Task::perform(
-            offload(move || ids.into_iter().map(|id| {
-                let card = backend.profile_card(&id).ok();
-                (id, card)
-            }).collect::<Vec<_>>()),
+            offload(move || {
+                ids.into_iter()
+                    .map(|id| {
+                        let card = backend.profile_card(&id).ok();
+                        (id, card)
+                    })
+                    .collect::<Vec<_>>()
+            }),
             Message::ProfilesLoaded,
         )
     }
@@ -1445,8 +1563,12 @@ impl App {
                 };
                 let from = self.category_of_channel(id).map(|(c, _)| c);
                 let changes = to != from;
-                let leaves = from.filter(|_| changes).map_or(true, |f| self.category_permission(f, perm::MANAGE_CHANNELS));
-                let enters = to.filter(|_| changes).map_or(true, |t| self.category_permission(t, perm::MANAGE_CHANNELS));
+                let leaves = from
+                    .filter(|_| changes)
+                    .map_or(true, |f| self.category_permission(f, perm::MANAGE_CHANNELS));
+                let enters = to
+                    .filter(|_| changes)
+                    .map_or(true, |t| self.category_permission(t, perm::MANAGE_CHANNELS));
                 self.channel_permission(id, perm::MANAGE_CHANNELS) && leaves && enters
             }
             DragItem::Category(_) => self.can(perm::MANAGE_CHANNELS),
@@ -1462,26 +1584,45 @@ impl App {
         }
         if !self.can_drag_to(dnd.item, dnd.over) {
             self.status = match dnd.item {
-                DragItem::Channel(_) => "You need Manage channel for this channel, and for the categories it leaves or joins, to move it.".into(),
+                DragItem::Channel(_) => {
+                    "You need Manage channel for this channel, and for the categories it leaves or joins, to move it."
+                        .into()
+                }
                 DragItem::Category(_) => "You need the Manage channels permission to move categories.".into(),
             };
             return;
         }
         match (dnd.item, dnd.over) {
             (DragItem::Channel(id), Some(DropTarget::Category(category))) => {
-                let _ = self.backend.send_main(ClientMsg::MoveChannel { channel: id, category: Some(category) });
+                let _ = self.backend.send_main(ClientMsg::MoveChannel {
+                    channel: id,
+                    category: Some(category),
+                });
             }
             (DragItem::Channel(id), Some(DropTarget::Uncategorized)) => {
-                let _ = self.backend.send_main(ClientMsg::MoveChannel { channel: id, category: None });
+                let _ = self.backend.send_main(ClientMsg::MoveChannel {
+                    channel: id,
+                    category: None,
+                });
             }
             (DragItem::Category(id), Some(DropTarget::Category(before))) if id != before => {
-                let _ = self.backend.send_main(ClientMsg::MoveCategory { category: id, before: Some(before) });
+                let _ = self.backend.send_main(ClientMsg::MoveCategory {
+                    category: id,
+                    before: Some(before),
+                });
             }
             (DragItem::Channel(id), Some(DropTarget::Channel { id: before, category })) if id != before => {
-                let _ = self.backend.send_main(ClientMsg::PlaceChannel { channel: id, category, before: Some(before) });
+                let _ = self.backend.send_main(ClientMsg::PlaceChannel {
+                    channel: id,
+                    category,
+                    before: Some(before),
+                });
             }
             (DragItem::Category(id), Some(DropTarget::End)) => {
-                let _ = self.backend.send_main(ClientMsg::MoveCategory { category: id, before: None });
+                let _ = self.backend.send_main(ClientMsg::MoveCategory {
+                    category: id,
+                    before: None,
+                });
             }
             _ => {}
         }
@@ -1490,7 +1631,13 @@ impl App {
     /// Follows a rename. Channels keep their id, so only the name shown changes.
     pub(crate) fn channel_renamed(&mut self, id: i64, name: &str) {
         let old = self.channel_name_of(id);
-        for c in self.server.channels.iter_mut().chain(self.server.uncategorized.iter_mut()).filter(|c| c.id == id) {
+        for c in self
+            .server
+            .channels
+            .iter_mut()
+            .chain(self.server.uncategorized.iter_mut())
+            .filter(|c| c.id == id)
+        {
             c.name = name.to_string();
         }
         for cat in self.server.categories.iter_mut() {
@@ -1552,7 +1699,7 @@ impl App {
         }
     }
 
-    pub(crate) fn list_direct_messages_everywhere(&self) {
+    pub(crate) fn list_all_dms(&self) {
         for addr in self.dm_links.keys() {
             send_dm(self, addr, ClientMsg::ListDirectMessages);
         }
@@ -1560,7 +1707,13 @@ impl App {
 
     pub(crate) fn fetch_person(&self, other_id: &str) {
         for target in self.person_targets(other_id) {
-            send_dm(self, &target.addr, ClientMsg::FetchDm { channel: target.channel });
+            send_dm(
+                self,
+                &target.addr,
+                ClientMsg::FetchDm {
+                    channel: target.channel,
+                },
+            );
         }
     }
 
@@ -1574,7 +1727,13 @@ impl App {
             return;
         };
         send_dm(self, &target.addr, with_id(msg, real));
-        send_dm(self, &target.addr, ClientMsg::FetchDm { channel: target.channel });
+        send_dm(
+            self,
+            &target.addr,
+            ClientMsg::FetchDm {
+                channel: target.channel,
+            },
+        );
     }
 
     pub(crate) fn open_person(&mut self, other_id: &str) {
@@ -1587,7 +1746,11 @@ impl App {
     }
 
     pub(crate) fn open_dm_on(&mut self, addr: &str, channel: &str) -> Task<Message> {
-        let dm = self.dm_links.get(addr).and_then(|l| l.dms.iter().find(|d| d.channel == channel)).cloned();
+        let dm = self
+            .dm_links
+            .get(addr)
+            .and_then(|l| l.dms.iter().find(|d| d.channel == channel))
+            .cloned();
         if let Some(link) = self.dm_links.get_mut(addr) {
             if let Some(dm) = &dm {
                 link.unread.remove(&dm.channel_id);
@@ -1624,7 +1787,15 @@ impl App {
             self.add_server.error = Some("That server is already in your list.".into());
             return Task::none();
         }
-        self.prefs.servers.push(ServerPref { name: addr.clone(), addr, icon: None, id: None, ignored: Vec::new(), protected: Vec::new(), linked: false });
+        self.prefs.servers.push(ServerPref {
+            name: addr.clone(),
+            addr,
+            icon: None,
+            id: None,
+            ignored: Vec::new(),
+            protected: Vec::new(),
+            linked: false,
+        });
         self.add_server = AddServer::default();
         self.save_prefs();
         let index = self.prefs.servers.len() - 1;
@@ -1640,7 +1811,15 @@ impl App {
         if self.prefs.servers.iter().any(|s| s.addr == addr) {
             return;
         }
-        self.prefs.servers.push(ServerPref { name: found.name, addr: found.addr, icon: found.icon, id: Some(found.server_id), ignored: Vec::new(), protected: Vec::new(), linked: false });
+        self.prefs.servers.push(ServerPref {
+            name: found.name,
+            addr: found.addr,
+            icon: found.icon,
+            id: Some(found.server_id),
+            ignored: Vec::new(),
+            protected: Vec::new(),
+            linked: false,
+        });
         self.save_prefs();
         self.dm_tick();
     }
@@ -1668,7 +1847,10 @@ impl App {
         let password = self.login.password.clone();
         let name = self.login.register.then(|| self.login.name.clone());
         let remember = self.remember;
-        Task::perform(offload(move || backend.login(email, password, name, remember)), Message::LoginDone)
+        Task::perform(
+            offload(move || backend.login(email, password, name, remember)),
+            Message::LoginDone,
+        )
     }
 
     pub(crate) fn discord_login_submit(&mut self) -> Task<Message> {
@@ -1682,7 +1864,7 @@ impl App {
         Task::perform(offload(move || backend.discord_login(remember)), Message::LoginDone)
     }
 
-    pub(crate) fn save_prefs_with_session(&mut self) {
+    pub(crate) fn save_session_prefs(&mut self) {
         self.remember_session();
         self.save_prefs();
     }
@@ -1718,8 +1900,18 @@ impl App {
                 }
                 if !is_dm_channel(&name) {
                     if self.channel_permission(id, perm::MANAGE_CHANNELS) {
-                        items.push(item("Edit channel", Some(crate::icons::PENCIL), false, Message::ChannelEditOpen(id)));
-                        items.push(item("Delete channel", Some(crate::icons::TRASH), true, Message::DeleteChannelAsk(id, name.clone())));
+                        items.push(item(
+                            "Edit channel",
+                            Some(crate::icons::PENCIL),
+                            false,
+                            Message::ChannelEditOpen(id),
+                        ));
+                        items.push(item(
+                            "Delete channel",
+                            Some(crate::icons::TRASH),
+                            true,
+                            Message::DeleteChannelAsk(id, name.clone()),
+                        ));
                     }
                 }
                 // The copy items are last, below a divider: the name (for channels, not direct messages), then the ID.
@@ -1733,8 +1925,18 @@ impl App {
             MenuKind::Category { id, name } => {
                 let mut items = Vec::new();
                 if self.category_permission(id, perm::MANAGE_CHANNELS) {
-                    items.push(item("Edit category", Some(crate::icons::PENCIL), false, Message::CategoryEditOpen(id, name.clone())));
-                    items.push(item("Delete category", Some(crate::icons::TRASH), true, Message::DeleteCategoryAsk(id, name.clone())));
+                    items.push(item(
+                        "Edit category",
+                        Some(crate::icons::PENCIL),
+                        false,
+                        Message::CategoryEditOpen(id, name.clone()),
+                    ));
+                    items.push(item(
+                        "Delete category",
+                        Some(crate::icons::TRASH),
+                        true,
+                        Message::DeleteCategoryAsk(id, name.clone()),
+                    ));
                     items.push(MenuItem::Divider);
                 }
                 items.push(item("Copy ID", None, false, Message::CopyText(id.to_string())));
@@ -1761,7 +1963,11 @@ impl App {
                     } else {
                         self.top_role(&id).map_or(true, |top| self.outranks_role(top.id))
                     };
-                    let can_give = self.server.roles.iter().any(|r| r.id != common::EVERYONE_ROLE && self.outranks_role(r.id));
+                    let can_give = self
+                        .server
+                        .roles
+                        .iter()
+                        .any(|r| r.id != common::EVERYONE_ROLE && self.outranks_role(r.id));
                     if self.can(perm::MANAGE_ROLES) && member_can_change && can_give {
                         items.push(MenuItem::Divider);
                         items.push(MenuItem::Roles { member: id.clone() });
@@ -1770,8 +1976,18 @@ impl App {
                     if id != self.user_id && !self.is_protected(&id) {
                         let ignored = self.is_ignored_here(&id);
                         let blocked = self.is_blocked(&id);
-                        items.push(item(if ignored { "Unignore" } else { "Ignore" }, None, false, Message::IgnoreToggle(id.clone())));
-                        items.push(item(if blocked { "Unblock" } else { "Block" }, None, true, Message::BlockToggle(id.clone())));
+                        items.push(item(
+                            if ignored { "Unignore" } else { "Ignore" },
+                            None,
+                            false,
+                            Message::IgnoreToggle(id.clone()),
+                        ));
+                        items.push(item(
+                            if blocked { "Unblock" } else { "Block" },
+                            None,
+                            true,
+                            Message::BlockToggle(id.clone()),
+                        ));
                         items.push(MenuItem::Divider);
                     }
                     items.push(item("Copy name", None, false, Message::CopyText(name.clone())));
@@ -1796,13 +2012,23 @@ impl App {
                 let mut items = Vec::new();
                 if let Some(m) = self.find_message(id) {
                     if self.can_edit(&m) {
-                        items.push(item("Edit Message", Some(crate::icons::PENCIL), false, Message::EditStart(id)));
+                        items.push(item(
+                            "Edit Message",
+                            Some(crate::icons::PENCIL),
+                            false,
+                            Message::EditStart(id),
+                        ));
                     }
                     if self.can_edit(&m) && self.can_delete(&m) {
                         items.push(MenuItem::Divider);
                     }
                     if self.can_delete(&m) {
-                        items.push(item("Delete Message", Some(crate::icons::TRASH), true, Message::DeleteAsk(id)));
+                        items.push(item(
+                            "Delete Message",
+                            Some(crate::icons::TRASH),
+                            true,
+                            Message::DeleteAsk(id),
+                        ));
                     }
                 }
                 (format!("message-{id}"), items, None)
@@ -1816,7 +2042,12 @@ impl App {
             at.y = (at.y - height).max(8.0);
         }
         self.roles_menu_open = false;
-        self.menu = Some(Menu { at, items, width, centered });
+        self.menu = Some(Menu {
+            at,
+            items,
+            width,
+            centered,
+        });
         self.picker = None;
     }
 
@@ -1830,11 +2061,25 @@ impl App {
             items.push(item("Create category", None, false, Message::CategoryOpen));
         }
         items.push(MenuItem::Divider);
-        let label = if self.members_hidden { "Show member list" } else { "Hide member list" };
+        let label = if self.members_hidden {
+            "Show member list"
+        } else {
+            "Hide member list"
+        };
         items.push(item(label, None, false, Message::ToggleMembers));
-        items.push(item("Copy server address", None, false, Message::CopyText(self.main.addr.clone().unwrap_or_default())));
+        items.push(item(
+            "Copy server address",
+            None,
+            false,
+            Message::CopyText(self.main.addr.clone().unwrap_or_default()),
+        ));
         items.push(MenuItem::Divider);
-        items.push(item("Leave server", None, true, Message::RemoveServer(self.selected.unwrap_or(usize::MAX))));
+        items.push(item(
+            "Leave server",
+            None,
+            true,
+            Message::RemoveServer(self.selected.unwrap_or(usize::MAX)),
+        ));
         items
     }
 
@@ -1849,10 +2094,15 @@ impl App {
 
     pub(crate) fn status_menu_items(&self) -> Vec<MenuItem> {
         use common::PresenceStatus::*;
-        [(Online, "Online"), (Idle, "Idle"), (DoNotDisturb, "Do not disturb"), (Invisible, "Invisible")]
-            .into_iter()
-            .map(|(status, label)| item(label, None, false, Message::SetStatus(status)))
-            .collect()
+        [
+            (Online, "Online"),
+            (Idle, "Idle"),
+            (DoNotDisturb, "Do not disturb"),
+            (Invisible, "Invisible"),
+        ]
+        .into_iter()
+        .map(|(status, label)| item(label, None, false, Message::SetStatus(status)))
+        .collect()
     }
 
     pub(crate) fn theme_menu_items(&self) -> Vec<MenuItem> {
@@ -1866,7 +2116,11 @@ impl App {
     }
 
     pub fn theme_id_name(&self, id: &str) -> String {
-        theme::THEMES.iter().find(|t| t.0 == id).map(|t| t.1.to_string()).unwrap_or_else(|| id.to_string())
+        theme::THEMES
+            .iter()
+            .find(|t| t.0 == id)
+            .map(|t| t.1.to_string())
+            .unwrap_or_else(|| id.to_string())
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -1921,13 +2175,28 @@ impl App {
                 use crate::view::selectable::Step;
                 match step {
                     Step::Press(span) => {
-                        self.text_sel = Some(TextSel { message, anchor: (block, span), focus: (block, span), dragging: true });
+                        self.text_sel = Some(TextSel {
+                            message,
+                            anchor: (block, span),
+                            focus: (block, span),
+                            dragging: true,
+                        });
                     }
                     Step::Over(span) => {
                         if let Some(sel) = self.text_sel.as_mut() {
                             if sel.message == message && sel.dragging {
                                 sel.focus = (block, span);
                             }
+                        }
+                    }
+                    // A press on new text has already started a new (dragging) selection, which stays.
+                    Step::Outside => {
+                        if self
+                            .text_sel
+                            .as_ref()
+                            .is_some_and(|sel| sel.message == message && !sel.dragging)
+                        {
+                            self.text_sel = None;
                         }
                     }
                 }
@@ -1942,14 +2211,16 @@ impl App {
             // Text selected in the composer or the edit box is copied by the box itself, so a message
             // selection must not overwrite it.
             Message::CopySelectedText
-                if self.composer.selection().is_some() || (self.editing.is_some() && self.edit_box.selection().is_some()) =>
+                if self.composer.selection().is_some()
+                    || (self.editing.is_some() && self.edit_box.selection().is_some()) =>
             {
                 Task::none()
             }
             Message::CopySelectedText => match self.text_sel.clone() {
                 Some(sel) => match self.find_message(sel.message) {
                     Some(m) => {
-                        let text = crate::view::markdown_view::selected_text(&m.text, sel.anchor, sel.focus, self.pal());
+                        let text =
+                            crate::view::markdown_view::selected_text(&m.text, sel.anchor, sel.focus, self.pal());
                         iced::clipboard::write(text)
                     }
                     None => Task::none(),
@@ -1971,7 +2242,13 @@ impl App {
             }
             Message::DragStart(key, right) => {
                 let start_width = self.layout_width(key);
-                self.drag = Some(Drag { key, right, start_x: self.cursor.x, start_width, width: start_width });
+                self.drag = Some(Drag {
+                    key,
+                    right,
+                    start_x: self.cursor.x,
+                    start_width,
+                    width: start_width,
+                });
                 Task::none()
             }
             Message::Escape => self.on_escape(),
@@ -2019,7 +2296,12 @@ impl App {
 
     pub(crate) fn on_event(&mut self, event: Event) -> Task<Message> {
         match event {
-            Event::Net { dm: false, addr, id, msg } => {
+            Event::Net {
+                dm: false,
+                addr,
+                id,
+                msg,
+            } => {
                 if self.main.id.is_none() && self.main.connecting {
                     // The connection's id is not known until the connect call returns; keep the messages.
                     self.main.buffer.push((id, msg));
@@ -2030,14 +2312,24 @@ impl App {
                 }
                 Task::none()
             }
-            Event::Net { dm: true, addr, id, msg } => {
-                let link = self.dm_links.entry(addr.clone()).or_insert_with(|| DmLink { id, ..DmLink::default() });
+            Event::Net {
+                dm: true,
+                addr,
+                id,
+                msg,
+            } => {
+                let link = self.dm_links.entry(addr.clone()).or_insert_with(|| DmLink {
+                    id,
+                    ..DmLink::default()
+                });
                 if link.id == id {
                     self.handle_dm(&addr, msg);
                 }
                 Task::none()
             }
-            Event::Closed { dm: false, id, reason, .. } => {
+            Event::Closed {
+                dm: false, id, reason, ..
+            } => {
                 if self.main.id != Some(id) {
                     return Task::none();
                 }
@@ -2063,7 +2355,13 @@ impl App {
             Event::DmLink { addr, id, up } => {
                 if up {
                     if self.dm_links.get(&addr).map(|l| l.id) != Some(id) {
-                        self.dm_links.insert(addr, DmLink { id, ..DmLink::default() });
+                        self.dm_links.insert(
+                            addr,
+                            DmLink {
+                                id,
+                                ..DmLink::default()
+                            },
+                        );
                     }
                 } else if self.dm_links.get(&addr).is_some_and(|l| l.id == id) {
                     self.dm_links.remove(&addr);
@@ -2096,7 +2394,12 @@ impl std::fmt::Display for DmChoice {
 
 /// A menu item with its icon and action.
 pub fn item(label: &str, icon: Option<&'static str>, danger: bool, msg: Message) -> MenuItem {
-    MenuItem::Action { label: label.to_string(), icon, danger, msg }
+    MenuItem::Action {
+        label: label.to_string(),
+        icon,
+        danger,
+        msg,
+    }
 }
 
 /// The default address for a server typed without one.
@@ -2138,11 +2441,11 @@ impl App {
                     key: keyboard::Key::Named(keyboard::key::Named::Escape),
                     ..
                 }) => Some(Message::Escape),
-                iced::Event::Keyboard(keyboard::Event::KeyPressed { key: keyboard::Key::Character(ref c), modifiers, .. })
-                    if modifiers.command() && c.as_str() == "c" =>
-                {
-                    Some(Message::CopySelectedText)
-                }
+                iced::Event::Keyboard(keyboard::Event::KeyPressed {
+                    key: keyboard::Key::Character(ref c),
+                    modifiers,
+                    ..
+                }) if modifiers.command() && c.as_str() == "c" => Some(Message::CopySelectedText),
                 iced::Event::Keyboard(keyboard::Event::KeyPressed { .. }) => Some(Message::Activity),
                 _ => None,
             }),
@@ -2160,7 +2463,6 @@ impl App {
         Subscription::batch(subs)
     }
 }
-
 
 impl App {
     /// The picture and banner of a member, looked up by display name.
@@ -2202,9 +2504,12 @@ impl App {
     pub fn server_access(&self, target: AccessTarget, subject: &common::Subject) -> common::Setting {
         use common::Subject;
         match (target, subject) {
-            (AccessTarget::Channel(channel), Subject::Role(role)) => {
-                self.server.overrides.iter().find(|o| o.channel_id == channel && o.role == *role).map_or(common::Setting::default(), |o| o.setting())
-            }
+            (AccessTarget::Channel(channel), Subject::Role(role)) => self
+                .server
+                .overrides
+                .iter()
+                .find(|o| o.channel_id == channel && o.role == *role)
+                .map_or(common::Setting::default(), |o| o.setting()),
             (AccessTarget::Channel(channel), Subject::Member(member)) => self
                 .server
                 .member_channel_overrides
@@ -2228,37 +2533,75 @@ impl App {
 
     /// The category a channel is in, by id and name, if it is in one.
     pub fn category_of_channel(&self, channel: i64) -> Option<(i64, String)> {
-        self.server.categories.iter().find(|c| c.channels.iter().any(|ch| ch.id == channel)).map(|c| (c.id, c.name.clone()))
+        self.server
+            .categories
+            .iter()
+            .find(|c| c.channels.iter().any(|ch| ch.id == channel))
+            .map(|c| (c.id, c.name.clone()))
     }
 
     /// Every role and member with a setting on the channel or its category.
     pub fn subjects_of(&self, channel: i64, category: i64) -> std::collections::BTreeSet<common::Subject> {
         use common::Subject;
         let mut subjects = std::collections::BTreeSet::new();
-        subjects.extend(self.server.category_overrides.iter().filter(|o| o.category_id == category).map(|o| Subject::Role(o.role)));
-        subjects.extend(self.server.overrides.iter().filter(|o| o.channel_id == channel).map(|o| Subject::Role(o.role)));
-        subjects.extend(self.server.member_category_overrides.iter().filter(|o| o.category_id == category).map(|o| Subject::Member(o.member.clone())));
-        subjects.extend(self.server.member_channel_overrides.iter().filter(|o| o.channel_id == channel).map(|o| Subject::Member(o.member.clone())));
+        subjects.extend(
+            self.server
+                .category_overrides
+                .iter()
+                .filter(|o| o.category_id == category)
+                .map(|o| Subject::Role(o.role)),
+        );
+        subjects.extend(
+            self.server
+                .overrides
+                .iter()
+                .filter(|o| o.channel_id == channel)
+                .map(|o| Subject::Role(o.role)),
+        );
+        subjects.extend(
+            self.server
+                .member_category_overrides
+                .iter()
+                .filter(|o| o.category_id == category)
+                .map(|o| Subject::Member(o.member.clone())),
+        );
+        subjects.extend(
+            self.server
+                .member_channel_overrides
+                .iter()
+                .filter(|o| o.channel_id == channel)
+                .map(|o| Subject::Member(o.member.clone())),
+        );
         subjects
     }
 
     /// True when the channel's permissions (with any unsaved change) match its category's.
     pub fn channel_synced(&self, channel: i64, category: i64) -> bool {
         let target = AccessTarget::Channel(channel);
-        self.subjects_of(channel, category)
-            .iter()
-            .all(|subject| self.access_value(target, subject.clone()) == self.server_access(AccessTarget::Category(category), subject))
+        self.subjects_of(channel, category).iter().all(|subject| {
+            self.access_value(target, subject.clone()) == self.server_access(AccessTarget::Category(category), subject)
+        })
     }
 
     /// True when the open edit page's permissions differ from the server's.
     pub fn access_dirty(&self) -> bool {
-        self.access_draft.as_ref().is_some_and(|d| d.subjects.iter().any(|(subject, value)| *value != self.server_access(d.target, subject)))
+        self.access_draft.as_ref().is_some_and(|d| {
+            d.subjects
+                .iter()
+                .any(|(subject, value)| *value != self.server_access(d.target, subject))
+        })
     }
 
     /// True when the open channel or category edit page has changes that are not saved: its name or its permissions.
     pub fn edit_dirty(&self) -> bool {
-        let name = self.rename_channel.as_ref().is_some_and(|(_, old, new)| new.trim() != old)
-            || self.category_edit.as_ref().is_some_and(|(_, old, new)| new.trim() != old);
+        let name = self
+            .rename_channel
+            .as_ref()
+            .is_some_and(|(_, old, new)| new.trim() != old)
+            || self
+                .category_edit
+                .as_ref()
+                .is_some_and(|(_, old, new)| new.trim() != old);
         name || self.access_dirty()
     }
 
@@ -2267,7 +2610,10 @@ impl App {
             Page::User => match self.user_section {
                 UserSection::Account => {
                     let acc = &self.account;
-                    acc.draft_name.is_some() || acc.draft_username.is_some() || acc.draft_email.is_some() || acc.draft_theme.is_some()
+                    acc.draft_name.is_some()
+                        || acc.draft_username.is_some()
+                        || acc.draft_email.is_some()
+                        || acc.draft_theme.is_some()
                 }
                 UserSection::Profile => {
                     let acc = &self.account;
@@ -2275,34 +2621,19 @@ impl App {
                 }
                 UserSection::Linked => false,
             },
-            Page::Server => {
-                match self.shown_server_section() {
-                    ServerSection::Profile => crate::view::pages::server_profile_dirty(self),
-                    ServerSection::Roles => self.role_form.as_ref().is_some_and(|d| crate::view::pages::role_changed(self, d)),
-                    ServerSection::Badges => false,
-                }
-            }
+            Page::Server => match self.shown_server_section() {
+                ServerSection::Profile => crate::view::pages::server_profile_dirty(self),
+                ServerSection::Roles => self
+                    .role_form
+                    .as_ref()
+                    .is_some_and(|d| crate::view::pages::role_changed(self, d)),
+                ServerSection::Badges => false,
+            },
             _ => false,
         }
     }
 }
 
 #[cfg(test)]
-mod auto_status_tests {
-    use super::{auto_idle_change, IDLE_AFTER};
-    use std::time::Duration;
-
-    #[test]
-    fn going_idle_waits_for_the_limit_and_coming_back_is_immediate() {
-        assert_eq!(auto_idle_change(true, Duration::from_secs(1), false), None);
-        assert_eq!(auto_idle_change(true, IDLE_AFTER, false), Some(true));
-        assert_eq!(auto_idle_change(true, Duration::from_secs(1), true), Some(false));
-        assert_eq!(auto_idle_change(true, IDLE_AFTER, true), None);
-    }
-
-    #[test]
-    fn a_chosen_status_stops_going_idle_but_not_coming_back() {
-        assert_eq!(auto_idle_change(false, IDLE_AFTER * 2, false), None);
-        assert_eq!(auto_idle_change(false, Duration::ZERO, true), Some(false));
-    }
-}
+#[path = "tests/app.rs"]
+mod tests;

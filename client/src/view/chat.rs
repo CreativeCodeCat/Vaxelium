@@ -2,7 +2,9 @@
 //! composer, the member list and the message search.
 
 use common::ChatMessage;
-use iced::widget::{button, column, container, mouse_area, row, scrollable, space, svg, text, text_input, tooltip, Column};
+use iced::widget::{
+    button, column, container, mouse_area, row, scrollable, space, svg, text, text_input, tooltip, Column,
+};
 use iced::{border, Background, Color, Element, Length, Theme};
 
 use super::{bar, divider, ghost, letter_badge, muted_text, panel, round, server_icon};
@@ -23,7 +25,10 @@ const SPLITTER: f32 = 6.0;
 pub fn emoji<'a>(e: &str, size: f32) -> Element<'a, Message> {
     let path = emoji_path(e);
     if path.exists() {
-        svg(svg::Handle::from_path(path)).width(Length::Fixed(size)).height(Length::Fixed(size)).into()
+        svg(svg::Handle::from_path(path))
+            .width(Length::Fixed(size))
+            .height(Length::Fixed(size))
+            .into()
     } else {
         text(e.to_string()).size(size * 0.8).into()
     }
@@ -42,10 +47,13 @@ pub fn splitter<'a>(key: &'static str, right: bool) -> Element<'a, Message> {
 pub fn rail(app: &App, pal: Pal) -> Element<'_, Message> {
     let mut items: Vec<Element<'_, Message>> = Vec::new();
     items.push(rail_button(
-        svg(svg::Handle::from_path(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/assets/dm.svg")))
-            .width(Length::Fixed(24.0))
-            .height(Length::Fixed(24.0))
-            .into(),
+        svg(svg::Handle::from_path(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/ui/assets/dm.svg"
+        )))
+        .width(Length::Fixed(24.0))
+        .height(Length::Fixed(24.0))
+        .into(),
         Message::HomeOpen,
         app.home,
         pal,
@@ -56,7 +64,13 @@ pub fn rail(app: &App, pal: Pal) -> Element<'_, Message> {
         let active = app.selected == Some(i) && !app.home;
         let radius = if active { 16.0 } else { 24.0 };
         let picture = server_icon(server.icon.as_deref(), &server.name, 48.0, &pal, radius);
-        let button = rail_button(picture, Message::SelectServer(i), active, pal, Some(Message::OpenMenu(crate::app::MenuKind::Rail(i))));
+        let button = rail_button(
+            picture,
+            Message::SelectServer(i),
+            active,
+            pal,
+            Some(Message::OpenMenu(crate::app::MenuKind::Rail(i))),
+        );
         items.push(name_bubble(button, &server.name, server.linked, pal));
     }
     items.push(rail_button(
@@ -74,12 +88,17 @@ pub fn rail(app: &App, pal: Pal) -> Element<'_, Message> {
         None,
     ));
     // The column fills the rail, so its buttons are centred in it rather than kept at its left edge.
-    container(Column::with_children(items).spacing(8).align_x(iced::alignment::Horizontal::Center).width(Length::Fill))
-        .width(Length::Fixed(72.0))
-        .height(Length::Fill)
-        .padding(crate::util::pad2(12.0, 0.0))
-        .style(move |_: &Theme| round(pal.rail_bg, 0.0))
-        .into()
+    container(
+        Column::with_children(items)
+            .spacing(8)
+            .align_x(iced::alignment::Horizontal::Center)
+            .width(Length::Fill),
+    )
+    .width(Length::Fixed(72.0))
+    .height(Length::Fill)
+    .padding(crate::util::pad2(12.0, 0.0))
+    .style(move |_: &Theme| round(pal.rail_bg, 0.0))
+    .into()
 }
 
 /// Shows a server's name in a bubble to the right of its rail button while the pointer is over it.
@@ -87,7 +106,14 @@ pub fn rail(app: &App, pal: Pal) -> Element<'_, Message> {
 fn name_bubble<'a>(button: Element<'a, Message>, name: &str, linked: bool, pal: Pal) -> Element<'a, Message> {
     let mut parts = row![].spacing(8).align_y(iced::alignment::Vertical::Center);
     if linked {
-        parts = parts.push(svg(svg::Handle::from_path(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/assets/house.svg"))).width(Length::Fixed(14.0)).height(Length::Fixed(14.0)));
+        parts = parts.push(
+            svg(svg::Handle::from_path(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/ui/assets/house.svg"
+            )))
+            .width(Length::Fixed(14.0))
+            .height(Length::Fixed(14.0)),
+        );
     }
     parts = parts.push(text(name.to_string()).size(14).color(pal.text_strong));
     let content: Element<'a, Message> = parts.into();
@@ -101,19 +127,36 @@ fn name_bubble<'a>(button: Element<'a, Message>, name: &str, linked: bool, pal: 
     tooltip(button, bubble, tooltip::Position::Right).gap(10).into()
 }
 
-fn rail_button<'a>(content: Element<'a, Message>, msg: Message, active: bool, pal: Pal, right: Option<Message>) -> Element<'a, Message> {
+fn rail_button<'a>(
+    content: Element<'a, Message>,
+    msg: Message,
+    active: bool,
+    pal: Pal,
+    right: Option<Message>,
+) -> Element<'a, Message> {
     let radius = if active { 16.0 } else { 24.0 };
-    let b = button(container(content).width(Length::Fixed(48.0)).height(Length::Fixed(48.0)).align_x(iced::alignment::Horizontal::Center).align_y(iced::alignment::Vertical::Center))
-        .padding(0)
-        .on_press(msg)
-        .style(move |_: &Theme, status: button::Status| {
-            let bg = match status {
-                button::Status::Hovered | button::Status::Pressed => pal.accent,
-                _ if active => pal.accent,
-                _ => pal.input_bg,
-            };
-            button::Style { background: Some(Background::Color(bg)), border: border::rounded(radius), text_color: pal.text_strong, ..button::Style::default() }
-        });
+    let b = button(
+        container(content)
+            .width(Length::Fixed(48.0))
+            .height(Length::Fixed(48.0))
+            .align_x(iced::alignment::Horizontal::Center)
+            .align_y(iced::alignment::Vertical::Center),
+    )
+    .padding(0)
+    .on_press(msg)
+    .style(move |_: &Theme, status: button::Status| {
+        let bg = match status {
+            button::Status::Hovered | button::Status::Pressed => pal.accent,
+            _ if active => pal.accent,
+            _ => pal.input_bg,
+        };
+        button::Style {
+            background: Some(Background::Color(bg)),
+            border: border::rounded(radius),
+            text_color: pal.text_strong,
+            ..button::Style::default()
+        }
+    });
     match right {
         Some(menu) => mouse_area(b).on_right_press(menu).into(),
         None => b.into(),
@@ -148,39 +191,61 @@ pub fn channel(app: &App, pal: Pal) -> Element<'_, Message> {
             .style(move |_: &Theme| round(if members_hidden { pal.app_bg } else { pal.sidebar_bg }, 0.0)),
     ];
     let top = top.height(Length::Fixed(48.0));
-    let chat_main = column![top, body_row.height(Length::Fill)].width(Length::Fill).height(Length::Fill);
-    row![sidebar(app, pal), splitter("channels", false), chat_main].height(Length::Fill).into()
+    let chat_main = column![top, body_row.height(Length::Fill)]
+        .width(Length::Fill)
+        .height(Length::Fill);
+    row![sidebar(app, pal), splitter("channels", false), chat_main]
+        .height(Length::Fill)
+        .into()
 }
 
 /// The members of the server in the main area, in place of a channel. The sidebar stays as it is.
 pub fn members_page(app: &App, pal: Pal) -> Element<'_, Message> {
     let title = container(
-        row![icons::icon(icons::MEMBERS, 16.0, pal.text_muted), text("Members").size(16).color(pal.text_strong)]
-            .spacing(8)
-            .align_y(iced::alignment::Vertical::Center),
+        row![
+            icons::icon(icons::MEMBERS, 16.0, pal.text_muted),
+            text("Members").size(16).color(pal.text_strong)
+        ]
+        .spacing(8)
+        .align_y(iced::alignment::Vertical::Center),
     )
     .width(Length::Fill)
     .height(Length::Fixed(48.0))
     .padding(crate::util::pad2(0.0, 16.0))
     .align_y(iced::alignment::Vertical::Center)
     .style(move |_: &Theme| round(pal.app_bg, 0.0));
-    let chat_main = column![title, super::pages::members_section(app, pal)].width(Length::Fill).height(Length::Fill);
-    row![sidebar(app, pal), splitter("channels", false), chat_main].height(Length::Fill).into()
+    let chat_main = column![title, super::pages::members_section(app, pal)]
+        .width(Length::Fill)
+        .height(Length::Fill);
+    row![sidebar(app, pal), splitter("channels", false), chat_main]
+        .height(Length::Fill)
+        .into()
 }
 
 fn sidebar(app: &App, pal: Pal) -> Element<'_, Message> {
     let mut list: Vec<Element<'_, Message>> = Vec::new();
     // A heading above every channel, in the same style as the category headings.
-    list.push(container(text("CHANNELS").size(12).color(pal.text_muted)).padding(crate::util::pad2(0.0, 4.0)).into());
+    list.push(
+        container(text("CHANNELS").size(12).color(pal.text_muted))
+            .padding(crate::util::pad2(0.0, 4.0))
+            .into(),
+    );
     // While a channel is dragged, the zone above the channels takes it out of its category.
-    let dragging_channel = matches!(app.dnd.as_ref().map(|d| (d.moved, d.item)), Some((true, crate::app::DragItem::Channel(_))));
+    let dragging_channel = matches!(
+        app.dnd.as_ref().map(|d| (d.moved, d.item)),
+        Some((true, crate::app::DragItem::Channel(_)))
+    );
     let zone_over = app.dnd.as_ref().and_then(|d| d.over) == Some(crate::app::DropTarget::Uncategorized);
     if dragging_channel {
-        let zone = container(text("Drop here to take out of its category").size(12).color(pal.text_muted))
-            .padding(crate::util::pad2(4.0, 6.0))
-            .width(Length::Fill)
-            .height(Length::Fixed(28.0))
-            .style(move |_: &Theme| round(if zone_over { pal.selected_bg } else { Color::TRANSPARENT }, 4.0));
+        let zone = container(
+            text("Drop here to take out of its category")
+                .size(12)
+                .color(pal.text_muted),
+        )
+        .padding(crate::util::pad2(4.0, 6.0))
+        .width(Length::Fill)
+        .height(Length::Fixed(28.0))
+        .style(move |_: &Theme| round(if zone_over { pal.selected_bg } else { Color::TRANSPARENT }, 4.0));
         list.push(
             mouse_area(zone)
                 .on_enter(Message::DndOver(Some(crate::app::DropTarget::Uncategorized)))
@@ -195,12 +260,19 @@ fn sidebar(app: &App, pal: Pal) -> Element<'_, Message> {
     // Each category has a heading that folds its channels. A folded category still shows the open channel.
     for category in &app.server.categories {
         let collapsed = app.collapsed_categories.contains(&category.id);
-        let chevron = if collapsed { icons::CHEVRON_RIGHT } else { icons::CHEVRON_DOWN };
+        let chevron = if collapsed {
+            icons::CHEVRON_RIGHT
+        } else {
+            icons::CHEVRON_DOWN
+        };
         let heading = row![
             button(icons::icon(chevron, 14.0, pal.text_muted))
                 .padding(2)
                 .on_press(Message::ToggleCategory(category.id))
-                .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() }),
+                .style(|_: &Theme, _| button::Style {
+                    background: None,
+                    ..button::Style::default()
+                }),
             text(category.name.to_uppercase()).size(12).color(pal.text_muted),
         ]
         .spacing(6)
@@ -218,7 +290,10 @@ fn sidebar(app: &App, pal: Pal) -> Element<'_, Message> {
             .on_press(Message::DndPress(crate::app::DragItem::Category(category.id)))
             .on_enter(Message::DndOver(Some(target)))
             .on_exit(Message::DndOver(None))
-            .on_right_press(Message::OpenMenu(crate::app::MenuKind::Category { id: category.id, name: category.name.clone() }))
+            .on_right_press(Message::OpenMenu(crate::app::MenuKind::Category {
+                id: category.id,
+                name: category.name.clone(),
+            }))
             .into(),
         );
         for c in &category.channels {
@@ -234,7 +309,16 @@ fn sidebar(app: &App, pal: Pal) -> Element<'_, Message> {
                 .padding(crate::util::pad2(2.0, 6.0))
                 .width(Length::Fill)
                 .height(Length::Fixed(22.0))
-                .style(move |_: &Theme| round(if strip_over { pal.selected_bg } else { Color::TRANSPARENT }, 4.0));
+                .style(move |_: &Theme| {
+                    round(
+                        if strip_over {
+                            pal.selected_bg
+                        } else {
+                            Color::TRANSPARENT
+                        },
+                        4.0,
+                    )
+                });
             list.push(
                 mouse_area(strip)
                     .on_enter(Message::DndOver(Some(target)))
@@ -244,7 +328,10 @@ fn sidebar(app: &App, pal: Pal) -> Element<'_, Message> {
         }
     }
     // While a category is dragged, this zone after the last one moves it to the end.
-    let dragging_category = matches!(app.dnd.as_ref().map(|d| (d.moved, d.item)), Some((true, crate::app::DragItem::Category(_))));
+    let dragging_category = matches!(
+        app.dnd.as_ref().map(|d| (d.moved, d.item)),
+        Some((true, crate::app::DragItem::Category(_)))
+    );
     if dragging_category {
         let over_end = app.dnd.as_ref().and_then(|d| d.over) == Some(crate::app::DropTarget::End);
         let zone = container(text("Drop here to move to the end").size(12).color(pal.text_muted))
@@ -288,11 +375,21 @@ fn sidebar(app: &App, pal: Pal) -> Element<'_, Message> {
         );
     }
     // The house beside the name marks a server that other servers know about.
-    let linked = app.selected.and_then(|i| app.prefs.servers.get(i)).is_some_and(|s| s.linked);
+    let linked = app
+        .selected
+        .and_then(|i| app.prefs.servers.get(i))
+        .is_some_and(|s| s.linked);
     // The house sits before the name; the drop-down stays at the right edge.
     let mut header_row = row![].spacing(8).align_y(iced::alignment::Vertical::Center);
     if linked {
-        header_row = header_row.push(svg(svg::Handle::from_path(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/assets/house.svg"))).width(Length::Fixed(14.0)).height(Length::Fixed(14.0)));
+        header_row = header_row.push(
+            svg(svg::Handle::from_path(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/ui/assets/house.svg"
+            )))
+            .width(Length::Fixed(14.0))
+            .height(Length::Fixed(14.0)),
+        );
     }
     // The drop-down always shows; a long name is cut short with an ellipsis to make room for it.
     // Room is what the sidebar has, less the padding, the drop-down, the house when shown, and the gaps.
@@ -301,25 +398,41 @@ fn sidebar(app: &App, pal: Pal) -> Element<'_, Message> {
     let full = app.selected_name().unwrap_or_else(|| "Vaxelium".into());
     let shown = fit_name(&full, room, 16.0);
     let header_row = header_row
-        .push(container(text(shown).size(16).color(pal.text_strong).wrapping(iced::widget::text::Wrapping::None)).width(Length::Fill).clip(true))
+        .push(
+            container(
+                text(shown)
+                    .size(16)
+                    .color(pal.text_strong)
+                    .wrapping(iced::widget::text::Wrapping::None),
+            )
+            .width(Length::Fill)
+            .clip(true),
+        )
         .push(icons::icon(icons::CHEVRON_DOWN, 14.0, pal.text));
     let header_btn = mouse_area(
         container(header_row)
-        .width(Length::Fill)
-        .padding(crate::util::pad2(0.0, 14.0))
-        .height(Length::Fixed(48.0))
-        .align_y(iced::alignment::Vertical::Center)
-        .style(move |_: &Theme| round(pal.sidebar_bg, 0.0)),
+            .width(Length::Fill)
+            .padding(crate::util::pad2(0.0, 14.0))
+            .height(Length::Fixed(48.0))
+            .align_y(iced::alignment::Vertical::Center)
+            .style(move |_: &Theme| round(pal.sidebar_bg, 0.0)),
     )
     .on_press(Message::OpenMenu(crate::app::MenuKind::Server));
     // Members sits above the channels and opens the member list in place of the chat.
     let members_selected = app.members_view;
-    let members_color = if members_selected { pal.text_strong } else { pal.text_muted };
+    let members_color = if members_selected {
+        pal.text_strong
+    } else {
+        pal.text_muted
+    };
     let members_nav = container(
         button(
-            row![icons::icon(icons::MEMBERS, 16.0, members_color), text("Members").size(15).color(members_color)]
-                .spacing(10)
-                .align_y(iced::alignment::Vertical::Center),
+            row![
+                icons::icon(icons::MEMBERS, 16.0, members_color),
+                text("Members").size(15).color(members_color)
+            ]
+            .spacing(10)
+            .align_y(iced::alignment::Vertical::Center),
         )
         .width(Length::Fill)
         .padding(crate::util::pad2(6.0, 10.0))
@@ -332,7 +445,12 @@ fn sidebar(app: &App, pal: Pal) -> Element<'_, Message> {
             } else {
                 Color::TRANSPARENT
             };
-            button::Style { background: Some(Background::Color(bg)), text_color: members_color, border: border::rounded(4.0), ..button::Style::default() }
+            button::Style {
+                background: Some(Background::Color(bg)),
+                text_color: members_color,
+                border: border::rounded(4.0),
+                ..button::Style::default()
+            }
         }),
     )
     .padding(crate::util::pad2(8.0, 8.0));
@@ -340,7 +458,9 @@ fn sidebar(app: &App, pal: Pal) -> Element<'_, Message> {
         column![
             header_btn,
             members_nav,
-            container(Column::with_children(list).spacing(1)).padding(crate::util::pad2(12.0, 8.0)).height(Length::Fill),
+            container(Column::with_children(list).spacing(1))
+                .padding(crate::util::pad2(12.0, 8.0))
+                .height(Length::Fill),
             user_bar(app, pal),
         ]
         .height(Length::Fill),
@@ -354,7 +474,11 @@ fn channel_row<'a>(app: &App, pal: Pal, channel: &common::ChannelRef) -> Element
     let selected = channel.id == app.server.channel_id;
     let unread = app.unread.contains(&channel.id);
     let pinged = app.pinged.contains(&channel.id);
-    let color = if selected || unread { pal.text_strong } else { pal.text_muted };
+    let color = if selected || unread {
+        pal.text_strong
+    } else {
+        pal.text_muted
+    };
     let bg = if selected { pal.selected_bg } else { Color::TRANSPARENT };
     let mut inner = row![text(format!("# {name}")).size(15).color(color).width(Length::Fill)]
         .spacing(6)
@@ -362,11 +486,22 @@ fn channel_row<'a>(app: &App, pal: Pal, channel: &common::ChannelRef) -> Element
     // A ping for one of your roles is red, so it stands out from ordinary unread messages.
     if unread && !selected {
         let dot = if pinged { pal.red } else { pal.text_strong };
-        inner = inner.push(container(space()).width(Length::Fixed(8.0)).height(Length::Fixed(8.0)).style(move |_: &Theme| round(dot, 4.0)));
+        inner = inner.push(
+            container(space())
+                .width(Length::Fixed(8.0))
+                .height(Length::Fixed(8.0))
+                .style(move |_: &Theme| round(dot, 4.0)),
+        );
     }
     // While another channel is dragged over this one, it is highlighted: the drop goes before it.
-    let target = crate::app::DropTarget::Channel { id: channel.id, category: category_of(app, channel.id) };
-    let dragged_channel = matches!(app.dnd.as_ref().map(|d| (d.moved, d.item)), Some((true, crate::app::DragItem::Channel(_))));
+    let target = crate::app::DropTarget::Channel {
+        id: channel.id,
+        category: category_of(app, channel.id),
+    };
+    let dragged_channel = matches!(
+        app.dnd.as_ref().map(|d| (d.moved, d.item)),
+        Some((true, crate::app::DragItem::Channel(_)))
+    );
     let hovered = dragged_channel && app.dnd.as_ref().and_then(|d| d.over) == Some(target);
     let bg = if hovered { pal.selected_bg } else { bg };
     let body = container(inner)
@@ -377,15 +512,25 @@ fn channel_row<'a>(app: &App, pal: Pal, channel: &common::ChannelRef) -> Element
         .style(move |_: &Theme| round(bg, 4.0));
     let mut area = mouse_area(body).on_press(Message::DndPress(crate::app::DragItem::Channel(channel.id)));
     if dragged_channel {
-        area = area.on_enter(Message::DndOver(Some(target))).on_exit(Message::DndOver(None));
+        area = area
+            .on_enter(Message::DndOver(Some(target)))
+            .on_exit(Message::DndOver(None));
     }
-    area.on_right_press(Message::OpenMenu(crate::app::MenuKind::Channel { id: channel.id, name: name.to_string(), unread }))
-        .into()
+    area.on_right_press(Message::OpenMenu(crate::app::MenuKind::Channel {
+        id: channel.id,
+        name: name.to_string(),
+        unread,
+    }))
+    .into()
 }
 
 /// The category a channel is in, if any.
 fn category_of(app: &App, channel: i64) -> Option<i64> {
-    app.server.categories.iter().find(|c| c.channels.iter().any(|ch| ch.id == channel)).map(|c| c.id)
+    app.server
+        .categories
+        .iter()
+        .find(|c| c.channels.iter().any(|ch| ch.id == channel))
+        .map(|c| c.id)
 }
 
 /// The height of the user bar at the bottom of the sidebar.
@@ -396,23 +541,40 @@ fn user_bar(app: &App, pal: Pal) -> Element<'_, Message> {
     let own_status = app.effective_status();
     // The room is the sidebar less the picture, the icons, the settings button and the gaps.
     let room = (app.panel_width("channels") - 150.0).max(0.0);
-    let own_text = app.profiles.get(&app.user_id).map(|look| look.status.clone()).unwrap_or_default();
+    let own_text = app
+        .profiles
+        .get(&app.user_id)
+        .map(|look| look.status.clone())
+        .unwrap_or_default();
     let status_text_line: Element<'_, Message> = if own_text.is_empty() {
         space().height(Length::Fixed(0.0)).into()
     } else {
-        text(fit_name(&own_text, room, 11.0)).size(11).color(pal.text).wrapping(iced::widget::text::Wrapping::None).into()
+        text(fit_name(&own_text, room, 11.0))
+            .size(11)
+            .color(pal.text)
+            .wrapping(iced::widget::text::Wrapping::None)
+            .into()
     };
     let who = column![
         // Your name opens your own profile card, where your status bubble is edited.
         button(text(user.clone()).size(14).color(pal.text_strong))
             .padding(0)
-            .on_press(Message::CardOpenAbove { id: app.user_id.clone(), name: user.clone() })
-            .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() }),
+            .on_press(Message::CardOpenAbove {
+                id: app.user_id.clone(),
+                name: user.clone()
+            })
+            .style(|_: &Theme, _| button::Style {
+                background: None,
+                ..button::Style::default()
+            }),
         // Your own status. Click it to change it.
         button(text(status_label(own_status)).size(11).color(pal.text_muted))
             .padding(0)
             .on_press(Message::OpenMenu(crate::app::MenuKind::Status))
-            .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() }),
+            .style(|_: &Theme, _| button::Style {
+                background: None,
+                ..button::Style::default()
+            }),
         // Your status text, if you have set one, on one line.
         status_text_line,
     ]
@@ -431,7 +593,10 @@ fn user_bar(app: &App, pal: Pal) -> Element<'_, Message> {
         button(icons::icon(icons::GEAR, 16.0, pal.text))
             .padding(4)
             .on_press(Message::UserSettingsOpen)
-            .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() }),
+            .style(|_: &Theme, _| button::Style {
+                background: None,
+                ..button::Style::default()
+            }),
     ]
     .spacing(8)
     .align_y(iced::alignment::Vertical::Center);
@@ -454,13 +619,22 @@ fn header(app: &App, pal: Pal) -> Element<'_, Message> {
     ]
     .spacing(8)
     .align_y(iced::alignment::Vertical::Center);
-    let members_color = if app.members_hidden { pal.text_muted } else { pal.text_strong };
+    let members_color = if app.members_hidden {
+        pal.text_muted
+    } else {
+        pal.text_strong
+    };
     items = items.push(
         row![
             disabled_icon(icons::HASH, pal),
             disabled_icon(icons::BELL, pal),
             disabled_icon(icons::PIN, pal),
-            ghost(icons::icon(icons::MEMBERS, 16.0, members_color), Some(Message::ToggleMembers), pal.hover_bg, 4.0),
+            ghost(
+                icons::icon(icons::MEMBERS, 16.0, members_color),
+                Some(Message::ToggleMembers),
+                pal.hover_bg,
+                4.0
+            ),
         ]
         .spacing(6),
     );
@@ -475,7 +649,9 @@ fn header(app: &App, pal: Pal) -> Element<'_, Message> {
 
 /// An icon for a feature that is not built yet: dimmed, and does nothing.
 fn disabled_icon<'a>(icon: &'static str, pal: Pal) -> Element<'a, Message> {
-    container(icons::icon(icon, 16.0, pal.text_muted)).padding(crate::util::pad2(2.0, 4.0)).into()
+    container(icons::icon(icon, 16.0, pal.text_muted))
+        .padding(crate::util::pad2(2.0, 4.0))
+        .into()
 }
 
 /// The message search field. The filter menu is drawn over the window by `search_filters_layer`.
@@ -488,7 +664,10 @@ pub fn search_box(app: &App, pal: Pal, width: Length) -> Element<'_, Message> {
         button(icons::icon(icons::CLOSE, 12.0, pal.text_muted))
             .padding(0)
             .on_press(Message::SearchClear)
-            .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() })
+            .style(|_: &Theme, _| button::Style {
+                background: None,
+                ..button::Style::default()
+            })
             .into()
     };
     let field = row![
@@ -522,7 +701,13 @@ pub fn search_box(app: &App, pal: Pal, width: Length) -> Element<'_, Message> {
 }
 
 /// One row of the search filter menu: an icon, the filter's name, and what it takes.
-fn menu_item<'a>(pal: Pal, prefix: &'static str, label: &str, hint: &str, icon: Element<'a, Message>) -> Element<'a, Message> {
+fn menu_item<'a>(
+    pal: Pal,
+    prefix: &'static str,
+    label: &str,
+    hint: &str,
+    icon: Element<'a, Message>,
+) -> Element<'a, Message> {
     button(
         row![
             container(icon).width(Length::Fixed(20.0)),
@@ -542,7 +727,12 @@ fn menu_item<'a>(pal: Pal, prefix: &'static str, label: &str, hint: &str, icon: 
             button::Status::Hovered => Some(Background::Color(pal.hover_bg)),
             _ => None,
         };
-        button::Style { background: bg, text_color: pal.text, border: border::rounded(0.0), ..button::Style::default() }
+        button::Style {
+            background: bg,
+            text_color: pal.text,
+            border: border::rounded(0.0),
+            ..button::Style::default()
+        }
     })
     .into()
 }
@@ -557,11 +747,31 @@ pub fn search_filters_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>>
     }
     let hash = text("#").size(18).color(pal.text_muted).into();
     let mut items: Vec<Element<'_, Message>> = vec![
-        container(text("Filters").size(12).color(pal.text_muted)).padding(crate::util::pad(4.0, 16.0, 8.0, 16.0)).into(),
-        menu_item(pal, "from:", "From a specific user", "from: user", icons::icon(icons::USER, 16.0, pal.text_muted)),
+        container(text("Filters").size(12).color(pal.text_muted))
+            .padding(crate::util::pad(4.0, 16.0, 8.0, 16.0))
+            .into(),
+        menu_item(
+            pal,
+            "from:",
+            "From a specific user",
+            "from: user",
+            icons::icon(icons::USER, 16.0, pal.text_muted),
+        ),
         menu_item(pal, "in:", "Sent in a specific channel", "in: channel", hash),
-        menu_item(pal, "has:", "Includes a specific type of data", "has: link, embed or file", icons::icon(icons::ATTACH, 16.0, pal.text_muted)),
-        menu_item(pal, "mentions:", "Mentions a specific user", "mentions: user", icons::icon(icons::AT, 16.0, pal.text_muted)),
+        menu_item(
+            pal,
+            "has:",
+            "Includes a specific type of data",
+            "has: link, embed or file",
+            icons::icon(icons::ATTACH, 16.0, pal.text_muted),
+        ),
+        menu_item(
+            pal,
+            "mentions:",
+            "Mentions a specific user",
+            "mentions: user",
+            icons::icon(icons::AT, 16.0, pal.text_muted),
+        ),
         button(
             row![
                 container(icons::icon(icons::SLIDERS, 16.0, pal.text_muted)).width(Length::Fixed(20.0)),
@@ -570,7 +780,15 @@ pub fn search_filters_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>>
                     text("dates").size(12).color(pal.text_muted),
                 ]
                 .width(Length::Fill),
-                icons::icon(if app.search_more { icons::CHEVRON_DOWN } else { icons::CHEVRON_RIGHT }, 14.0, pal.text_muted),
+                icons::icon(
+                    if app.search_more {
+                        icons::CHEVRON_DOWN
+                    } else {
+                        icons::CHEVRON_RIGHT
+                    },
+                    14.0,
+                    pal.text_muted
+                ),
             ]
             .spacing(12)
             .align_y(iced::alignment::Vertical::Center),
@@ -578,15 +796,37 @@ pub fn search_filters_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>>
         .padding(crate::util::pad2(8.0, 16.0))
         .width(Length::Fill)
         .on_press(Message::SearchMore)
-        .style(move |_: &Theme, _| button::Style { background: None, text_color: pal.text, ..button::Style::default() })
+        .style(move |_: &Theme, _| button::Style {
+            background: None,
+            text_color: pal.text,
+            ..button::Style::default()
+        })
         .into(),
     ];
     if app.search_more {
         items.push(
             container(column![
-                menu_item(pal, "before:", "Before a date", "before: YYYY-MM-DD", icons::icon(icons::SEARCH, 14.0, pal.text_muted)),
-                menu_item(pal, "after:", "On or after a date", "after: YYYY-MM-DD", icons::icon(icons::SEARCH, 14.0, pal.text_muted)),
-                menu_item(pal, "during:", "During a date", "during: YYYY-MM-DD", icons::icon(icons::SEARCH, 14.0, pal.text_muted)),
+                menu_item(
+                    pal,
+                    "before:",
+                    "Before a date",
+                    "before: YYYY-MM-DD",
+                    icons::icon(icons::SEARCH, 14.0, pal.text_muted)
+                ),
+                menu_item(
+                    pal,
+                    "after:",
+                    "On or after a date",
+                    "after: YYYY-MM-DD",
+                    icons::icon(icons::SEARCH, 14.0, pal.text_muted)
+                ),
+                menu_item(
+                    pal,
+                    "during:",
+                    "During a date",
+                    "during: YYYY-MM-DD",
+                    icons::icon(icons::SEARCH, 14.0, pal.text_muted)
+                ),
             ])
             .padding(crate::util::pad(0.0, 0.0, 0.0, 16.0))
             .into(),
@@ -598,26 +838,44 @@ pub fn search_filters_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>>
 /// The suggestions for the word being typed: channels after `in:`, members after `from:` or
 /// `mentions:`. None when the word is not one of those.
 fn suggestions_menu<'a>(app: &App, pal: Pal) -> Option<Vec<Element<'a, Message>>> {
-    let word = app.search.split_whitespace().last().filter(|_| !app.search.ends_with(char::is_whitespace))?;
+    let word = app
+        .search
+        .split_whitespace()
+        .last()
+        .filter(|_| !app.search.ends_with(char::is_whitespace))?;
     let (filter, query) = word.split_once(':')?;
     let query = query.to_lowercase();
     let filter = filter.to_lowercase();
     let (heading, names): (&str, Vec<String>) = match filter.as_str() {
-        "in" => ("In Channel", app.server.channels.iter().map(|c| c.name.clone()).collect()),
+        "in" => (
+            "In Channel",
+            app.server.channels.iter().map(|c| c.name.clone()).collect(),
+        ),
         "from" | "mentions" => (
             "Members",
-            app.server.online.iter().chain(app.server.offline.iter()).cloned().collect(),
+            app.server
+                .online
+                .iter()
+                .chain(app.server.offline.iter())
+                .cloned()
+                .collect(),
         ),
         _ => return None,
     };
-    let matches: Vec<String> = names.into_iter().filter(|n| n.to_lowercase().contains(&query)).collect();
-    let mut items: Vec<Element<'a, Message>> = vec![
-        container(text(heading.to_uppercase()).size(11).color(pal.text_muted))
+    let matches: Vec<String> = names
+        .into_iter()
+        .filter(|n| n.to_lowercase().contains(&query))
+        .collect();
+    let mut items: Vec<Element<'a, Message>> =
+        vec![container(text(heading.to_uppercase()).size(11).color(pal.text_muted))
             .padding(crate::util::pad(4.0, 16.0, 8.0, 16.0))
-            .into(),
-    ];
+            .into()];
     if matches.is_empty() {
-        items.push(container(text("No matches").size(13).color(pal.text_muted)).padding(crate::util::pad2(6.0, 16.0)).into());
+        items.push(
+            container(text("No matches").size(13).color(pal.text_muted))
+                .padding(crate::util::pad2(6.0, 16.0))
+                .into(),
+        );
     }
     for name in matches {
         let icon: Element<'a, Message> = if filter == "in" {
@@ -628,18 +886,27 @@ fn suggestions_menu<'a>(app: &App, pal: Pal) -> Option<Vec<Element<'a, Message>>
         let value = format!("{filter}:{name}");
         let label = text(name).size(14).color(pal.text_strong);
         items.push(
-            button(row![container(icon).width(Length::Fixed(20.0)), label].spacing(12).align_y(iced::alignment::Vertical::Center))
-                .padding(crate::util::pad2(8.0, 16.0))
-                .width(Length::Fill)
-                .on_press(Message::SearchPick(value))
-                .style(move |_: &Theme, status: button::Status| {
-                    let bg = match status {
-                        button::Status::Hovered => Some(Background::Color(pal.hover_bg)),
-                        _ => None,
-                    };
-                    button::Style { background: bg, text_color: pal.text, border: border::rounded(0.0), ..button::Style::default() }
-                })
-                .into(),
+            button(
+                row![container(icon).width(Length::Fixed(20.0)), label]
+                    .spacing(12)
+                    .align_y(iced::alignment::Vertical::Center),
+            )
+            .padding(crate::util::pad2(8.0, 16.0))
+            .width(Length::Fill)
+            .on_press(Message::SearchPick(value))
+            .style(move |_: &Theme, status: button::Status| {
+                let bg = match status {
+                    button::Status::Hovered => Some(Background::Color(pal.hover_bg)),
+                    _ => None,
+                };
+                button::Style {
+                    background: bg,
+                    text_color: pal.text,
+                    border: border::rounded(0.0),
+                    ..button::Style::default()
+                }
+            })
+            .into(),
         );
     }
     Some(items)
@@ -670,7 +937,9 @@ fn center<'a>(app: &'a App, pal: Pal, search: &Search) -> Element<'a, Message> {
     if app.main.joined_initial && app.server.channel.is_empty() && app.current_person().is_none() {
         return container(
             column![
-                text("You can't see any channels on this server.").size(20).color(pal.text_strong),
+                text("You can't see any channels on this server.")
+                    .size(20)
+                    .color(pal.text_strong),
                 muted_text("Ask an admin to give you access to a channel.", 14.0, pal.text_muted),
             ]
             .spacing(6)
@@ -683,13 +952,10 @@ fn center<'a>(app: &'a App, pal: Pal, search: &Search) -> Element<'a, Message> {
         .into();
     }
     let entries = app.current_entries();
-    column![
-        messages(app, pal, entries, search),
-        composer(app, pal),
-    ]
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .into()
+    column![messages(app, pal, entries, search), composer(app, pal),]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
 }
 
 /// The message list: day dividers, grouped authors, the NEW line, and the search results.
@@ -697,7 +963,11 @@ fn messages<'a>(app: &'a App, pal: Pal, entries: Vec<Entry>, search: &Search) ->
     let person = app.current_person();
     let channel = app.server.channel.clone();
     let active = !search.is_empty();
-    let new_at = if person.is_none() { app.read_marks.get(&app.server.channel_id).copied() } else { None };
+    let new_at = if person.is_none() {
+        app.read_marks.get(&app.server.channel_id).copied()
+    } else {
+        None
+    };
     let now = crate::util::now();
     let mut out: Vec<Element<'a, Message>> = Vec::new();
 
@@ -705,19 +975,38 @@ fn messages<'a>(app: &'a App, pal: Pal, entries: Vec<Entry>, search: &Search) ->
         let label = app.channel_label();
         column![
             text(label.clone()).size(28).color(pal.text_strong),
-            muted_text(format!("This is the start of your direct messages with {}.", label.trim_start_matches("@ ")), 14.0, pal.text_muted),
+            muted_text(
+                format!(
+                    "This is the start of your direct messages with {}.",
+                    label.trim_start_matches("@ ")
+                ),
+                14.0,
+                pal.text_muted
+            ),
         ]
     } else {
         column![
             text(format!("Welcome to #{channel}!")).size(28).color(pal.text_strong),
-            muted_text(format!("This is the start of the #{channel} channel."), 14.0, pal.text_muted),
+            muted_text(
+                format!("This is the start of the #{channel} channel."),
+                14.0,
+                pal.text_muted
+            ),
         ]
     };
-    out.push(container(welcome).padding(crate::util::pad(0.0, 16.0, 16.0, 16.0)).into());
+    out.push(
+        container(welcome)
+            .padding(crate::util::pad(0.0, 16.0, 16.0, 16.0))
+            .into(),
+    );
 
     let matches = |e: &Entry| matches!(e, Entry::Chat(m) if search.matches(m, &channel));
     if active && !entries.iter().any(matches) {
-        out.push(container(muted_text("No messages match your search.", 14.0, pal.text_muted)).padding(crate::util::pad2(8.0, 16.0)).into());
+        out.push(
+            container(muted_text("No messages match your search.", 14.0, pal.text_muted))
+                .padding(crate::util::pad2(8.0, 16.0))
+                .into(),
+        );
     }
     let mut prev_day: Option<i64> = None;
     let mut prev_author: Option<String> = None;
@@ -739,45 +1028,58 @@ fn messages<'a>(app: &'a App, pal: Pal, entries: Vec<Entry>, search: &Search) ->
         }
         match entry {
             Entry::System { text: t, .. } => {
-                out.push(container(muted_text(t.clone(), 13.0, pal.text_muted)).padding(crate::util::pad2(4.0, 16.0)).into());
+                out.push(
+                    container(muted_text(t.clone(), 13.0, pal.text_muted))
+                        .padding(crate::util::pad2(4.0, 16.0))
+                        .into(),
+                );
                 prev_author = None;
             }
             Entry::Chat(m) => {
-                let grouped = prev_author.as_deref() == Some(m.author.as_str()) && at.saturating_sub(prev_at) < GROUP_GAP_SECS;
+                let grouped =
+                    prev_author.as_deref() == Some(m.author.as_str()) && at.saturating_sub(prev_at) < GROUP_GAP_SECS;
                 prev_author = Some(m.author.clone());
                 out.push(chat_message(app, pal, m, grouped, now));
             }
         }
         prev_at = at;
     }
-    scrollable(Column::with_children(out).padding(crate::util::pad(16.0, 0.0, 12.0, 0.0)).width(Length::Fill))
-        .id(MESSAGES_ID)
-        .anchor_bottom()
-        .height(Length::Fill)
-        .into()
+    scrollable(
+        Column::with_children(out)
+            .padding(crate::util::pad(16.0, 0.0, 12.0, 0.0))
+            .width(Length::Fill),
+    )
+    .id(MESSAGES_ID)
+    .anchor_bottom()
+    .height(Length::Fill)
+    .into()
 }
 
 fn day_divider<'a>(label: &str, pal: Pal) -> Element<'a, Message> {
-    container(row![
-        divider(pal.selected_bg),
-        text(label.to_string()).size(12).color(pal.text_muted),
-        divider(pal.selected_bg),
-    ]
-    .spacing(8)
-    .align_y(iced::alignment::Vertical::Center))
+    container(
+        row![
+            divider(pal.selected_bg),
+            text(label.to_string()).size(12).color(pal.text_muted),
+            divider(pal.selected_bg),
+        ]
+        .spacing(8)
+        .align_y(iced::alignment::Vertical::Center),
+    )
     .padding(crate::util::pad(12.0, 16.0, 8.0, 16.0))
     .into()
 }
 
 fn new_divider<'a>(pal: Pal) -> Element<'a, Message> {
-    container(row![
-        divider(pal.red),
-        container(text("NEW").size(10).color(pal.on_color))
-            .padding(crate::util::pad2(1.0, 6.0))
-            .style(move |_: &Theme| round(pal.red, 4.0)),
-    ]
-    .spacing(8)
-    .align_y(iced::alignment::Vertical::Center))
+    container(
+        row![
+            divider(pal.red),
+            container(text("NEW").size(10).color(pal.on_color))
+                .padding(crate::util::pad2(1.0, 6.0))
+                .style(move |_: &Theme| round(pal.red, 4.0)),
+        ]
+        .spacing(8)
+        .align_y(iced::alignment::Vertical::Center),
+    )
     .padding(crate::util::pad2(8.0, 16.0))
     .into()
 }
@@ -834,7 +1136,11 @@ fn chat_message<'a>(app: &'a App, pal: Pal, m: ChatMessage, grouped: bool, now: 
                 .max_height(220.0)
                 .height(Length::Shrink),
             row![
-                muted_text("Enter to save · Shift+Enter for a new line · Escape to cancel", 12.0, pal.text_muted),
+                muted_text(
+                    "Enter to save · Shift+Enter for a new line · Escape to cancel",
+                    12.0,
+                    pal.text_muted
+                ),
                 space().width(Length::Fill),
                 length_label(app.edit_box.text().chars().count(), pal),
             ]
@@ -858,7 +1164,10 @@ fn chat_message<'a>(app: &'a App, pal: Pal, m: ChatMessage, grouped: bool, now: 
                 // Names are white unless the author has a role with a colour. Read from the current roles, so
                 // a change to them shows on every message at once.
                 mouse_area(text(m.author.clone()).size(15).color(author_color(app, &m, &pal)))
-                    .on_press(Message::CardOpen { id: m.author_id.clone(), name: m.author.clone() })
+                    .on_press(Message::CardOpen {
+                        id: m.author_id.clone(),
+                        name: m.author.clone()
+                    })
                     .on_right_press(Message::OpenMenu(crate::app::MenuKind::User {
                         name: m.author.clone(),
                         can_message: m.author != app.user.clone().unwrap_or_default(),
@@ -874,9 +1183,12 @@ fn chat_message<'a>(app: &'a App, pal: Pal, m: ChatMessage, grouped: bool, now: 
         let mut reactions = row![].spacing(4);
         for r in &m.reactions {
             let mine = r.users.iter().any(|u| Some(u) == app.user.as_ref());
-            let label = row![emoji(&r.emoji, 16.0), text(r.users.len().to_string()).size(12).color(pal.text)]
-                .spacing(4)
-                .align_y(iced::alignment::Vertical::Center);
+            let label = row![
+                emoji(&r.emoji, 16.0),
+                text(r.users.len().to_string()).size(12).color(pal.text)
+            ]
+            .spacing(4)
+            .align_y(iced::alignment::Vertical::Center);
             let border_color = if mine { pal.accent } else { pal.selected_bg };
             reactions = reactions.push(
                 button(label)
@@ -911,7 +1223,8 @@ fn chat_message<'a>(app: &'a App, pal: Pal, m: ChatMessage, grouped: bool, now: 
         .on_enter(Message::Hover(Some(m.id)))
         .on_exit(Message::Hover(None));
     if m.id != 0 && (app.can_edit(&m) || app.can_delete(&m)) {
-        area.on_right_press(Message::OpenMenu(crate::app::MenuKind::Message(m.id))).into()
+        area.on_right_press(Message::OpenMenu(crate::app::MenuKind::Message(m.id)))
+            .into()
     } else {
         area.into()
     }
@@ -922,11 +1235,26 @@ fn toolbar<'a>(app: &'a App, pal: Pal, id: i64, can_delete: bool) -> Element<'a,
     let _ = app;
     let mut items = row![].spacing(2).align_y(iced::alignment::Vertical::Center);
     for e in QUICK_REACTIONS {
-        items = items.push(ghost(emoji(e, 20.0), Some(Message::React(id, e.to_string())), pal.selected_bg, 4.0));
+        items = items.push(ghost(
+            emoji(e, 20.0),
+            Some(Message::React(id, e.to_string())),
+            pal.selected_bg,
+            4.0,
+        ));
     }
-    items = items.push(ghost(icons::icon(icons::SMILE, 16.0, pal.text), Some(Message::PickerOpen(id)), pal.selected_bg, 4.0));
+    items = items.push(ghost(
+        icons::icon(icons::SMILE, 16.0, pal.text),
+        Some(Message::PickerOpen(id)),
+        pal.selected_bg,
+        4.0,
+    ));
     if can_delete {
-        items = items.push(ghost(icons::icon(icons::GEAR, 16.0, pal.text), Some(Message::OpenMenu(crate::app::MenuKind::Message(id))), pal.selected_bg, 4.0));
+        items = items.push(ghost(
+            icons::icon(icons::GEAR, 16.0, pal.text),
+            Some(Message::OpenMenu(crate::app::MenuKind::Message(id))),
+            pal.selected_bg,
+            4.0,
+        ));
     }
     container(items)
         .padding(crate::util::pad2(2.0, 4.0))
@@ -959,7 +1287,9 @@ fn mention_menu<'a>(app: &App, pal: Pal) -> Option<Element<'a, Message>> {
     if roles.is_empty() && members.is_empty() {
         return None;
     }
-    let heading = |t: &str| container(text(t.to_uppercase()).size(11).color(pal.text_muted)).padding(crate::util::pad(4.0, 12.0, 6.0, 12.0));
+    let heading = |t: &str| {
+        container(text(t.to_uppercase()).size(11).color(pal.text_muted)).padding(crate::util::pad(4.0, 12.0, 6.0, 12.0))
+    };
     let entry = |name: String, icon: Element<'a, Message>, color: Color, hint: &'static str| -> Element<'a, Message> {
         let label = row![
             text(format!("@{name}")).size(14).color(color).width(Length::Fill),
@@ -967,25 +1297,37 @@ fn mention_menu<'a>(app: &App, pal: Pal) -> Option<Element<'a, Message>> {
         ]
         .spacing(8)
         .align_y(iced::alignment::Vertical::Center);
-        button(row![container(icon).width(Length::Fixed(24.0)), label].spacing(10).align_y(iced::alignment::Vertical::Center))
-            .padding(crate::util::pad2(6.0, 12.0))
-            .width(Length::Fill)
-            .on_press(Message::MentionPick(name))
-            .style(move |_: &Theme, status: button::Status| {
-                let bg = match status {
-                    button::Status::Hovered => Some(Background::Color(pal.hover_bg)),
-                    _ => None,
-                };
-                button::Style { background: bg, text_color: pal.text, border: border::rounded(0.0), ..button::Style::default() }
-            })
-            .into()
+        button(
+            row![container(icon).width(Length::Fixed(24.0)), label]
+                .spacing(10)
+                .align_y(iced::alignment::Vertical::Center),
+        )
+        .padding(crate::util::pad2(6.0, 12.0))
+        .width(Length::Fill)
+        .on_press(Message::MentionPick(name))
+        .style(move |_: &Theme, status: button::Status| {
+            let bg = match status {
+                button::Status::Hovered => Some(Background::Color(pal.hover_bg)),
+                _ => None,
+            };
+            button::Style {
+                background: bg,
+                text_color: pal.text,
+                border: border::rounded(0.0),
+                ..button::Style::default()
+            }
+        })
+        .into()
     };
     let mut items: Vec<Element<'a, Message>> = Vec::new();
     if !roles.is_empty() {
         items.push(heading("Roles").into());
         for role in roles {
             let color = crate::util::hex_color(&role.color).unwrap_or(pal.text_strong);
-            let dot = container(space()).width(Length::Fixed(10.0)).height(Length::Fixed(10.0)).style(move |_: &Theme| round(color, 5.0));
+            let dot = container(space())
+                .width(Length::Fixed(10.0))
+                .height(Length::Fixed(10.0))
+                .style(move |_: &Theme| round(color, 5.0));
             items.push(entry(role.name.clone(), dot.into(), color, "role"));
         }
     }
@@ -1010,16 +1352,31 @@ fn mention_menu<'a>(app: &App, pal: Pal) -> Option<Element<'a, Message>> {
 /// The message box at the bottom. Its placeholder names the channel or the person.
 /// Your picture with your status as a dot on its bottom-right corner. Invisible shows as grey, so you
 /// can still see that you are hidden.
-fn own_badge<'a>(picture: &str, banner: &str, name: &str, status: common::PresenceStatus, pal: Pal) -> Element<'a, Message> {
+fn own_badge<'a>(
+    picture: &str,
+    banner: &str,
+    name: &str,
+    status: common::PresenceStatus,
+    pal: Pal,
+) -> Element<'a, Message> {
     let dot = status_color(status, &pal).unwrap_or(pal.text_muted);
-    let ring = container(space().width(Length::Fixed(10.0)).height(Length::Fixed(10.0))).style(move |_: &Theme| container::Style {
-        background: Some(Background::Color(dot)),
-        border: border::rounded(5.0).color(pal.user_bar_bg).width(2.0),
-        ..container::Style::default()
+    let ring = container(space().width(Length::Fixed(10.0)).height(Length::Fixed(10.0))).style(move |_: &Theme| {
+        container::Style {
+            background: Some(Background::Color(dot)),
+            border: border::rounded(5.0).color(pal.user_bar_bg).width(2.0),
+            ..container::Style::default()
+        }
     });
-    let corner = container(ring).width(Length::Fill).height(Length::Fill).align_x(iced::alignment::Horizontal::Right).align_y(iced::alignment::Vertical::Bottom);
+    let corner = container(ring)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(iced::alignment::Horizontal::Right)
+        .align_y(iced::alignment::Vertical::Bottom);
     let picture_el = super::avatar(picture, banner, name, 32.0, &pal);
-    container(iced::widget::stack![picture_el, corner]).width(Length::Fixed(32.0)).height(Length::Fixed(32.0)).into()
+    container(iced::widget::stack![picture_el, corner])
+        .width(Length::Fixed(32.0))
+        .height(Length::Fixed(32.0))
+        .into()
 }
 
 /// The label for a status, as shown on the user bar and in the status menu.
@@ -1108,7 +1465,11 @@ fn composer(app: &App, pal: Pal) -> Element<'_, Message> {
     } else {
         format!("#{}", app.server.channel)
     };
-    let placeholder = if can_send { format!("Message {label}") } else { "You do not have permission to send messages in this channel.".to_string() };
+    let placeholder = if can_send {
+        format!("Message {label}")
+    } else {
+        "You do not have permission to send messages in this channel.".to_string()
+    };
     // Where the member may not send, the message is plain text: a text field would set its own pointer.
     let input: Element<'_, Message> = if can_send {
         // Enter sends, Shift+Enter starts a new line. The box grows with the text, up to a limit.
@@ -1153,7 +1514,9 @@ fn composer(app: &App, pal: Pal) -> Element<'_, Message> {
     let box_: Element<'_, Message> = if can_send {
         box_.into()
     } else {
-        mouse_area(box_).interaction(iced::mouse::Interaction::NotAllowed).into()
+        mouse_area(box_)
+            .interaction(iced::mouse::Interaction::NotAllowed)
+            .into()
     };
     let mut col = Column::new();
     // The @ menu opens above the message box while an @ word is being typed.
@@ -1162,7 +1525,9 @@ fn composer(app: &App, pal: Pal) -> Element<'_, Message> {
     }
     let mut col = col
         .push(if can_send {
-            row![icons::icon(icons::PLUS, 18.0, pal.text_muted), box_].spacing(12).align_y(iced::alignment::Vertical::Center)
+            row![icons::icon(icons::PLUS, 18.0, pal.text_muted), box_]
+                .spacing(12)
+                .align_y(iced::alignment::Vertical::Center)
         } else {
             row![box_].align_y(iced::alignment::Vertical::Center)
         })
@@ -1170,12 +1535,17 @@ fn composer(app: &App, pal: Pal) -> Element<'_, Message> {
     // The length of the message, at the bottom right, while something is typed.
     if !app.input.is_empty() {
         col = col.push(
-            row![space().width(Length::Fill), length_label(app.input.chars().count(), pal)].width(Length::Fill),
+            row![
+                space().width(Length::Fill),
+                length_label(app.input.chars().count(), pal)
+            ]
+            .width(Length::Fill),
         );
     }
     // Who is typing in this channel, while their notices are fresh.
     if let Some(line) = typing_line(app) {
-        col = col.push(container(text(line).size(12).color(pal.text_muted)).padding(crate::util::pad(4.0, 0.0, 0.0, 16.0)));
+        col = col
+            .push(container(text(line).size(12).color(pal.text_muted)).padding(crate::util::pad(4.0, 0.0, 0.0, 16.0)));
     }
     if app.status.starts_with("Error") {
         col = col.push(text(app.status.clone()).size(12).color(pal.red));
@@ -1183,39 +1553,79 @@ fn composer(app: &App, pal: Pal) -> Element<'_, Message> {
     col.into()
 }
 
-
 // ----- members -----
 
 fn members(app: &App, pal: Pal) -> Element<'_, Message> {
     let server = &app.server;
     let owner = server.owner.clone();
     let row_for = |name: &String, online: bool| -> Element<'_, Message> {
-        let color = if online { if *name == app.user.clone().unwrap_or_default() { pal.text_strong } else { pal.text } } else { pal.text_muted };
+        let color = if online {
+            if *name == app.user.clone().unwrap_or_default() {
+                pal.text_strong
+            } else {
+                pal.text
+            }
+        } else {
+            pal.text_muted
+        };
         // A member's highest role colours their name.
-        let color = app.server.member_ids.get(name).and_then(|id| app.member_color(id)).unwrap_or(color);
+        let color = app
+            .server
+            .member_ids
+            .get(name)
+            .and_then(|id| app.member_color(id))
+            .unwrap_or(color);
         let (picture, banner) = app.member_id_look(name);
-        let status = app.server.member_ids.get(name).and_then(|id| app.server.member_status.get(id)).copied().unwrap_or_default();
+        let status = app
+            .server
+            .member_ids
+            .get(name)
+            .and_then(|id| app.server.member_status.get(id))
+            .copied()
+            .unwrap_or_default();
         // The status shows as a dot on the bottom-right of the picture, ringed in the sidebar colour.
         let picture_el = super::avatar(picture, banner, name, 32.0, &pal);
         let badge: Element<'_, Message> = match status_color(status, &pal).filter(|_| online) {
             Some(dot) => {
-                let ring = container(space().width(Length::Fixed(10.0)).height(Length::Fixed(10.0))).style(move |_: &Theme| container::Style {
-                    background: Some(Background::Color(dot)),
-                    border: border::rounded(5.0).color(pal.sidebar_bg).width(2.0),
-                    ..container::Style::default()
-                });
-                let corner = container(ring).width(Length::Fill).height(Length::Fill).align_x(iced::alignment::Horizontal::Right).align_y(iced::alignment::Vertical::Bottom);
-                container(iced::widget::stack![picture_el, corner]).width(Length::Fixed(32.0)).height(Length::Fixed(32.0)).into()
+                let ring = container(space().width(Length::Fixed(10.0)).height(Length::Fixed(10.0))).style(
+                    move |_: &Theme| container::Style {
+                        background: Some(Background::Color(dot)),
+                        border: border::rounded(5.0).color(pal.sidebar_bg).width(2.0),
+                        ..container::Style::default()
+                    },
+                );
+                let corner = container(ring)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_x(iced::alignment::Horizontal::Right)
+                    .align_y(iced::alignment::Vertical::Bottom);
+                container(iced::widget::stack![picture_el, corner])
+                    .width(Length::Fixed(32.0))
+                    .height(Length::Fixed(32.0))
+                    .into()
             }
             None => picture_el,
         };
         // The status text, when they have set one, under the name.
-        let status_text = app.server.member_ids.get(name).and_then(|id| app.profiles.get(id)).map(|look| look.status.clone()).unwrap_or_default();
+        let status_text = app
+            .server
+            .member_ids
+            .get(name)
+            .and_then(|id| app.profiles.get(id))
+            .map(|look| look.status.clone())
+            .unwrap_or_default();
         // The crown, when this member owns the server, sits right after the name.
-        let mut name_line = row![text(name.clone()).size(15).color(color)].spacing(6).align_y(iced::alignment::Vertical::Center);
+        let mut name_line = row![text(name.clone()).size(15).color(color)]
+            .spacing(6)
+            .align_y(iced::alignment::Vertical::Center);
         if owner.as_deref() == Some(name.as_str()) {
             // The crown says who owns the server. Hovering it names the role.
-            let crown = svg(svg::Handle::from_path(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/assets/crown.svg"))).width(Length::Fixed(16.0)).height(Length::Fixed(12.0));
+            let crown = svg(svg::Handle::from_path(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/ui/assets/crown.svg"
+            )))
+            .width(Length::Fixed(16.0))
+            .height(Length::Fixed(12.0));
             let bubble = container(text("Server Owner").size(12).color(pal.text_strong))
                 .padding(crate::util::pad2(4.0, 8.0))
                 .style(move |_: &Theme| container::Style {
@@ -1229,35 +1639,50 @@ fn members(app: &App, pal: Pal) -> Element<'_, Message> {
         if !status_text.is_empty() {
             // One line, cut short with an ellipsis when the member list is too narrow for it.
             let room = (app.panel_width("members") - 80.0).max(0.0);
-            names = names.push(text(fit_name(&status_text, room, 12.0)).size(12).color(pal.text_muted).wrapping(iced::widget::text::Wrapping::None));
+            names = names.push(
+                text(fit_name(&status_text, room, 12.0))
+                    .size(12)
+                    .color(pal.text_muted)
+                    .wrapping(iced::widget::text::Wrapping::None),
+            );
         }
         let r = row![badge, names.width(Length::Fill)]
             .spacing(8)
             .align_y(iced::alignment::Vertical::Center);
         // A left click opens the member's profile card; a right click opens the menu.
         let id = app.server.member_ids.get(name).cloned().unwrap_or_default();
-        mouse_area(container(r).padding(crate::util::pad2(4.0, 8.0)).width(Length::Fill).style(move |_: &Theme| round(Color::TRANSPARENT, 4.0)))
-            .on_press(Message::CardOpen { id, name: name.clone() })
-            .on_right_press(Message::OpenMenu(crate::app::MenuKind::User {
-                name: name.clone(),
-                can_message: *name != app.user.clone().unwrap_or_default(),
-            }))
-            .into()
+        mouse_area(
+            container(r)
+                .padding(crate::util::pad2(4.0, 8.0))
+                .width(Length::Fill)
+                .style(move |_: &Theme| round(Color::TRANSPARENT, 4.0)),
+        )
+        .on_press(Message::CardOpen { id, name: name.clone() })
+        .on_right_press(Message::OpenMenu(crate::app::MenuKind::User {
+            name: name.clone(),
+            can_message: *name != app.user.clone().unwrap_or_default(),
+        }))
+        .into()
     };
     // Each group is listed alphabetically by name.
     let mut online: Vec<&String> = server.online.iter().collect();
     online.sort_by_key(|n| n.to_lowercase());
     let mut offline: Vec<&String> = server.offline.iter().collect();
     offline.sort_by_key(|n| n.to_lowercase());
-    let head = |t: String| container(text(t).size(11).color(pal.text_muted)).padding(crate::util::pad(0.0, 12.0, 4.0, 12.0));
+    let head =
+        |t: String| container(text(t).size(11).color(pal.text_muted)).padding(crate::util::pad(0.0, 12.0, 4.0, 12.0));
     let mut items: Vec<Element<'_, Message>> = Vec::new();
     // Roles set to display separately get their own group, under their highest such role, highest
     // role first. Everyone else online is listed under ONLINE.
     let mut plain: Vec<&String> = Vec::new();
-    let mut groups: Vec<(&common::RoleInfo, Vec<&String>)> =
-        server.roles.iter().filter(|r| r.hoisted && r.id != common::EVERYONE_ROLE).map(|r| (r, Vec::new())).collect();
+    let mut groups: Vec<(&common::RoleInfo, Vec<&String>)> = server
+        .roles
+        .iter()
+        .filter(|r| r.hoisted && r.id != common::EVERYONE_ROLE)
+        .map(|r| (r, Vec::new()))
+        .collect();
     for n in &online {
-        match app.top_hoisted_role_by_name(n) {
+        match app.top_hoisted_role(n) {
             Some(top) => {
                 if let Some((_, members)) = groups.iter_mut().find(|(r, _)| r.id == top.id) {
                     members.push(n);
@@ -1283,7 +1708,12 @@ fn members(app: &App, pal: Pal) -> Element<'_, Message> {
         items.push(row_for(n, false));
     }
     panel(
-        scrollable(Column::with_children(items).padding(crate::util::pad2(12.0, 8.0)).width(Length::Fill)).height(Length::Fill),
+        scrollable(
+            Column::with_children(items)
+                .padding(crate::util::pad2(12.0, 8.0))
+                .width(Length::Fill),
+        )
+        .height(Length::Fill),
         Length::Fixed(app.panel_width("members")),
         pal.sidebar_bg,
     )
@@ -1307,7 +1737,11 @@ pub fn home(app: &App, pal: Pal) -> Element<'_, Message> {
     let mut rows: Vec<Element<'_, Message>> = Vec::new();
     for p in &persons {
         let selected = person.as_deref() == Some(p.id.as_str());
-        let color = if selected || p.unread { pal.text_strong } else { pal.text_muted };
+        let color = if selected || p.unread {
+            pal.text_strong
+        } else {
+            pal.text_muted
+        };
         let bg = if selected { pal.selected_bg } else { Color::TRANSPARENT };
         rows.push(
             mouse_area(
@@ -1337,7 +1771,9 @@ pub fn home(app: &App, pal: Pal) -> Element<'_, Message> {
         column![
             container(text("Direct messages").size(12).color(pal.text_muted)).padding(crate::util::pad2(12.0, 8.0)),
             container(new_dm).padding(crate::util::pad(0.0, 8.0, 8.0, 8.0)),
-            container(list).padding(crate::util::pad2(4.0, 8.0)).height(Length::Fill),
+            container(list)
+                .padding(crate::util::pad2(4.0, 8.0))
+                .height(Length::Fill),
             user_bar(app, pal),
         ]
         .height(Length::Fill),
@@ -1356,7 +1792,10 @@ pub fn home(app: &App, pal: Pal) -> Element<'_, Message> {
         let options: Vec<DmChoice> = targets
             .iter()
             .enumerate()
-            .map(|(index, t)| DmChoice { index, label: format!("Sending to {}", t.server) })
+            .map(|(index, t)| DmChoice {
+                index,
+                label: format!("Sending to {}", t.server),
+            })
             .collect();
         let selected = targets
             .iter()
@@ -1371,15 +1810,24 @@ pub fn home(app: &App, pal: Pal) -> Element<'_, Message> {
         .align_y(iced::alignment::Vertical::Center)
         .style(move |_: &Theme| round(pal.app_bg, 0.0));
     let center_col: Element<'_, Message> = if open {
-        column![header, messages(app, pal, app.current_entries(), &Search::default()), composer(app, pal)]
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
+        column![
+            header,
+            messages(app, pal, app.current_entries(), &Search::default()),
+            composer(app, pal)
+        ]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
     } else {
-        column![header, container(muted_text("Pick a conversation on the left.", 15.0, pal.text_muted)).center(Length::Fill)]
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
+        column![
+            header,
+            container(muted_text("Pick a conversation on the left.", 15.0, pal.text_muted)).center(Length::Fill)
+        ]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
     };
-    row![side, splitter("dms", false), center_col].height(Length::Fill).into()
+    row![side, splitter("dms", false), center_col]
+        .height(Length::Fill)
+        .into()
 }

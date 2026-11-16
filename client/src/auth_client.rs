@@ -20,8 +20,8 @@ pub fn reachable() -> bool {
 /// Sends one request and returns the reply.
 pub fn request(req: &AuthRequest) -> Result<AuthReply, String> {
     let addr = auth_addr();
-    let (mut stream, fingerprint) = common::tls::connect_blocking(&addr, Duration::from_secs(4))
-        .map_err(|e| connect_error_message(&e))?;
+    let (mut stream, fingerprint) =
+        common::tls::connect_blocking(&addr, Duration::from_secs(4)).map_err(|e| connect_error_message(&e))?;
     // Check the certificate before sending anything, such as a password.
     trust::check(&format!("auth:{addr}"), &fingerprint)?;
     stream

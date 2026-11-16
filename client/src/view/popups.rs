@@ -1,7 +1,9 @@
 //! Popups drawn over the window: the context menus, the emoji picker, the dialogs, and the edges
 //! that resize the window.
 
-use iced::widget::{button, checkbox, column, container, mouse_area, row, scrollable, space, text, text_input, tooltip, Column};
+use iced::widget::{
+    button, checkbox, column, container, mouse_area, row, scrollable, space, text, text_input, tooltip, Column,
+};
 use iced::{border, window, Background, Color, Element, Length, Padding, Theme};
 
 use super::chat::emoji;
@@ -58,7 +60,12 @@ fn keep_on_screen(at: iced::Point, size: iced::Size, window: iced::Size) -> iced
 }
 
 /// Like `anchored`, but the popup's bottom edge sits 8 pixels above `at.y`, so it grows upward.
-fn anchored_above<'a>(popup: Element<'a, Message>, at: iced::Point, window_height: f32, close: Message) -> Element<'a, Message> {
+fn anchored_above<'a>(
+    popup: Element<'a, Message>,
+    at: iced::Point,
+    window_height: f32,
+    close: Message,
+) -> Element<'a, Message> {
     let backdrop = mouse_area(container(space()).width(Length::Fill).height(Length::Fill))
         .on_press(close)
         .interaction(iced::mouse::Interaction::Idle);
@@ -86,33 +93,44 @@ pub fn menu_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
                 // The row only opens the flyout beside the menu (see below).
                 let chevron = icons::CHEVRON_RIGHT;
                 items.push(
-                    mouse_area(button(
-                        row![
-                            text("Roles").size(14).color(pal.text).width(Length::Fill),
-                            icons::icon(chevron, 12.0, pal.text_muted),
-                        ]
-                        .align_y(iced::alignment::Vertical::Center),
-                    )
-                    .padding(crate::util::pad2(6.0, 10.0))
-                    .width(Length::Fill)
-                    .on_press(Message::RolesMenuOpen)
-                    .style(move |_: &Theme, status: button::Status| {
-                        let bg = match status {
-                            button::Status::Hovered => Some(Background::Color(pal.accent)),
-                            _ => None,
-                        };
-                        let text_color = match status {
-                            button::Status::Hovered => pal.text_strong,
-                            _ => pal.text,
-                        };
-                        button::Style { background: bg, text_color, border: border::rounded(4.0), ..button::Style::default() }
-                    })
+                    mouse_area(
+                        button(
+                            row![
+                                text("Roles").size(14).color(pal.text).width(Length::Fill),
+                                icons::icon(chevron, 12.0, pal.text_muted),
+                            ]
+                            .align_y(iced::alignment::Vertical::Center),
+                        )
+                        .padding(crate::util::pad2(6.0, 10.0))
+                        .width(Length::Fill)
+                        .on_press(Message::RolesMenuOpen)
+                        .style(move |_: &Theme, status: button::Status| {
+                            let bg = match status {
+                                button::Status::Hovered => Some(Background::Color(pal.accent)),
+                                _ => None,
+                            };
+                            let text_color = match status {
+                                button::Status::Hovered => pal.text_strong,
+                                _ => pal.text,
+                            };
+                            button::Style {
+                                background: bg,
+                                text_color,
+                                border: border::rounded(4.0),
+                                ..button::Style::default()
+                            }
+                        }),
                     )
                     .on_enter(Message::RolesMenuOpen)
                     .into(),
                 );
             }
-            MenuItem::Action { label, icon, danger, msg } => {
+            MenuItem::Action {
+                label,
+                icon,
+                danger,
+                msg,
+            } => {
                 let color = if *danger { pal.red } else { pal.text };
                 let mut r = row![].spacing(10).align_y(iced::alignment::Vertical::Center);
                 if let Some(icon) = icon {
@@ -120,22 +138,30 @@ pub fn menu_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
                 }
                 r = r.push(text(label.clone()).size(14).color(color));
                 items.push(
-                    mouse_area(button(r)
-                        .padding(crate::util::pad2(6.0, 10.0))
-                        .width(Length::Fill)
-                        .on_press(msg.clone())
-                        .style(move |_: &Theme, status: button::Status| {
-                            let bg = match status {
-                                button::Status::Hovered => Some(Background::Color(if *danger { pal.red } else { pal.accent })),
-                                _ => None,
-                            };
-                            let text_color = match status {
-                                button::Status::Hovered if *danger => pal.on_color,
-                                button::Status::Hovered => pal.text_strong,
-                                _ => color,
-                            };
-                            button::Style { background: bg, text_color, border: border::rounded(4.0), ..button::Style::default() }
-                        })
+                    mouse_area(
+                        button(r)
+                            .padding(crate::util::pad2(6.0, 10.0))
+                            .width(Length::Fill)
+                            .on_press(msg.clone())
+                            .style(move |_: &Theme, status: button::Status| {
+                                let bg = match status {
+                                    button::Status::Hovered => {
+                                        Some(Background::Color(if *danger { pal.red } else { pal.accent }))
+                                    }
+                                    _ => None,
+                                };
+                                let text_color = match status {
+                                    button::Status::Hovered if *danger => pal.on_color,
+                                    button::Status::Hovered => pal.text_strong,
+                                    _ => color,
+                                };
+                                button::Style {
+                                    background: bg,
+                                    text_color,
+                                    border: border::rounded(4.0),
+                                    ..button::Style::default()
+                                }
+                            }),
                     )
                     .on_enter(Message::RolesMenuClose)
                     .into(),
@@ -168,7 +194,9 @@ pub fn menu_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
             (true, Some(member)) => roles_flyout(app, member, pal),
             _ => space().width(Length::Fixed(0.0)).into(),
         };
-        let centred = container(body).width(Length::Fixed(panel)).align_x(iced::alignment::Horizontal::Center);
+        let centred = container(body)
+            .width(Length::Fixed(panel))
+            .align_x(iced::alignment::Horizontal::Center);
         let content: Element<'_, Message> = row![space().width(Length::Fill), flyout, centred].into();
         return Some(anchored(content, iced::Point::new(0.0, at.y), Message::CloseMenu));
     }
@@ -193,7 +221,12 @@ pub fn menu_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
 fn roles_flyout<'a>(app: &'a App, member: &str, pal: Pal) -> Element<'a, Message> {
     let held = app.server.member_roles.get(member).cloned().unwrap_or_default();
     let mut rows: Vec<Element<'a, Message>> = Vec::new();
-    for role in app.server.roles.iter().filter(|r| r.id != common::EVERYONE_ROLE && app.outranks_role(r.id)) {
+    for role in app
+        .server
+        .roles
+        .iter()
+        .filter(|r| r.id != common::EVERYONE_ROLE && app.outranks_role(r.id))
+    {
         let on = held.contains(&role.id);
         let who = member.to_string();
         let role_id = role.id;
@@ -230,7 +263,10 @@ fn remove_button<'a>(msg: Message, label: &'static str, pal: Pal) -> Element<'a,
     let x = button(icons::icon(icons::CLOSE, 10.0, pal.text_muted))
         .padding(0)
         .on_press(msg)
-        .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() });
+        .style(|_: &Theme, _| button::Style {
+            background: None,
+            ..button::Style::default()
+        });
     let bubble = container(text(label).size(12).color(pal.text_strong))
         .padding(crate::util::pad2(4.0, 8.0))
         .style(move |_: &Theme| container::Style {
@@ -252,13 +288,19 @@ struct PickRow {
 fn pick_list<'a>(placeholder: &str, search: &str, rows: Vec<PickRow>, pal: Pal) -> Element<'a, Message> {
     let query = search.trim().to_lowercase();
     let mut items: Vec<Element<'a, Message>> = Vec::new();
-    for row_data in rows.into_iter().filter(|r| query.is_empty() || r.name.to_lowercase().contains(&query)) {
+    for row_data in rows
+        .into_iter()
+        .filter(|r| query.is_empty() || r.name.to_lowercase().contains(&query))
+    {
         let color = row_data.color;
-        let dot = container(space()).width(Length::Fixed(10.0)).height(Length::Fixed(10.0)).style(move |_: &Theme| container::Style {
-            background: Some(Background::Color(color)),
-            border: border::rounded(5.0),
-            ..container::Style::default()
-        });
+        let dot = container(space())
+            .width(Length::Fixed(10.0))
+            .height(Length::Fixed(10.0))
+            .style(move |_: &Theme| container::Style {
+                background: Some(Background::Color(color)),
+                border: border::rounded(5.0),
+                ..container::Style::default()
+            });
         items.push(
             button(
                 row![dot, text(row_data.name).size(13).color(pal.text).width(Length::Fill)]
@@ -289,14 +331,20 @@ fn pick_list<'a>(placeholder: &str, search: &str, rows: Vec<PickRow>, pal: Pal) 
         .size(13)
         .style(input_style(pal));
     let list = scrollable(Column::with_children(items).spacing(2).padding(4)).height(Length::Shrink);
-    container(Column::new().push(search_box).push(container(list).max_height(240.0)).spacing(6).padding(6))
-        .width(Length::Fill)
-        .style(move |_: &Theme| container::Style {
-            background: Some(Background::Color(pal.sidebar_bg)),
-            border: border::rounded(8.0).color(pal.hover_bg).width(1.0),
-            ..container::Style::default()
-        })
-        .into()
+    container(
+        Column::new()
+            .push(search_box)
+            .push(container(list).max_height(240.0))
+            .spacing(6)
+            .padding(6),
+    )
+    .width(Length::Fill)
+    .style(move |_: &Theme| container::Style {
+        background: Some(Background::Color(pal.sidebar_bg)),
+        border: border::rounded(8.0).color(pal.hover_bg).width(1.0),
+        ..container::Style::default()
+    })
+    .into()
 }
 
 /// The emoji picker for one message, when it is open.
@@ -308,7 +356,10 @@ pub fn picker_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
         let sample = if i == 0 {
             "👋".to_string()
         } else {
-            app.skin.get("👋").map(|v| v[i - 1].clone()).unwrap_or_else(|| "👋".into())
+            app.skin
+                .get("👋")
+                .map(|v| v[i - 1].clone())
+                .unwrap_or_else(|| "👋".into())
         };
         let selected = i == tone;
         tones = tones.push(
@@ -317,7 +368,9 @@ pub fn picker_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
                 .on_press(Message::PickerTone(i))
                 .style(move |_: &Theme, _| button::Style {
                     background: None,
-                    border: border::rounded(6.0).color(if selected { pal.accent } else { Color::TRANSPARENT }).width(2.0),
+                    border: border::rounded(6.0)
+                        .color(if selected { pal.accent } else { Color::TRANSPARENT })
+                        .width(2.0),
                     ..button::Style::default()
                 }),
         );
@@ -358,7 +411,11 @@ pub fn picker_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
                             button::Status::Hovered => Some(Background::Color(Color::from_rgba(0.5, 0.5, 0.5, 0.25))),
                             _ => None,
                         };
-                        button::Style { background: bg, border: border::rounded(4.0), ..button::Style::default() }
+                        button::Style {
+                            background: bg,
+                            border: border::rounded(4.0),
+                            ..button::Style::default()
+                        }
                     }),
             );
             count += 1;
@@ -419,7 +476,8 @@ pub fn dialog_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     if app.role_save_warning {
         if let Some(draft) = &app.role_form {
             let lost = crate::view::pages::lockout_risk(app, draft);
-            let mut paragraphs: Vec<Element<'_, Message>> = vec![text("Save this role?").size(20).color(pal.text_strong).into()];
+            let mut paragraphs: Vec<Element<'_, Message>> =
+                vec![text("Save this role?").size(20).color(pal.text_strong).into()];
             if crate::view::pages::grants_administrator(app, draft) {
                 paragraphs.push(
                     text("This gives Administrator, which has every permission, including ones switched off. Only give it to people you fully trust.")
@@ -441,16 +499,19 @@ pub fn dialog_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
                     .into(),
                 );
             }
-            let items: Vec<Element<'_, Message>> = paragraphs.into_iter().chain(std::iter::once(
-                row![
-                    space().width(Length::Fill),
-                    link("Cancel", Message::RoleSaveCancel, pal.text_muted),
-                    solid("Save anyway", Message::RoleSaveConfirm, pal.red, pal.on_color, None),
-                ]
-                .spacing(10)
-                .align_y(iced::alignment::Vertical::Center)
-                .into(),
-            )).collect();
+            let items: Vec<Element<'_, Message>> = paragraphs
+                .into_iter()
+                .chain(std::iter::once(
+                    row![
+                        space().width(Length::Fill),
+                        link("Cancel", Message::RoleSaveCancel, pal.text_muted),
+                        solid("Save anyway", Message::RoleSaveConfirm, pal.red, pal.on_color, None),
+                    ]
+                    .spacing(10)
+                    .align_y(iced::alignment::Vertical::Center)
+                    .into(),
+                ))
+                .collect();
             return Some(modal(items, pal, Message::RoleSaveCancel));
         }
     }
@@ -459,10 +520,12 @@ pub fn dialog_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
         let address = app.account.email.clone().unwrap_or_else(|| "your address".into());
         let mut items: Vec<Element<'_, Message>> = vec![
             text("Confirm your email").size(20).color(pal.text_strong).into(),
-            text(format!("Enter the 6-digit code we emailed to {address}. It expires in 15 minutes."))
-                .size(14)
-                .color(pal.text)
-                .into(),
+            text(format!(
+                "Enter the 6-digit code we emailed to {address}. It expires in 15 minutes."
+            ))
+            .size(14)
+            .color(pal.text)
+            .into(),
             text_input("123456", &acc.verify_code)
                 .on_input(Message::VerifyCodeInput)
                 .on_submit(Message::VerifySubmit)
@@ -488,7 +551,10 @@ pub fn dialog_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     if app.pending_delete.is_some() {
         let items: Vec<Element<'_, Message>> = vec![
             text("Delete message?").size(20).color(pal.text_strong).into(),
-            text("This message will be removed for everyone. It can't be undone.").size(14).color(pal.text).into(),
+            text("This message will be removed for everyone. It can't be undone.")
+                .size(14)
+                .color(pal.text)
+                .into(),
             row![
                 space().width(Length::Fill),
                 link("Cancel", Message::DeleteCancel, pal.text_muted),
@@ -505,7 +571,10 @@ pub fn dialog_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     }
     if let Some((_, name)) = &app.pending_role_delete {
         let items: Vec<Element<'_, Message>> = vec![
-            text(format!("Delete role {name}?")).size(20).color(pal.text_strong).into(),
+            text(format!("Delete role {name}?"))
+                .size(20)
+                .color(pal.text_strong)
+                .into(),
             text("Members with this role will lose it. Its permissions go with it. It can't be undone.")
                 .size(14)
                 .color(pal.text)
@@ -570,13 +639,23 @@ fn access_add_dialog<'a>(app: &'a App, add: &'a crate::app::AccessAdd, pal: Pal)
     let free = |subject: &Subject| app.access_value(target, subject.clone()).is_empty();
 
     let mut roles = Column::new().spacing(12);
-    for role in app.server.roles.iter().filter(|r| r.id != common::EVERYONE_ROLE && matches(&r.name)) {
+    for role in app
+        .server
+        .roles
+        .iter()
+        .filter(|r| r.id != common::EVERYONE_ROLE && matches(&r.name))
+    {
         let subject = Subject::Role(role.id);
         if !free(&subject) {
             continue;
         }
         let colour = crate::util::hex_color(&role.color).unwrap_or(pal.text);
-        roles = roles.push(member_checkbox(&role.name, subject.clone(), add.picked.contains(&subject), colour));
+        roles = roles.push(member_checkbox(
+            &role.name,
+            subject.clone(),
+            add.picked.contains(&subject),
+            colour,
+        ));
     }
     let mut users = Column::new().spacing(12);
     for (id, name) in crate::view::pages::member_entries(app) {
@@ -594,7 +673,11 @@ fn access_add_dialog<'a>(app: &'a App, add: &'a crate::app::AccessAdd, pal: Pal)
     list = list.push(users);
     let items: Vec<Element<'_, Message>> = vec![
         text("Add users or roles").size(20).color(pal.text_strong).into(),
-        text_input("e.g. Moderators or alice", &add.query).on_input(Message::AccessAddQuery).padding(10).size(14).into(),
+        text_input("e.g. Moderators or alice", &add.query)
+            .on_input(Message::AccessAddQuery)
+            .padding(10)
+            .size(14)
+            .into(),
         scrollable(list).height(Length::Fixed(320.0)).into(),
         row![
             space().width(Length::Fill),
@@ -635,8 +718,12 @@ pub fn resize_edges<'a>() -> Element<'a, Message> {
     let left = container(strip(Length::Fixed(EDGE), Length::Fill, window::Direction::West)).align_left(Length::Fill);
     let right = container(strip(Length::Fixed(EDGE), Length::Fill, window::Direction::East)).align_right(Length::Fill);
     let top = container(strip(Length::Fill, Length::Fixed(EDGE), window::Direction::North)).align_top(Length::Fill);
-    let bottom = container(strip(Length::Fill, Length::Fixed(EDGE), window::Direction::South)).align_bottom(Length::Fill);
-    let corner = |dir: window::Direction, h: iced::alignment::Horizontal, v: iced::alignment::Vertical| -> Element<'a, Message> {
+    let bottom =
+        container(strip(Length::Fill, Length::Fixed(EDGE), window::Direction::South)).align_bottom(Length::Fill);
+    let corner = |dir: window::Direction,
+                  h: iced::alignment::Horizontal,
+                  v: iced::alignment::Vertical|
+     -> Element<'a, Message> {
         container(strip(Length::Fixed(CORNER), Length::Fixed(CORNER), dir))
             .width(Length::Fill)
             .height(Length::Fill)
@@ -649,10 +736,26 @@ pub fn resize_edges<'a>() -> Element<'a, Message> {
         right,
         top,
         bottom,
-        corner(window::Direction::NorthWest, iced::alignment::Horizontal::Left, iced::alignment::Vertical::Top),
-        corner(window::Direction::NorthEast, iced::alignment::Horizontal::Right, iced::alignment::Vertical::Top),
-        corner(window::Direction::SouthWest, iced::alignment::Horizontal::Left, iced::alignment::Vertical::Bottom),
-        corner(window::Direction::SouthEast, iced::alignment::Horizontal::Right, iced::alignment::Vertical::Bottom),
+        corner(
+            window::Direction::NorthWest,
+            iced::alignment::Horizontal::Left,
+            iced::alignment::Vertical::Top
+        ),
+        corner(
+            window::Direction::NorthEast,
+            iced::alignment::Horizontal::Right,
+            iced::alignment::Vertical::Top
+        ),
+        corner(
+            window::Direction::SouthWest,
+            iced::alignment::Horizontal::Left,
+            iced::alignment::Vertical::Bottom
+        ),
+        corner(
+            window::Direction::SouthEast,
+            iced::alignment::Horizontal::Right,
+            iced::alignment::Vertical::Bottom
+        ),
     ]
     .into()
 }
@@ -662,7 +765,9 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     let view = app.card.as_ref()?;
     let card = view.card.as_ref();
     let name = card.map_or(view.name.clone(), |c| c.name.clone());
-    let banner = card.and_then(|c| crate::util::hex_color(&c.banner)).unwrap_or(pal.accent);
+    let banner = card
+        .and_then(|c| crate::util::hex_color(&c.banner))
+        .unwrap_or(pal.accent);
     // Every card has the same tall banner and large picture, so your card and other members' match.
     let own = view.id == app.user_id;
     let banner_height = 96.0;
@@ -673,7 +778,12 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
         .style(move |_: &Theme| container::Style {
             background: Some(Background::Color(banner)),
             border: border::Border {
-                radius: border::Radius { top_left: 8.0, top_right: 8.0, bottom_right: 0.0, bottom_left: 0.0 },
+                radius: border::Radius {
+                    top_left: 8.0,
+                    top_right: 8.0,
+                    bottom_right: 0.0,
+                    bottom_left: 0.0,
+                },
                 ..border::Border::default()
             },
             ..container::Style::default()
@@ -695,7 +805,11 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     let presence = if own {
         Some(app.effective_status())
     } else {
-        app.server.member_ids.get(&name).and_then(|id| app.server.member_status.get(id)).copied()
+        app.server
+            .member_ids
+            .get(&name)
+            .and_then(|id| app.server.member_status.get(id))
+            .copied()
     };
     let picture_with_dot: Element<'_, Message> = match presence.and_then(|p| super::chat::status_color(p, &pal)) {
         Some(color) => {
@@ -707,22 +821,32 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
                     border: border::rounded(9.0).color(pal.sidebar_bg).width(3.0),
                     ..container::Style::default()
                 });
-            iced::widget::stack![picture_el, container(dot).padding(crate::util::pad(70.0, 0.0, 0.0, 70.0))].into()
+            iced::widget::stack![
+                picture_el,
+                container(dot).padding(crate::util::pad(70.0, 0.0, 0.0, 70.0))
+            ]
+            .into()
         }
         None => picture_el.into(),
     };
-    let ring = container(picture_with_dot).padding(4).style(move |_: &Theme| container::Style {
-        background: Some(Background::Color(pal.sidebar_bg)),
-        border: border::rounded(48.0),
-        ..container::Style::default()
-    });
+    let ring = container(picture_with_dot)
+        .padding(4)
+        .style(move |_: &Theme| container::Style {
+            background: Some(Background::Color(pal.sidebar_bg)),
+            border: border::rounded(48.0),
+            ..container::Style::default()
+        });
     // Other members' status bubble sits beside the picture, at its bottom edge.
     let mut overlay_row = row![ring].align_y(iced::alignment::Vertical::Bottom);
     if !own && !status.is_empty() {
-        overlay_row = overlay_row.push(container(status_bubble(&status, pal)).padding(crate::util::pad(0.0, 0.0, 8.0, 10.0)));
+        overlay_row =
+            overlay_row.push(container(status_bubble(&status, pal)).padding(crate::util::pad(0.0, 0.0, 8.0, 10.0)));
     }
     let base = column![banner_block, space().height(Length::Fixed(48.0))].width(Length::Fill);
-    let head = iced::widget::stack![base, container(overlay_row).padding(crate::util::pad(48.0, 0.0, 0.0, 14.0))];
+    let head = iced::widget::stack![
+        base,
+        container(overlay_row).padding(crate::util::pad(48.0, 0.0, 0.0, 14.0))
+    ];
     items.push(container(head).width(Length::Fill).height(Length::Fixed(144.0)).into());
     // The name takes the member's role colour, and the crown follows it when they own the server.
     let name_color = if own {
@@ -731,11 +855,16 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
         app.server.member_ids.get(&name).and_then(|id| app.member_color(id))
     }
     .unwrap_or(pal.text_strong);
-    let mut name_line = row![text(name.clone()).size(name_size).color(name_color)].spacing(8).align_y(iced::alignment::Vertical::Center);
+    let mut name_line = row![text(name.clone()).size(name_size).color(name_color)]
+        .spacing(8)
+        .align_y(iced::alignment::Vertical::Center);
     if app.server.owner.as_deref() == Some(name.as_str()) {
-        let crown = iced::widget::svg(iced::widget::svg::Handle::from_path(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/assets/crown.svg")))
-            .width(Length::Fixed(16.0))
-            .height(Length::Fixed(12.0));
+        let crown = iced::widget::svg(iced::widget::svg::Handle::from_path(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/ui/assets/crown.svg"
+        )))
+        .width(Length::Fixed(16.0))
+        .height(Length::Fixed(12.0));
         let bubble = container(text("Server Owner").size(12).color(pal.text_strong))
             .padding(crate::util::pad2(4.0, 8.0))
             .style(move |_: &Theme| container::Style {
@@ -745,18 +874,36 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
             });
         name_line = name_line.push(iced::widget::tooltip(crown, bubble, iced::widget::tooltip::Position::Top).gap(6));
     }
-    items.push(container(name_line).padding(crate::util::pad(12.0, 14.0, 0.0, 14.0)).into());
+    items.push(
+        container(name_line)
+            .padding(crate::util::pad(12.0, 14.0, 0.0, 14.0))
+            .into(),
+    );
     if let Some(c) = card {
-        items.push(container(text(format!("@{}", c.username)).size(13).color(pal.text_muted)).padding(crate::util::pad(0.0, 14.0, 8.0, 14.0)).into());
+        items.push(
+            container(text(format!("@{}", c.username)).size(13).color(pal.text_muted))
+                .padding(crate::util::pad(0.0, 14.0, 8.0, 14.0))
+                .into(),
+        );
         // The servers you and this member both are in, by name.
         // Shared servers only make sense on someone else's card: on your own, every server is shared.
         if !own && !c.mutual.is_empty() {
             let names: Vec<String> = c
                 .mutual
                 .iter()
-                .map(|addr| app.prefs.servers.iter().find(|s| s.addr == *addr).map_or(addr.clone(), |s| s.name.clone()))
+                .map(|addr| {
+                    app.prefs
+                        .servers
+                        .iter()
+                        .find(|s| s.addr == *addr)
+                        .map_or(addr.clone(), |s| s.name.clone())
+                })
                 .collect();
-            let label = format!("{} Mutual Server{}", names.len(), if names.len() == 1 { "" } else { "s" });
+            let label = format!(
+                "{} Mutual Server{}",
+                names.len(),
+                if names.len() == 1 { "" } else { "s" }
+            );
             items.push(
                 container(
                     column![
@@ -774,19 +921,30 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
         items.push(status_bubble_editor(app, &status, pal));
     }
     items.push(super::divider(pal.selected_bg));
-    items.push(container(text("ABOUT ME").size(11).color(pal.text_muted)).padding(crate::util::pad(12.0, 14.0, 4.0, 14.0)).into());
+    items.push(
+        container(text("ABOUT ME").size(11).color(pal.text_muted))
+            .padding(crate::util::pad(12.0, 14.0, 4.0, 14.0))
+            .into(),
+    );
     let bio: Element<'_, Message> = match (card, &view.error, view.loading) {
         (Some(c), _, _) if c.bio.is_empty() => text("No bio yet.").size(13).color(pal.text_muted).into(),
         (Some(c), _, _) => super::bio_text(&c.bio, 13.0, pal.text, pal),
         (None, _, true) => text("Loading…").size(13).color(pal.text_muted).into(),
-        (None, Some(err), _) => text(format!("Profile unavailable: {err}")).size(13).color(pal.text_muted).into(),
+        (None, Some(err), _) => text(format!("Profile unavailable: {err}"))
+            .size(13)
+            .color(pal.text_muted)
+            .into(),
         (None, None, false) => text("Profile unavailable.").size(13).color(pal.text_muted).into(),
     };
     items.push(container(bio).padding(crate::util::pad(0.0, 14.0, 8.0, 14.0)).into());
 
     // The roles this member holds on this server, highest first, in their colours. Always shown, so a
     // member with none says so. Admins get a + to give roles, which opens the role checklist here.
-    let member_id = if own { Some(app.user_id.clone()) } else { app.server.member_ids.get(&name).cloned() };
+    let member_id = if own {
+        Some(app.user_id.clone())
+    } else {
+        app.server.member_ids.get(&name).cloned()
+    };
     let held = member_id.as_ref().and_then(|id| app.server.member_roles.get(id));
     let held_roles: Vec<i64> = held.cloned().unwrap_or_default();
     let roles: Vec<&common::RoleInfo> = app
@@ -812,22 +970,38 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
         )
         .padding(0)
         .on_press(Message::CardRolesToggle)
-        .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() })
+        .style(|_: &Theme, _| button::Style {
+            background: None,
+            ..button::Style::default()
+        })
         .into()
     });
-    items.push(container(text("ROLES").size(11).color(pal.text_muted)).padding(crate::util::pad(12.0, 14.0, 4.0, 14.0)).into());
+    items.push(
+        container(text("ROLES").size(11).color(pal.text_muted))
+            .padding(crate::util::pad(12.0, 14.0, 4.0, 14.0))
+            .into(),
+    );
     let mut role_chips: Vec<Element<'_, Message>> = roles
         .into_iter()
         .map(|r| {
             let color = crate::util::hex_color(&r.color).unwrap_or(pal.text_strong);
-            let dot = container(space()).width(Length::Fixed(10.0)).height(Length::Fixed(10.0)).style(move |_: &Theme| container::Style {
-                background: Some(Background::Color(color)),
-                border: border::rounded(5.0),
-                ..container::Style::default()
-            });
-            let mut content = row![dot, text(r.name.clone()).size(12).color(pal.text)].spacing(6).align_y(iced::alignment::Vertical::Center);
+            let dot = container(space())
+                .width(Length::Fixed(10.0))
+                .height(Length::Fixed(10.0))
+                .style(move |_: &Theme| container::Style {
+                    background: Some(Background::Color(color)),
+                    border: border::rounded(5.0),
+                    ..container::Style::default()
+                });
+            let mut content = row![dot, text(r.name.clone()).size(12).color(pal.text)]
+                .spacing(6)
+                .align_y(iced::alignment::Vertical::Center);
             if let (true, Some(who)) = (can_assign, member_id.clone()) {
-                content = content.push(remove_button(Message::SetMemberRole(who, r.id, false), "Remove role", pal));
+                content = content.push(remove_button(
+                    Message::SetMemberRole(who, r.id, false),
+                    "Remove role",
+                    pal,
+                ));
             }
             container(content)
                 .padding(crate::util::pad2(3.0, 8.0))
@@ -843,7 +1017,16 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
         role_chips.push(text("No roles yet.").size(12).color(pal.text_muted).into());
     }
     role_chips.extend(plus);
-    items.push(container(row(role_chips).spacing(6).align_y(iced::alignment::Vertical::Center).wrap()).padding(crate::util::pad(0.0, 14.0, 10.0, 14.0)).into());
+    items.push(
+        container(
+            row(role_chips)
+                .spacing(6)
+                .align_y(iced::alignment::Vertical::Center)
+                .wrap(),
+        )
+        .padding(crate::util::pad(0.0, 14.0, 10.0, 14.0))
+        .into(),
+    );
     if can_assign && app.card_roles_open {
         if let Some(id) = member_id.as_deref() {
             let rows: Vec<PickRow> = app
@@ -857,7 +1040,12 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
                     msg: Message::SetMemberRole(id.to_string(), r.id, true),
                 })
                 .collect();
-            pick_popup = Some((container(pick_list("Role", &app.card_list_search, rows, pal)).width(Length::Fixed(260.0)).into(), Message::CardRolesToggle));
+            pick_popup = Some((
+                container(pick_list("Role", &app.card_list_search, rows, pal))
+                    .width(Length::Fixed(260.0))
+                    .into(),
+                Message::CardRolesToggle,
+            ));
         }
     }
 
@@ -881,22 +1069,42 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
                 )
                 .padding(0)
                 .on_press(Message::CardBadgesToggle)
-                .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() })
+                .style(|_: &Theme, _| button::Style {
+                    background: None,
+                    ..button::Style::default()
+                })
                 .into()
             });
-            items.push(container(text("BADGES").size(11).color(pal.text_muted)).padding(crate::util::pad(12.0, 14.0, 4.0, 14.0)).into());
+            items.push(
+                container(text("BADGES").size(11).color(pal.text_muted))
+                    .padding(crate::util::pad(12.0, 14.0, 4.0, 14.0))
+                    .into(),
+            );
             let mut badge_chips: Vec<Element<'_, Message>> = owned
                 .into_iter()
                 .map(|b| {
                     let color = crate::util::hex_color(&b.color).unwrap_or(pal.text_strong);
-                    let dot = container(space()).width(Length::Fixed(10.0)).height(Length::Fixed(10.0)).style(move |_: &Theme| container::Style {
-                        background: Some(Background::Color(color)),
-                        border: border::rounded(5.0),
-                        ..container::Style::default()
-                    });
-                    let mut content = row![dot, text(b.name.clone()).size(12).color(pal.text)].spacing(6).align_y(iced::alignment::Vertical::Center);
+                    let dot = container(space())
+                        .width(Length::Fixed(10.0))
+                        .height(Length::Fixed(10.0))
+                        .style(move |_: &Theme| container::Style {
+                            background: Some(Background::Color(color)),
+                            border: border::rounded(5.0),
+                            ..container::Style::default()
+                        });
+                    let mut content = row![dot, text(b.name.clone()).size(12).color(pal.text)]
+                        .spacing(6)
+                        .align_y(iced::alignment::Vertical::Center);
                     if can_assign {
-                        content = content.push(remove_button(Message::SetMemberBadge { user: id.to_string(), badge: b.id, on: false }, "Remove badge", pal));
+                        content = content.push(remove_button(
+                            Message::SetMemberBadge {
+                                user: id.to_string(),
+                                badge: b.id,
+                                on: false,
+                            },
+                            "Remove badge",
+                            pal,
+                        ));
                     }
                     container(content)
                         .padding(crate::util::pad2(3.0, 8.0))
@@ -912,7 +1120,16 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
                 badge_chips.push(text("No badges yet.").size(12).color(pal.text_muted).into());
             }
             badge_chips.extend(plus);
-            items.push(container(row(badge_chips).spacing(6).align_y(iced::alignment::Vertical::Center).wrap()).padding(crate::util::pad(0.0, 14.0, 10.0, 14.0)).into());
+            items.push(
+                container(
+                    row(badge_chips)
+                        .spacing(6)
+                        .align_y(iced::alignment::Vertical::Center)
+                        .wrap(),
+                )
+                .padding(crate::util::pad(0.0, 14.0, 10.0, 14.0))
+                .into(),
+            );
             if can_assign && app.card_badges_open {
                 let rows: Vec<PickRow> = app
                     .server
@@ -922,10 +1139,19 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
                     .map(|b| PickRow {
                         name: b.name.clone(),
                         color: crate::util::hex_color(&b.color).unwrap_or(pal.text),
-                        msg: Message::SetMemberBadge { user: id.to_string(), badge: b.id, on: true },
+                        msg: Message::SetMemberBadge {
+                            user: id.to_string(),
+                            badge: b.id,
+                            on: true,
+                        },
                     })
                     .collect();
-                pick_popup = Some((container(pick_list("Badge", &app.card_list_search, rows, pal)).width(Length::Fixed(260.0)).into(), Message::CardBadgesToggle));
+                pick_popup = Some((
+                    container(pick_list("Badge", &app.card_list_search, rows, pal))
+                        .width(Length::Fixed(260.0))
+                        .into(),
+                    Message::CardBadgesToggle,
+                ));
             }
         }
     }
@@ -933,9 +1159,15 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     if own {
         items.push(super::divider(pal.selected_bg));
         items.push(
-            container(solid("Edit Profile", Message::UserSettingsOpen, pal.accent, pal.on_color, None))
-                .padding(crate::util::pad(8.0, 14.0, 14.0, 14.0))
-                .into(),
+            container(solid(
+                "Edit Profile",
+                Message::UserSettingsOpen,
+                pal.accent,
+                pal.on_color,
+                None,
+            ))
+            .padding(crate::util::pad(8.0, 14.0, 14.0, 14.0))
+            .into(),
         );
     } else {
         // A message box, as on Discord: pressing it opens a conversation with this member.
@@ -959,8 +1191,14 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
     const MIN_CARD_HEIGHT: f32 = 320.0;
     let window_h = app.window_size.height;
     let x = (view.at.x - 316.0).max(8.0);
-    let y = (view.at.y - 40.0).max(8.0).min((window_h - MIN_CARD_HEIGHT - 8.0).max(8.0));
-    let max_card_height = if view.above { (view.at.y - 16.0).max(MIN_CARD_HEIGHT) } else { (window_h - y - 16.0).max(MIN_CARD_HEIGHT) };
+    let y = (view.at.y - 40.0)
+        .max(8.0)
+        .min((window_h - MIN_CARD_HEIGHT - 8.0).max(8.0));
+    let max_card_height = if view.above {
+        (view.at.y - 16.0).max(MIN_CARD_HEIGHT)
+    } else {
+        (window_h - y - 16.0).max(MIN_CARD_HEIGHT)
+    };
     let body = container(scrollable(Column::with_children(items)).height(Length::Shrink))
         .width(Length::Fixed(300.0))
         .max_height(max_card_height)
@@ -971,7 +1209,12 @@ pub fn card_layer(app: &App, pal: Pal) -> Option<Element<'_, Message>> {
         });
     let card_layer: Element<'_, Message> = if view.above {
         // Opened from the user bar: the card's bottom edge sits just above the bar, whatever its height.
-        anchored_above(body.into(), iced::Point::new(x, view.at.y), app.window_size.height, Message::CardClose)
+        anchored_above(
+            body.into(),
+            iced::Point::new(x, view.at.y),
+            app.window_size.height,
+            Message::CardClose,
+        )
     } else {
         anchored(body.into(), iced::Point::new(x, y), Message::CardClose)
     };
@@ -1027,35 +1270,31 @@ fn status_bubble_editor<'a>(app: &App, status: &str, pal: Pal) -> Element<'a, Me
     let edit = button(icons::icon(icons::PENCIL, 13.0, pal.text_muted))
         .padding(3)
         .on_press(Message::CardStatusStart)
-        .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() });
+        .style(|_: &Theme, _| button::Style {
+            background: None,
+            ..button::Style::default()
+        });
     let clear = button(icons::icon(icons::TRASH, 13.0, pal.text_muted))
         .padding(3)
         .on_press(Message::CardStatusClear)
-        .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() });
+        .style(|_: &Theme, _| button::Style {
+            background: None,
+            ..button::Style::default()
+        });
     let shown: Element<'a, Message> = if status.is_empty() {
         text("Set a status").size(12).color(pal.text_muted).into()
     } else {
         status_bubble(status, pal)
     };
-    container(row![shown, space().width(Length::Fill), edit, clear].spacing(6).align_y(iced::alignment::Vertical::Center))
-        .padding(crate::util::pad(4.0, 14.0, 8.0, 14.0))
-        .into()
+    container(
+        row![shown, space().width(Length::Fill), edit, clear]
+            .spacing(6)
+            .align_y(iced::alignment::Vertical::Center),
+    )
+    .padding(crate::util::pad(4.0, 14.0, 8.0, 14.0))
+    .into()
 }
 
 #[cfg(test)]
-mod placement_tests {
-    use super::keep_on_screen;
-    use iced::{Point, Size};
-
-    #[test]
-    fn menus_near_the_bottom_or_right_move_back_onto_the_window() {
-        let window = Size::new(1000.0, 700.0);
-        // Opened near the bottom right: moved so the whole menu is visible.
-        let at = keep_on_screen(Point::new(990.0, 690.0), Size::new(200.0, 300.0), window);
-        assert_eq!(at, Point::new(792.0, 392.0));
-        // Room to spare: stays where it was opened.
-        assert_eq!(keep_on_screen(Point::new(100.0, 50.0), Size::new(200.0, 300.0), window), Point::new(100.0, 50.0));
-        // A menu taller than the window stays at the top margin rather than going off the top.
-        assert_eq!(keep_on_screen(Point::new(10.0, 10.0), Size::new(200.0, 900.0), window).y, 8.0);
-    }
-}
+#[path = "../tests/view/popups.rs"]
+mod tests;
