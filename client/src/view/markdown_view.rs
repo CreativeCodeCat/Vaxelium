@@ -1,6 +1,7 @@
 //! Draws a chat message's Markdown. Blocks become a column. Text is selectable, and a selection can run
 //! across the blocks of a message.
 
+use std::collections::HashSet;
 use std::ops::Range;
 
 use iced::border;
@@ -41,7 +42,13 @@ pub fn message_body<'a>(app: &App, message: i64, body: &str, pal: Pal) -> Elemen
         .as_ref()
         .filter(|s| s.message == message)
         .map(|s| Selection { from: s.anchor, to: s.focus, dragging: s.dragging });
-    let mut view = View { texts, next: 0, message, selection, pal };
+    let flipped: HashSet<usize> = app
+        .details_flipped
+        .iter()
+        .filter(|(m, _)| *m == message)
+        .map(|(_, index)| *index)
+        .collect();
+    let mut view = View { texts, next: 0, message, selection, pal, flipped, details_next: 0 };
     view.blocks(&blocks)
 }
 
@@ -94,6 +101,7 @@ fn describe(blocks: &[Block], pings: &[RolePing], pal: Pal, out: &mut Vec<Text>)
                     }
                 }
             }
+            Block::Details { blocks: inner, .. } => describe(inner, pings, pal, out),
             Block::Rule | Block::Math(_) => {}
         }
     }
@@ -115,6 +123,9 @@ struct View {
     message: i64,
     selection: Option<Selection>,
     pal: Pal,
+    /// The `<details>` sections whose open state was changed by a click, by their number in the message.
+    flipped: HashSet<usize>,
+    details_next: usize,
 }
 
 impl View {
@@ -178,6 +189,27 @@ impl View {
                 column(rows).spacing(4).into()
             }
             Block::Rule => divider(pal.selected_bg),
+            Block::Details { summary, open, blocks: inner } => {
+                let index = self.details_next;
+                self.details_next += 1;
+                // Clicking the summary flips the section. A section that starts open is shut by one click.
+                let is_open = *open != self.flipped.contains(&index);
+                let message = self.message;
+                let arrow = if is_open { "▾" } else { "▸" };
+                let label = if summary.is_empty() { "Details".to_string() } else { summary.clone() };
+                let head = iced::widget::button(text(format!("{arrow} {label}")).size(15).color(pal.text_strong))
+                    .style(iced::widget::button::text)
+                    .padding([2, 0])
+                    .on_press(Message::ToggleDetails { message, index });
+                // The blocks are always built, so the text inside a closed section keeps its place in the
+                // selection order.
+                let body = self.blocks(inner);
+                if is_open {
+                    column![head, container(body).padding([4, 12])].spacing(4).into()
+                } else {
+                    head.into()
+                }
+            }
             Block::Math(src) => math_block(src, pal),
             Block::Table { header, rows } => {
                 let mut lines: Vec<Element<'a, Message>> = Vec::new();
@@ -405,6 +437,17 @@ fn make(part: &str, piece: &Piece, kind: Kind, pal: Pal) -> Unit {
             None => u.color = if piece.code { pal.text_strong } else { pal.text },
         },
     }
+    if piece.key {
+        // A key is a code-style chip, as on a keyboard.
+        u.code = true;
+        u.background = Some(panel_background(pal));
+        u.color = pal.text_strong;
+    }
+    if piece.mark {
+        // Marked text is highlighted, with dark text on it so it reads on the highlight.
+        u.background = Some(mark_background());
+        u.color = Color::from_rgb8(0x1E, 0x1F, 0x22);
+    }
     u
 }
 
@@ -419,6 +462,11 @@ fn token_color(kind: highlight::Kind, pal: Pal) -> Color {
         Kind::Comment => pal.text_muted,
         Kind::Number => Color::from_rgb8(0xE5, 0xA5, 0x3B),
     }
+}
+
+/// The highlight behind `<mark>` text.
+fn mark_background() -> Color {
+    Color::from_rgb8(0xF2, 0xC9, 0x4C)
 }
 
 /// The background of code and quotes, inline and in blocks. It is darker than the chat, so it shows.

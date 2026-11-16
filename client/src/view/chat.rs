@@ -833,7 +833,13 @@ fn chat_message<'a>(app: &'a App, pal: Pal, m: ChatMessage, grouped: bool, now: 
                 .min_height(36.0)
                 .max_height(220.0)
                 .height(Length::Shrink),
-            muted_text("Enter to save · Shift+Enter for a new line · Escape to cancel", 12.0, pal.text_muted),
+            row![
+                muted_text("Enter to save · Shift+Enter for a new line · Escape to cancel", 12.0, pal.text_muted),
+                space().width(Length::Fill),
+                length_label(app.edit_box.text().chars().count(), pal),
+            ]
+            .width(Length::Fill)
+            .align_y(iced::alignment::Vertical::Center),
         ]
         .spacing(4)
         .into()
@@ -1078,6 +1084,22 @@ fn composer_key(press: iced::widget::text_editor::KeyPress) -> Option<iced::widg
     Binding::from_key_press(press)
 }
 
+/// "n / 2000": how many characters a message has, and the most it can have. Green while typing, amber near the limit, red for the last 20.
+fn length_label<'a>(len: usize, pal: Pal) -> Element<'a, Message> {
+    let max = crate::app::MAX_MESSAGE_CHARS;
+    // Muted when empty, green while there is room, amber as it nears the limit, red for the last 20.
+    let colour = if len + 20 >= max {
+        pal.red
+    } else if len * 10 >= max * 9 {
+        Color::from_rgb8(0xE5, 0xA5, 0x3B)
+    } else if len > 0 {
+        pal.green
+    } else {
+        pal.text_muted
+    };
+    text(format!("{len} / {max}")).size(12).color(colour).into()
+}
+
 fn composer(app: &App, pal: Pal) -> Element<'_, Message> {
     // Where the member may not send, the box stays but is disabled and says why.
     let can_send = app.may_send_here();
@@ -1145,6 +1167,12 @@ fn composer(app: &App, pal: Pal) -> Element<'_, Message> {
             row![box_].align_y(iced::alignment::Vertical::Center)
         })
         .padding(crate::util::pad(0.0, 16.0, 20.0, 16.0));
+    // The length of the message, at the bottom right, while something is typed.
+    if !app.input.is_empty() {
+        col = col.push(
+            row![space().width(Length::Fill), length_label(app.input.chars().count(), pal)].width(Length::Fill),
+        );
+    }
     // Who is typing in this channel, while their notices are fresh.
     if let Some(line) = typing_line(app) {
         col = col.push(container(text(line).size(12).color(pal.text_muted)).padding(crate::util::pad(4.0, 0.0, 0.0, 16.0)));

@@ -18,6 +18,10 @@ pub struct Piece {
     pub italic: bool,
     pub strike: bool,
     pub code: bool,
+    /// Text in a `<kbd>` tag: a key on the keyboard.
+    pub key: bool,
+    /// Text in a `<mark>` tag: highlighted.
+    pub mark: bool,
     /// The address of the link or image this text is in.
     pub link: Option<String>,
     /// Where the text is in the message. Set only when the text is exactly that part of the message,
@@ -39,6 +43,8 @@ pub enum Block {
     Table { header: Vec<Vec<Piece>>, rows: Vec<Vec<Vec<Piece>>> },
     /// A display formula ($$...$$), as its LaTeX source.
     Math(String),
+    /// A `<details>` section: its `<summary>` text, whether it starts open, and the blocks inside.
+    Details { summary: String, open: bool, blocks: Vec<Block> },
 }
 
 /// The style in force for the text being read.
@@ -47,6 +53,8 @@ struct Mark {
     bold: bool,
     italic: bool,
     strike: bool,
+    key: bool,
+    mark: bool,
     link: Option<String>,
 }
 
@@ -57,6 +65,7 @@ enum Frame {
     List { ordered: bool, start: u64, items: Vec<Vec<Block>> },
     Code { lang: String, text: String },
     Table { header: Vec<Vec<Piece>>, rows: Vec<Vec<Vec<Piece>>>, row: Vec<Vec<Piece>> },
+    Details { summary: String, open: bool, blocks: Vec<Block> },
 }
 
 /// Parses a message into blocks. Empty text gives no blocks.
@@ -104,7 +113,8 @@ impl Builder {
                 piece.code = true;
                 self.pieces.push(piece);
             }
-            Event::Html(html) | Event::InlineHtml(html) => self.push_piece(html.to_string(), None),
+            Event::Html(html) => self.html_block(&html),
+            Event::InlineHtml(html) => self.inline_html(&html),
             Event::SoftBreak | Event::HardBreak => self.push_piece("\n".into(), None),
             Event::Rule => {
                 self.flush();
@@ -254,6 +264,8 @@ impl Builder {
             italic: self.cur.italic,
             strike: self.cur.strike,
             code: false,
+            key: self.cur.key,
+            mark: self.cur.mark,
             link: self.cur.link.clone(),
             src,
         }
@@ -271,8 +283,50 @@ impl Builder {
     fn sink(&mut self) -> &mut Vec<Block> {
         match self.stack.last_mut() {
             Some(Frame::Quote(blocks)) | Some(Frame::Item(blocks)) => blocks,
+            Some(Frame::Details { blocks, .. }) => blocks,
             _ => &mut self.root,
         }
+    }
+
+    /// Inline HTML. `<kbd>` and `<mark>` style the text inside them. Other tags are shown as text.
+    fn inline_html(&mut self, html: &str) {
+        match html.trim().to_ascii_lowercase().as_str() {
+            "<kbd>" => self.enter(|m| m.key = true),
+            "<mark>" => self.enter(|m| m.mark = true),
+            "</kbd>" if self.cur.key => self.cur = self.marks.pop().unwrap_or_default(),
+            "</mark>" if self.cur.mark => self.cur = self.marks.pop().unwrap_or_default(),
+            _ => self.push_piece(html.to_string(), None),
+        }
+    }
+
+    /// An HTML block. `<details>` starts a collapsible section, which the `</details>` closes, and its
+    /// `<summary>` names it. Other HTML blocks are shown as text.
+    fn html_block(&mut self, html: &str) {
+        if html.contains("<details") {
+            self.flush();
+            let tag_end = html.find('>').map_or(html.len(), |i| i + 1);
+            let open = html[..tag_end].to_ascii_lowercase().contains("open");
+            let summary = between(html, "<summary>", "</summary>").unwrap_or_default().trim().to_string();
+            self.stack.push(Frame::Details { summary, open, blocks: Vec::new() });
+            return;
+        }
+        if let Some(Frame::Details { summary, .. }) = self.stack.last_mut() {
+            // The summary can come in a later piece of HTML than the opening tag.
+            if summary.is_empty() {
+                if let Some(found) = between(html, "<summary>", "</summary>") {
+                    *summary = found.trim().to_string();
+                    return;
+                }
+            }
+            if html.contains("</details>") {
+                self.flush();
+                if let Some(Frame::Details { summary, open, blocks }) = self.stack.pop() {
+                    self.sink().push(Block::Details { summary, open, blocks });
+                }
+                return;
+            }
+        }
+        self.push_piece(html.to_string(), None);
     }
 
     /// Turns the pieces read so far into a paragraph, if there are any.
@@ -283,6 +337,13 @@ impl Builder {
         let pieces = std::mem::take(&mut self.pieces);
         self.sink().push(Block::Paragraph(pieces));
     }
+}
+
+/// The text between the first `start` and the `end` after it.
+fn between<'a>(text: &'a str, start: &str, end: &str) -> Option<&'a str> {
+    let from = text.find(start)? + start.len();
+    let to = text[from..].find(end)? + from;
+    Some(&text[from..to])
 }
 
 fn heading_number(level: HeadingLevel) -> u8 {
@@ -389,6 +450,30 @@ mod tests {
         let Block::Paragraph(pieces) = &blocks[0] else { panic!("{blocks:?}") };
         assert_eq!(text_of(pieces), "Energy E = mc² holds.");
         assert_eq!(blocks[1], Block::Math("\\frac{1}{2}".into()));
+    }
+
+    #[test]
+    fn kbd_and_mark_style_the_text_inside_them() {
+        let blocks = parse("<kbd>Ctrl</kbd> + <kbd>C</kbd>\n<mark>Highlighted text</mark>");
+        let Block::Paragraph(pieces) = &blocks[0] else { panic!("{blocks:?}") };
+        assert!(pieces.iter().find(|p| p.text == "Ctrl").unwrap().key);
+        assert!(!pieces.iter().find(|p| p.text == " + ").unwrap().key, "text outside the tags is plain");
+        assert!(pieces.iter().find(|p| p.text == "Highlighted text").unwrap().mark);
+    }
+
+    #[test]
+    fn a_details_section_holds_its_summary_and_blocks() {
+        let blocks = parse("<details>\n<summary>Click to expand</summary>\n\nThis is hidden.\n\n</details>");
+        let Block::Details { summary, open, blocks: inner } = &blocks[0] else { panic!("{blocks:?}") };
+        assert_eq!(summary, "Click to expand");
+        assert!(!open, "closed unless it says open");
+        assert!(matches!(&inner[0], Block::Paragraph(p) if text_of(p) == "This is hidden."));
+    }
+
+    #[test]
+    fn an_open_details_section_starts_open() {
+        let blocks = parse("<details open>\n<summary>Shown</summary>\n\nText\n\n</details>");
+        assert!(matches!(&blocks[0], Block::Details { open: true, .. }));
     }
 
     #[test]
