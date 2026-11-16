@@ -513,14 +513,57 @@ pub struct App {
     pub hover: Option<i64>,
 }
 
-/// A selection of message text. `anchor` and `focus` are (block, span) positions in the message, where a
-/// block is one piece of text in the message and a span is one character of it.
+/// A selection of message text, which can run over several messages. `anchor` and `focus` are
+/// (message, block, span) positions, where a block is one piece of text in a message and a span is one
+/// character of it. `order` is where each message of the channel stood when the selection began, so the
+/// messages between the two ends can be found.
 #[derive(Debug, Clone)]
 pub struct TextSel {
-    pub message: i64,
-    pub anchor: (usize, usize),
-    pub focus: (usize, usize),
+    pub anchor: (i64, usize, usize),
+    pub focus: (i64, usize, usize),
     pub dragging: bool,
+    pub order: std::rc::Rc<HashMap<i64, usize>>,
+}
+
+impl TextSel {
+    /// The two ends in reading order, as (position, block, span).
+    fn ends(&self) -> Option<((usize, usize, usize), (usize, usize, usize))> {
+        let at = |(m, b, s): (i64, usize, usize)| self.order.get(&m).map(|&o| (o, b, s));
+        let (a, f) = (at(self.anchor)?, at(self.focus)?);
+        Some(if a <= f { (a, f) } else { (f, a) })
+    }
+
+    /// The part of `message` the selection covers, as (from, to) block and span positions. A message
+    /// between the two ends is covered whole.
+    pub fn within(&self, message: i64) -> Option<((usize, usize), (usize, usize))> {
+        let (start, end) = self.ends()?;
+        let at = *self.order.get(&message)?;
+        if at < start.0 || at > end.0 {
+            return None;
+        }
+        let from = if at == start.0 { (start.1, start.2) } else { (0, 0) };
+        let to = if at == end.0 {
+            (end.1, end.2)
+        } else {
+            (usize::MAX, usize::MAX)
+        };
+        Some((from, to))
+    }
+
+    /// The ids of the selected messages, in reading order.
+    pub fn messages(&self) -> Vec<i64> {
+        let Some((start, end)) = self.ends() else {
+            return Vec::new();
+        };
+        let mut ids: Vec<(usize, i64)> = self
+            .order
+            .iter()
+            .filter(|(_, &o)| o >= start.0 && o <= end.0)
+            .map(|(&id, &o)| (o, id))
+            .collect();
+        ids.sort_unstable();
+        ids.into_iter().map(|(_, id)| id).collect()
+    }
 }
 
 /// Every message the window and the background work send to the app.
@@ -2175,27 +2218,34 @@ impl App {
                 use crate::view::selectable::Step;
                 match step {
                     Step::Press(span) => {
+                        let order = self
+                            .current_entries()
+                            .iter()
+                            .filter_map(|e| match e {
+                                Entry::Chat(m) => Some(m.id),
+                                _ => None,
+                            })
+                            .enumerate()
+                            .map(|(i, id)| (id, i))
+                            .collect();
                         self.text_sel = Some(TextSel {
-                            message,
-                            anchor: (block, span),
-                            focus: (block, span),
+                            anchor: (message, block, span),
+                            focus: (message, block, span),
                             dragging: true,
+                            order: std::rc::Rc::new(order),
                         });
                     }
                     Step::Over(span) => {
                         if let Some(sel) = self.text_sel.as_mut() {
-                            if sel.message == message && sel.dragging {
-                                sel.focus = (block, span);
+                            // A message that arrived after the drag began is not part of it.
+                            if sel.dragging && sel.order.contains_key(&message) {
+                                sel.focus = (message, block, span);
                             }
                         }
                     }
                     // A press on new text has already started a new (dragging) selection, which stays.
                     Step::Outside => {
-                        if self
-                            .text_sel
-                            .as_ref()
-                            .is_some_and(|sel| sel.message == message && !sel.dragging)
-                        {
+                        if self.text_sel.as_ref().is_some_and(|sel| !sel.dragging) {
                             self.text_sel = None;
                         }
                     }
@@ -2216,17 +2266,31 @@ impl App {
             {
                 Task::none()
             }
-            Message::CopySelectedText => match self.text_sel.clone() {
-                Some(sel) => match self.find_message(sel.message) {
-                    Some(m) => {
-                        let text =
-                            crate::view::markdown_view::selected_text(&m.text, sel.anchor, sel.focus, self.pal());
-                        iced::clipboard::write(text)
-                    }
-                    None => Task::none(),
-                },
-                None => Task::none(),
-            },
+            Message::CopySelectedText => {
+                let Some(sel) = self.text_sel.clone() else {
+                    return Task::none();
+                };
+                let entries = self.current_entries();
+                // Each message's part, with a blank line between messages.
+                let parts: Vec<String> = sel
+                    .messages()
+                    .into_iter()
+                    .filter_map(|id| {
+                        let m = entries.iter().find_map(|e| match e {
+                            Entry::Chat(m) if m.id == id => Some(m),
+                            _ => None,
+                        })?;
+                        let (from, to) = sel.within(id)?;
+                        Some(crate::view::markdown_view::selected_text(&m.text, from, to, self.pal()))
+                    })
+                    .filter(|t| !t.is_empty())
+                    .collect();
+                if parts.is_empty() {
+                    Task::none()
+                } else {
+                    iced::clipboard::write(parts.join("\n\n"))
+                }
+            }
             Message::MouseReleased => {
                 if let Some(sel) = self.text_sel.as_mut() {
                     sel.dragging = false;

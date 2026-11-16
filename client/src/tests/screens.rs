@@ -1429,3 +1429,60 @@ fn latex_sample_screen() {
     );
     save_at(&app, "latex-sample", 1100.0, 1500.0);
 }
+
+fn two_messages(app: &mut App) {
+    let now = crate::util::now();
+    let chat = |id: i64, author: &str, text: &str| {
+        Entry::Chat(ChatMessage {
+            id,
+            channel_id: 1,
+            channel: "general".into(),
+            author: author.into(),
+            author_id: format!("id-{author}"),
+            text: text.into(),
+            timestamp: now,
+            edited: false,
+            reactions: Vec::new(),
+        })
+    };
+    app.messages.insert(
+        1,
+        vec![
+            chat(20, "bob", "First message line\n\nIts second paragraph"),
+            chat(21, "carol", "Second message text"),
+        ],
+    );
+}
+
+#[test]
+fn selection_across_messages() {
+    let mut app = chat_app();
+    two_messages(&mut app);
+    drag(&mut app, &[(420.0, 240.0), (470.0, 318.0)]);
+    let sel = app.text_sel.clone().expect("a selection");
+    assert_eq!(sel.anchor.0, 20);
+    assert_eq!(sel.focus.0, 21);
+    assert_eq!(sel.messages(), vec![20, 21]);
+    // The first message is covered from the press to its end, the second from its start.
+    let (from, to) = sel.within(20).expect("first message selected");
+    assert_eq!(from.0, 0);
+    assert_eq!(to, (usize::MAX, usize::MAX));
+    assert_eq!(sel.within(21).expect("second message selected").0, (0, 0));
+    save_at(&app, "selection-across-messages", 1100.0, 700.0);
+}
+
+#[test]
+fn drag_into_gap_selects() {
+    let mut app = chat_app();
+    two_messages(&mut app);
+    // Into the gap between the two paragraphs: the first is selected to its end.
+    drag(&mut app, &[(420.0, 240.0), (420.0, 253.0)]);
+    let sel = app.text_sel.clone().expect("a selection");
+    assert_eq!((sel.focus.0, sel.focus.1), (20, 0));
+    assert_eq!(sel.focus.2, "First message line".len() - 1);
+
+    // Onto the next message's name line: the selection reaches the end of the last paragraph above.
+    drag(&mut app, &[(420.0, 240.0), (420.0, 296.0)]);
+    let sel = app.text_sel.clone().expect("a selection");
+    assert_eq!((sel.focus.0, sel.focus.1), (20, 1));
+}
