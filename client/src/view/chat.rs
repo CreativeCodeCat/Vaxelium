@@ -1400,7 +1400,10 @@ fn mention_menu<'a>(app: &App, pal: Pal) -> Option<Element<'a, Message>> {
     if !members.is_empty() {
         items.push(heading("Members").into());
         for name in members {
-            items.push(entry(name.clone(), letter_badge(name, 20.0, &pal), pal.text, "member"));
+            // The member's own picture, or their letter on their banner colour when they have none.
+            let id = app.server.member_ids.get(name).cloned().unwrap_or_default();
+            let (picture, banner) = app.profile_look(&id);
+            items.push(entry(name.clone(), super::avatar(picture, banner, name, 20.0, &pal), pal.text, "member"));
         }
     }
     Some(
