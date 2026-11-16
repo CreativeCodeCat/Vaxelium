@@ -1391,42 +1391,42 @@ const PERMISSIONS: [(&str, &str, u32); 9] = [
         common::perm::ADMINISTRATOR,
     ),
     (
-        "Manage roles",
+        "Manage Roles",
         "Allows members to create and edit roles below their own, and give them to members below them.",
         common::perm::MANAGE_ROLES,
     ),
     (
-        "Manage server",
+        "Manage Server",
         "Allows members to change the server's name, description and picture.",
         common::perm::MANAGE_SERVER,
     ),
     (
-        "Manage channels",
+        "Manage Channels",
         "Allows members to create, rename, move and delete channels and categories.",
         common::perm::MANAGE_CHANNELS,
     ),
     (
-        "Manage messages",
+        "Manage Messages",
         "Allows members to delete other members' messages.",
         common::perm::MANAGE_MESSAGES,
     ),
     (
-        "Pin messages",
-        "Allows members to pin and unpin messages in the channels. Manage messages allows it too.",
+        "Pin Messages",
+        "Allows members to pin and unpin messages in the channels. Manage Messages allows it too.",
         common::perm::PIN_MESSAGES,
     ),
     (
-        "Bypass ignore",
+        "Bypass Ignore",
         "Members with this cannot be ignored or blocked by anyone.",
         common::perm::BYPASS_IGNORE,
     ),
     (
-        "View channels",
+        "View Channels",
         "Lets members see the channels. A channel can hide them from this role.",
         common::perm::VIEW_CHANNEL,
     ),
     (
-        "Message channels",
+        "Message Channels",
         "Lets members send messages. A channel can stop this role from sending.",
         common::perm::SEND_MESSAGES,
     ),
@@ -2052,8 +2052,8 @@ pub(crate) fn lockout_risk(app: &App, draft: &RoleDraft) -> Vec<&'static str> {
     };
     let mut lost = Vec::new();
     for (bit, label) in [
-        (common::perm::VIEW_CHANNEL, "View channels"),
-        (common::perm::SEND_MESSAGES, "Message channels"),
+        (common::perm::VIEW_CHANNEL, "View Channels"),
+        (common::perm::SEND_MESSAGES, "Message Channels"),
     ] {
         let removed = current.permissions & bit != 0 && draft.permissions & bit == 0;
         let others_hold = app.server.roles.iter().any(|r| {
