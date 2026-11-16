@@ -92,7 +92,7 @@ pub enum AccessTarget {
 #[derive(Debug, Clone)]
 pub struct AccessDraft {
     pub target: AccessTarget,
-    pub subjects: std::collections::BTreeMap<common::Subject, (Option<bool>, Option<bool>)>,
+    pub subjects: std::collections::BTreeMap<common::Subject, common::Setting>,
 }
 
 /// The Add roles dialog of a category's permissions: its search text, and the roles picked so far.
@@ -531,7 +531,7 @@ pub enum Message {
     ChannelEditOpen(i64),
     ChannelEditClose,
     /// Change a role's View and Send on the open channel or category edit page. Saved with its bar.
-    AccessDraftSet { target: AccessTarget, subject: common::Subject, view: Option<bool>, send: Option<bool> },
+    AccessDraftSet { target: AccessTarget, subject: common::Subject, setting: common::Setting },
     /// Fill the open channel's unsaved permissions with its category's. Save applies them.
     ChannelSyncWithCategory(i64),
     /// Save the open edit page's name and permission changes.
@@ -1331,6 +1331,27 @@ impl App {
     }
 
     /// Ends a press: a press that did not move opens the channel; a drag drops it on its target.
+    /// Whether this account may move the dragged item to the drop target. A channel needs Manage channel
+    /// for that channel, and also for the category it leaves and the category it goes into when those
+    /// change. A category needs the server-wide Manage channels.
+    pub fn can_drag_to(&self, item: DragItem, target: Option<DropTarget>) -> bool {
+        match item {
+            DragItem::Channel(id) => {
+                let to = match target {
+                    Some(DropTarget::Category(category)) => Some(category),
+                    Some(DropTarget::Channel { category, .. }) => category,
+                    _ => None,
+                };
+                let from = self.category_of_channel(id).map(|(c, _)| c);
+                let changes = to != from;
+                let leaves = from.filter(|_| changes).map_or(true, |f| self.category_permission(f, perm::MANAGE_CHANNELS));
+                let enters = to.filter(|_| changes).map_or(true, |t| self.category_permission(t, perm::MANAGE_CHANNELS));
+                self.channel_permission(id, perm::MANAGE_CHANNELS) && leaves && enters
+            }
+            DragItem::Category(_) => self.can(perm::MANAGE_CHANNELS),
+        }
+    }
+
     pub(crate) fn finish_dnd(&mut self, dnd: Dnd) {
         if !dnd.moved {
             if let DragItem::Channel(id) = dnd.item {
@@ -1338,8 +1359,11 @@ impl App {
             }
             return;
         }
-        if !self.can(perm::MANAGE_CHANNELS) {
-            self.status = "You need the Manage channels permission to move channels and categories.".into();
+        if !self.can_drag_to(dnd.item, dnd.over) {
+            self.status = match dnd.item {
+                DragItem::Channel(_) => "You need Manage channel for this channel, and for the categories it leaves or joins, to move it.".into(),
+                DragItem::Category(_) => "You need the Manage channels permission to move categories.".into(),
+            };
             return;
         }
         match (dnd.item, dnd.over) {
@@ -1581,7 +1605,7 @@ impl App {
                     items.push(item("Mark as read", None, false, Message::MarkRead(id)));
                 }
                 if !is_dm_channel(&name) {
-                    if self.can(perm::MANAGE_CHANNELS) {
+                    if self.channel_permission(id, perm::MANAGE_CHANNELS) {
                         items.push(item("Edit channel", Some(crate::icons::PENCIL), false, Message::ChannelEditOpen(id)));
                         items.push(item("Delete channel", Some(crate::icons::TRASH), true, Message::DeleteChannelAsk(id, name.clone())));
                     }
@@ -1596,7 +1620,7 @@ impl App {
             }
             MenuKind::Category { id, name } => {
                 let mut items = Vec::new();
-                if self.can(perm::MANAGE_CHANNELS) {
+                if self.category_permission(id, perm::MANAGE_CHANNELS) {
                     items.push(item("Edit category", Some(crate::icons::PENCIL), false, Message::CategoryEditOpen(id, name.clone())));
                     items.push(item("Delete category", Some(crate::icons::TRASH), true, Message::DeleteCategoryAsk(id, name.clone())));
                     items.push(MenuItem::Divider);
@@ -2007,7 +2031,7 @@ impl App {
 
     /// True when the settings page on screen has changes that are not saved yet.
     /// What a role's or member's View and Send are on the open edit page, with any unsaved change applied.
-    pub fn access_value(&self, target: AccessTarget, subject: common::Subject) -> (Option<bool>, Option<bool>) {
+    pub fn access_value(&self, target: AccessTarget, subject: common::Subject) -> common::Setting {
         self.access_draft
             .as_ref()
             .filter(|d| d.target == target)
@@ -2016,30 +2040,30 @@ impl App {
     }
 
     /// What a role's or member's View and Send are on the server.
-    pub fn server_access(&self, target: AccessTarget, subject: &common::Subject) -> (Option<bool>, Option<bool>) {
+    pub fn server_access(&self, target: AccessTarget, subject: &common::Subject) -> common::Setting {
         use common::Subject;
         match (target, subject) {
             (AccessTarget::Channel(channel), Subject::Role(role)) => {
-                self.server.overrides.iter().find(|o| o.channel_id == channel && o.role == *role).map_or((None, None), |o| (o.view, o.send))
+                self.server.overrides.iter().find(|o| o.channel_id == channel && o.role == *role).map_or(common::Setting::default(), |o| o.setting())
             }
             (AccessTarget::Channel(channel), Subject::Member(member)) => self
                 .server
                 .member_channel_overrides
                 .iter()
                 .find(|o| o.channel_id == channel && &o.member == member)
-                .map_or((None, None), |o| (o.view, o.send)),
+                .map_or(common::Setting::default(), |o| o.setting()),
             (AccessTarget::Category(category), Subject::Role(role)) => self
                 .server
                 .category_overrides
                 .iter()
                 .find(|o| o.category_id == category && o.role == *role)
-                .map_or((None, None), |o| (o.view, o.send)),
+                .map_or(common::Setting::default(), |o| o.setting()),
             (AccessTarget::Category(category), Subject::Member(member)) => self
                 .server
                 .member_category_overrides
                 .iter()
                 .find(|o| o.category_id == category && &o.member == member)
-                .map_or((None, None), |o| (o.view, o.send)),
+                .map_or(common::Setting::default(), |o| o.setting()),
         }
     }
 

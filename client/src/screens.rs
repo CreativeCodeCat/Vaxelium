@@ -322,7 +322,7 @@ fn category_access_unsaved_screen() {
     let mut app = chat_app();
     let _ = app.update(Message::CategoryEditOpen(1, "Text".into()));
     let _ = app.update(Message::EditSectionPick(crate::app::EditSection::Permissions));
-    let _ = app.update(Message::AccessDraftSet { target: crate::app::AccessTarget::Category(1), subject: common::Subject::Role(0), view: Some(false), send: None });
+    let _ = app.update(Message::AccessDraftSet { target: crate::app::AccessTarget::Category(1), subject: common::Subject::Role(0), setting: common::Setting { view: Some(false), send: None, ..Default::default() } });
     save_at(&app, "category-access-unsaved", 1100.0, 700.0);
 }
 
@@ -350,7 +350,7 @@ fn channel_sync_screen() {
         name: "Community".into(),
         channels: vec![common::ChannelRef { id: 1, name: "general".into() }],
     }];
-    app.server.category_overrides = vec![common::CategoryOverride { category_id: 7, role: 0, view: Some(false), send: None }];
+    app.server.category_overrides = vec![common::CategoryOverride { category_id: 7, role: 0, view: Some(false), send: None, manage_channels: None, manage_messages: None }];
     let _ = app.update(Message::ChannelEditOpen(1));
     let _ = app.update(Message::EditSectionPick(crate::app::EditSection::Permissions));
     save_at(&app, "channel-sync", 1100.0, 700.0);
@@ -365,10 +365,10 @@ fn access_lists_screen() {
     ];
     app.server.member_ids = [("alice".to_string(), "u1".to_string())].into_iter().collect();
     app.server.category_overrides = vec![
-        common::CategoryOverride { category_id: 1, role: 0, view: Some(false), send: None },
-        common::CategoryOverride { category_id: 1, role: 2, view: Some(true), send: Some(true) },
+        common::CategoryOverride { category_id: 1, role: 0, view: Some(false), send: None, manage_channels: None, manage_messages: None },
+        common::CategoryOverride { category_id: 1, role: 2, view: Some(true), send: Some(true), manage_channels: None, manage_messages: None },
     ];
-    app.server.member_category_overrides = vec![common::MemberCategoryOverride { category_id: 1, member: "u1".into(), view: Some(true), send: None }];
+    app.server.member_category_overrides = vec![common::MemberCategoryOverride { category_id: 1, member: "u1".into(), view: Some(true), send: None, manage_channels: None, manage_messages: None }];
     let _ = app.update(Message::CategoryEditOpen(1, "Text".into()));
     let _ = app.update(Message::EditSectionPick(crate::app::EditSection::Permissions));
     save_at(&app, "access-lists", 1100.0, 700.0);
@@ -377,7 +377,7 @@ fn access_lists_screen() {
 #[test]
 fn category_private_locked_screen() {
     let mut app = chat_app();
-    app.server.category_overrides = vec![common::CategoryOverride { category_id: 1, role: 0, view: Some(false), send: None }];
+    app.server.category_overrides = vec![common::CategoryOverride { category_id: 1, role: 0, view: Some(false), send: None, manage_channels: None, manage_messages: None }];
     let _ = app.update(Message::CategoryEditOpen(1, "Text".into()));
     let _ = app.update(Message::EditSectionPick(crate::app::EditSection::Permissions));
     save_at(&app, "category-private-locked", 1100.0, 700.0);
@@ -391,8 +391,8 @@ fn category_permissions_screen() {
         common::RoleInfo { id: 0, name: "@everyone".into(), color: "#95a5a6".into(), permissions: 0, position: -1_000_000_000, mentionable: false, hoisted: false },
     ];
     app.server.category_overrides = vec![
-        common::CategoryOverride { category_id: 1, role: 0, view: Some(false), send: None },
-        common::CategoryOverride { category_id: 1, role: 2, view: Some(true), send: Some(true) },
+        common::CategoryOverride { category_id: 1, role: 0, view: Some(false), send: None, manage_channels: None, manage_messages: None },
+        common::CategoryOverride { category_id: 1, role: 2, view: Some(true), send: Some(true), manage_channels: None, manage_messages: None },
     ];
     let _ = app.update(Message::CategoryEditOpen(1, "Text".into()));
     let _ = app.update(Message::EditSectionPick(crate::app::EditSection::Permissions));

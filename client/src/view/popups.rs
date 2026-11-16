@@ -567,7 +567,7 @@ fn access_add_dialog<'a>(app: &'a App, add: &'a crate::app::AccessAdd, pal: Pal)
     let target = add.target;
     let query = add.query.trim().to_lowercase();
     let matches = |name: &str| query.is_empty() || name.to_lowercase().contains(&query);
-    let free = |subject: &Subject| app.access_value(target, subject.clone()) == (None, None);
+    let free = |subject: &Subject| app.access_value(target, subject.clone()).is_empty();
 
     let mut roles = Column::new().spacing(12);
     for role in app.server.roles.iter().filter(|r| r.id != common::EVERYONE_ROLE && matches(&r.name)) {

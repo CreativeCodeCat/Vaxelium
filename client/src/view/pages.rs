@@ -1472,13 +1472,13 @@ fn name_field<'a>(
 /// the category, and a channel moved in takes them on.
 fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> Element<'a, Message> {
     use crate::app::AccessTarget;
-    use common::Subject;
+    use common::{Setting, Subject};
     let is_category = matches!(target, AccessTarget::Category(_));
     let noun = if is_category { "category" } else { "channel" };
     let setting = |subject: &Subject| app.access_value(target, subject.clone());
     let everyone = Subject::Role(EVERYONE_ROLE);
-    let (everyone_view, everyone_send) = setting(&everyone);
-    let private = everyone_view == Some(false);
+    let everyone_setting = setting(&everyone);
+    let private = everyone_setting.view == Some(false);
 
     let private_note = if is_category {
         "Only the roles and users listed below can view this category. Its channels match this setting."
@@ -1493,8 +1493,7 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
                 toggler(private).on_toggle(move |on| Message::AccessDraftSet {
                     target,
                     subject: Subject::Role(EVERYONE_ROLE),
-                    view: if on { Some(false) } else { None },
-                    send: everyone_send,
+                    setting: Setting { view: if on { Some(false) } else { None }, ..everyone_setting },
                 }),
             ]
             .spacing(10)
@@ -1512,13 +1511,13 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
     let mut listed: Vec<(Subject, String)> = Vec::new();
     for role in app.server.roles.iter().filter(|r| r.id != EVERYONE_ROLE) {
         let subject = Subject::Role(role.id);
-        if setting(&subject) != (None, None) {
+        if !setting(&subject).is_empty() {
             listed.push((subject, role.name.clone()));
         }
     }
     for (id, name) in &members {
         let subject = Subject::Member(id.clone());
-        if setting(&subject) != (None, None) {
+        if !setting(&subject).is_empty() {
             listed.push((subject, name.clone()));
         }
     }
@@ -1531,7 +1530,7 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
     let mut member_rows = Column::new().spacing(10);
     let (mut any_role, mut any_member) = (false, false);
     for (subject, name) in &listed {
-        let remove = Message::AccessDraftSet { target, subject: subject.clone(), view: None, send: None };
+        let remove = Message::AccessDraftSet { target, subject: subject.clone(), setting: Setting::default() };
         let description = match subject {
             Subject::Role(_) => "Server Role".to_string(),
             Subject::Member(id) => member_standing(app, id),
@@ -1573,9 +1572,8 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
         .width(Length::Fill)
         .style(move |_: &Theme| round(pal.rail_bg, 8.0));
 
-    // Advanced permissions: the roles and listed members on the left, the chosen one's settings on the right.
-    let selected = app.access_subject.clone();
     // Listed users first, then the roles in the order of the Roles page, and @everyone always last.
+    let selected = app.access_subject.clone();
     let mut subject_list = Column::new().spacing(4);
     let role_item = |role: &RoleInfo| {
         let subject = Subject::Role(role.id);
@@ -1593,14 +1591,13 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
     for role in app.server.roles.iter().filter(|r| r.id != EVERYONE_ROLE) {
         subject_list = subject_list.push(role_item(role));
     }
-    if let Some(everyone) = app.server.roles.iter().find(|r| r.id == EVERYONE_ROLE) {
-        subject_list = subject_list.push(role_item(everyone));
+    if let Some(everyone_role) = app.server.roles.iter().find(|r| r.id == EVERYONE_ROLE) {
+        subject_list = subject_list.push(role_item(everyone_role));
     }
-    let (view, send) = setting(&selected);
-    let for_view = selected.clone();
-    let for_send = selected.clone();
-    // While Private is on, @everyone's permissions are set by the switch above, so they cannot be changed here.
-    let everyone_locked = private && selected == Subject::Role(EVERYONE_ROLE);
+
+    let current = setting(&selected);
+    // While Private is on, @everyone's View and Send are set by the switch above, so they cannot be changed here.
+    let everyone_locked = private && selected == everyone;
     let view_hint = if everyone_locked {
         "Turned on or off by the Private switch."
     } else if is_category {
@@ -1615,13 +1612,26 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
     } else {
         "Allows members to send messages in this channel by default."
     };
+    let manage_hint = if is_category {
+        "Lets members rename, delete and change the permissions of this category, and manage the channels in it."
+    } else {
+        "Lets members rename, move, delete and change the permissions of this channel."
+    };
+    let messages_hint = if is_category {
+        "Lets members delete other members' messages in the channels in this category."
+    } else {
+        "Lets members delete other members' messages in this channel."
+    };
     let settings = column![
         text(format!("General {} Permissions", if is_category { "Category" } else { "Channel" })).size(15).color(pal.text_strong),
         perm_row(
             "View Channels",
             view_hint,
-            view,
-            move |v| Message::AccessDraftSet { target, subject: for_view.clone(), view: v, send },
+            current.view,
+            {
+                let subject = selected.clone();
+                move |v| Message::AccessDraftSet { target, subject: subject.clone(), setting: Setting { view: v, ..current } }
+            },
             everyone_locked,
             pal,
         ),
@@ -1629,9 +1639,36 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
         perm_row(
             "Send Messages",
             send_hint,
-            send,
-            move |s| Message::AccessDraftSet { target, subject: for_send.clone(), view, send: s },
+            current.send,
+            {
+                let subject = selected.clone();
+                move |v| Message::AccessDraftSet { target, subject: subject.clone(), setting: Setting { send: v, ..current } }
+            },
             everyone_locked,
+            pal,
+        ),
+        divider(pal.selected_bg),
+        perm_row(
+            "Manage Channel",
+            manage_hint,
+            current.manage_channels,
+            {
+                let subject = selected.clone();
+                move |v| Message::AccessDraftSet { target, subject: subject.clone(), setting: Setting { manage_channels: v, ..current } }
+            },
+            false,
+            pal,
+        ),
+        divider(pal.selected_bg),
+        perm_row(
+            "Manage Messages",
+            messages_hint,
+            current.manage_messages,
+            {
+                let subject = selected.clone();
+                move |v| Message::AccessDraftSet { target, subject: subject.clone(), setting: Setting { manage_messages: v, ..current } }
+            },
+            false,
             pal,
         ),
     ]

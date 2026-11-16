@@ -161,8 +161,8 @@ impl App {
                 self.dnd = Some(crate::app::Dnd { item, start: self.cursor, moved: false, over: None });
             }
             Message::DndOver(target) => {
-                // Only members who may manage channels get drop targets, so nothing lights up for them.
-                let allowed = self.can(common::perm::MANAGE_CHANNELS);
+                // Only members who may move the dragged item get drop targets, so nothing lights up for them.
+                let allowed = self.dnd.as_ref().is_some_and(|d| self.can_drag_to(d.item, target));
                 if let Some(dnd) = self.dnd.as_mut() {
                     dnd.over = if allowed { target } else { None };
                 }
@@ -188,12 +188,12 @@ impl App {
             }
             Message::ChannelEditClose => return self.close_channel_edit(),
             Message::EditSectionPick(section) => self.edit_section = section,
-            Message::AccessDraftSet { target, subject, view, send } => {
+            Message::AccessDraftSet { target, subject, setting } => {
                 if self.access_draft.as_ref().map_or(true, |d| d.target != target) {
                     self.access_draft = Some(crate::app::AccessDraft { target, subjects: Default::default() });
                 }
                 if let Some(draft) = self.access_draft.as_mut() {
-                    draft.subjects.insert(subject, (view, send));
+                    draft.subjects.insert(subject, setting);
                 }
             }
             Message::AccessAddOpen(target) => self.access_add = Some(crate::app::AccessAdd { target, query: String::new(), picked: Default::default() }),
@@ -217,8 +217,9 @@ impl App {
                 if let Some(add) = self.access_add.take() {
                     let target = add.target;
                     for subject in add.picked {
-                        let (_, send) = self.access_value(target, subject.clone());
-                        let _ = self.update(Message::AccessDraftSet { target, subject, view: Some(true), send });
+                        let mut setting = self.access_value(target, subject.clone());
+                        setting.view = Some(true);
+                        let _ = self.update(Message::AccessDraftSet { target, subject, setting });
                     }
                 }
             }
@@ -1183,15 +1184,16 @@ impl App {
         use crate::app::AccessTarget;
         use common::Subject;
         let Some(draft) = self.access_draft.take() else { return };
-        for (subject, (view, send)) in draft.subjects.clone() {
-            if (view, send) == self.server_access(draft.target, &subject) {
+        for (subject, setting) in draft.subjects.clone() {
+            if setting == self.server_access(draft.target, &subject) {
                 continue;
             }
+            let common::Setting { view, send, manage_channels, manage_messages } = setting;
             let msg = match (draft.target, subject) {
-                (AccessTarget::Channel(channel), Subject::Role(role)) => ClientMsg::SetChannelOverride { channel, role, view, send },
-                (AccessTarget::Channel(channel), Subject::Member(member)) => ClientMsg::SetChannelMemberOverride { channel, member, view, send },
-                (AccessTarget::Category(category), Subject::Role(role)) => ClientMsg::SetCategoryOverride { category, role, view, send },
-                (AccessTarget::Category(category), Subject::Member(member)) => ClientMsg::SetCategoryMemberOverride { category, member, view, send },
+                (AccessTarget::Channel(channel), Subject::Role(role)) => ClientMsg::SetChannelOverride { channel, role, view, send, manage_channels, manage_messages },
+                (AccessTarget::Channel(channel), Subject::Member(member)) => ClientMsg::SetChannelMemberOverride { channel, member, view, send, manage_channels, manage_messages },
+                (AccessTarget::Category(category), Subject::Role(role)) => ClientMsg::SetCategoryOverride { category, role, view, send, manage_channels, manage_messages },
+                (AccessTarget::Category(category), Subject::Member(member)) => ClientMsg::SetCategoryMemberOverride { category, member, view, send, manage_channels, manage_messages },
             };
             let _ = self.backend.send_main(msg);
         }

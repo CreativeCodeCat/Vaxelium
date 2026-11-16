@@ -483,7 +483,36 @@ impl App {
     }
 
     pub fn can_delete(&self, m: &ChatMessage) -> bool {
-        self.can_edit(m) || self.can(perm::MANAGE_MESSAGES)
+        self.can_edit(m) || self.channel_permission(m.channel_id, perm::MANAGE_MESSAGES)
+    }
+
+    /// Whether this account may do something in a channel: the channel's own settings for them decide
+    /// when they say anything, otherwise the server-wide permission does.
+    pub fn channel_permission(&self, channel: i64, bit: u32) -> bool {
+        let held = self.server.member_roles.get(&self.user_id);
+        let member = self.server.member_channel_overrides.iter().find(|o| o.channel_id == channel && o.member == self.user_id).map(|o| o.setting());
+        let roles: Vec<common::Setting> = self
+            .server
+            .overrides
+            .iter()
+            .filter(|o| o.channel_id == channel && (o.role == common::EVERYONE_ROLE || held.is_some_and(|h| h.contains(&o.role))))
+            .map(|o| o.setting())
+            .collect();
+        common::grant(member, &roles, bit).unwrap_or(self.my_permissions() & bit != 0)
+    }
+
+    /// Whether this account may do something in a category, decided like [`Self::channel_permission`].
+    pub fn category_permission(&self, category: i64, bit: u32) -> bool {
+        let held = self.server.member_roles.get(&self.user_id);
+        let member = self.server.member_category_overrides.iter().find(|o| o.category_id == category && o.member == self.user_id).map(|o| o.setting());
+        let roles: Vec<common::Setting> = self
+            .server
+            .category_overrides
+            .iter()
+            .filter(|o| o.category_id == category && (o.role == common::EVERYONE_ROLE || held.is_some_and(|h| h.contains(&o.role))))
+            .map(|o| o.setting())
+            .collect();
+        common::grant(member, &roles, bit).unwrap_or(self.my_permissions() & bit != 0)
     }
 
     /// The message with this id in the open view, if there is one.

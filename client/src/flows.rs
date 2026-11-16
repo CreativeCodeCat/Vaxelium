@@ -270,7 +270,7 @@ fn the_category_edit_page_holds_the_name_and_closes_on_done() {
 fn category_permissions_arrive_from_the_server_and_open_on_their_section() {
     let mut app = app();
     let _ = app.update(net(ServerMsg::CategoryOverrides {
-        overrides: vec![common::CategoryOverride { category_id: 5, role: 0, view: Some(false), send: None }],
+        overrides: vec![common::CategoryOverride { category_id: 5, role: 0, view: Some(false), send: None, manage_channels: None, manage_messages: None }],
     }));
     assert_eq!(app.server.category_overrides.len(), 1);
     let _ = app.update(Message::CategoryEditOpen(5, "Games".into()));
@@ -284,12 +284,12 @@ fn category_permissions_arrive_from_the_server_and_open_on_their_section() {
 fn permission_changes_wait_for_the_save_bar() {
     use crate::app::AccessTarget;
     let mut app = app();
-    app.server.category_overrides = vec![common::CategoryOverride { category_id: 5, role: 0, view: None, send: None }];
+    app.server.category_overrides = vec![common::CategoryOverride { category_id: 5, role: 0, view: None, send: None, manage_channels: None, manage_messages: None }];
     let _ = app.update(Message::CategoryEditOpen(5, "Games".into()));
-    let _ = app.update(Message::AccessDraftSet { target: AccessTarget::Category(5), subject: common::Subject::Role(0), view: Some(false), send: None });
+    let _ = app.update(Message::AccessDraftSet { target: AccessTarget::Category(5), subject: common::Subject::Role(0), setting: common::Setting { view: Some(false), send: None, ..Default::default() } });
     assert!(app.access_dirty() && app.edit_dirty(), "the change is a draft until saved");
-    assert_eq!(app.server_access(AccessTarget::Category(5), &common::Subject::Role(0)), (None, None), "the server is not changed yet");
-    assert_eq!(app.access_value(AccessTarget::Category(5), common::Subject::Role(0)), (Some(false), None), "the page shows the draft");
+    assert_eq!(app.server_access(AccessTarget::Category(5), &common::Subject::Role(0)), common::Setting { view: None, send: None, ..Default::default() }, "the server is not changed yet");
+    assert_eq!(app.access_value(AccessTarget::Category(5), common::Subject::Role(0)), common::Setting { view: Some(false), send: None, ..Default::default() }, "the page shows the draft");
     let _ = app.update(Message::CategoryEditClose);
     assert!(app.category_edit.is_some(), "closing with an unsaved permission is refused");
     let _ = app.update(Message::EditPageReset);
@@ -311,7 +311,7 @@ fn picking_roles_in_add_roles_adds_them_as_unsaved_access() {
     let _ = app.update(Message::AccessAddToggle(common::Subject::Role(3), true));
     let _ = app.update(Message::AccessAddDone);
     assert!(app.access_add.is_none(), "Done closes the dialog");
-    assert_eq!(app.access_value(AccessTarget::Category(5), common::Subject::Role(3)), (Some(true), None), "the role can view, as an unsaved change");
+    assert_eq!(app.access_value(AccessTarget::Category(5), common::Subject::Role(3)), common::Setting { view: Some(true), send: None, ..Default::default() }, "the role can view, as an unsaved change");
     assert!(app.access_dirty());
 }
 
@@ -321,13 +321,13 @@ fn syncing_a_channel_fills_its_draft_with_the_category_settings() {
     let mut app = app();
     app.server.channels = vec![chan(2, "dev")];
     app.server.categories = vec![common::CategoryInfo { id: 5, name: "Games".into(), channels: vec![chan(2, "dev")] }];
-    app.server.category_overrides = vec![common::CategoryOverride { category_id: 5, role: 0, view: Some(false), send: None }];
-    app.server.member_channel_overrides = vec![common::MemberChannelOverride { channel_id: 2, member: "u9".into(), view: Some(true), send: None }];
+    app.server.category_overrides = vec![common::CategoryOverride { category_id: 5, role: 0, view: Some(false), send: None, manage_channels: None, manage_messages: None }];
+    app.server.member_channel_overrides = vec![common::MemberChannelOverride { channel_id: 2, member: "u9".into(), view: Some(true), send: None, manage_channels: None, manage_messages: None }];
     let _ = app.update(Message::ChannelEditOpen(2));
     assert!(!app.channel_synced(2, 5), "the channel differs from its category before syncing");
     let _ = app.update(Message::ChannelSyncWithCategory(2));
-    assert_eq!(app.access_value(AccessTarget::Channel(2), common::Subject::Role(0)), (Some(false), None));
-    assert_eq!(app.access_value(AccessTarget::Channel(2), common::Subject::Member("u9".into())), (None, None), "the channel's own member setting is cleared");
+    assert_eq!(app.access_value(AccessTarget::Channel(2), common::Subject::Role(0)), common::Setting { view: Some(false), send: None, ..Default::default() });
+    assert_eq!(app.access_value(AccessTarget::Channel(2), common::Subject::Member("u9".into())), common::Setting { view: None, send: None, ..Default::default() }, "the channel's own member setting is cleared");
     assert!(app.channel_synced(2, 5) && app.access_dirty(), "synced in the draft; Save applies it");
     let _ = app.update(Message::EditPageSave);
     assert!(app.access_draft.is_none());
@@ -357,9 +357,31 @@ fn the_channel_add_users_or_roles_flow_works() {
     let _ = app.update(Message::AccessAddToggle(common::Subject::Member("u1".into()), true));
     let _ = app.update(Message::AccessAddDone);
     assert!(app.access_add.is_none());
-    assert_eq!(app.access_value(AccessTarget::Channel(2), common::Subject::Role(3)), (Some(true), None));
-    assert_eq!(app.access_value(AccessTarget::Channel(2), common::Subject::Member("u1".into())), (Some(true), None));
+    assert_eq!(app.access_value(AccessTarget::Channel(2), common::Subject::Role(3)), common::Setting { view: Some(true), send: None, ..Default::default() });
+    assert_eq!(app.access_value(AccessTarget::Channel(2), common::Subject::Member("u1".into())), common::Setting { view: Some(true), send: None, ..Default::default() });
     assert!(app.edit_dirty(), "the save bar appears");
+}
+
+#[test]
+fn manage_channel_given_on_one_channel_only_shows_its_menu_there() {
+    let mut app = app();
+    app.user_id = "me".into();
+    app.server.channels = vec![chan(2, "dev"), chan(4, "ops")];
+    app.server.roles = vec![common::RoleInfo { id: 3, name: "Helper".into(), color: String::new(), permissions: 0, position: 1, mentionable: false, hoisted: false }];
+    app.server.member_roles = [("me".to_string(), vec![3])].into_iter().collect();
+    app.server.overrides = vec![common::ChannelOverride { channel_id: 2, role: 3, view: None, send: None, manage_channels: Some(true), manage_messages: None }];
+    assert!(app.channel_permission(2, common::perm::MANAGE_CHANNELS));
+    assert!(!app.channel_permission(4, common::perm::MANAGE_CHANNELS));
+    let labels = |app: &App| -> Vec<String> {
+        app.menu
+            .as_ref()
+            .map(|m| m.items.iter().filter_map(|i| match i { crate::app::MenuItem::Action { label, .. } => Some(label.clone()), _ => None }).collect())
+            .unwrap_or_default()
+    };
+    let _ = app.update(Message::OpenMenu(crate::app::MenuKind::Channel { id: 2, name: "dev".into(), unread: false }));
+    assert!(labels(&app).contains(&"Edit channel".to_string()), "the channel they manage has Edit channel");
+    let _ = app.update(Message::OpenMenu(crate::app::MenuKind::Channel { id: 4, name: "ops".into(), unread: false }));
+    assert!(!labels(&app).contains(&"Edit channel".to_string()), "other channels do not");
 }
 
 #[test]
@@ -367,7 +389,7 @@ fn saving_clears_the_permission_draft() {
     use crate::app::AccessTarget;
     let mut app = app();
     let _ = app.update(Message::ChannelEditOpen(2));
-    let _ = app.update(Message::AccessDraftSet { target: AccessTarget::Channel(2), subject: common::Subject::Role(0), view: Some(true), send: None });
+    let _ = app.update(Message::AccessDraftSet { target: AccessTarget::Channel(2), subject: common::Subject::Role(0), setting: common::Setting { view: Some(true), send: None, ..Default::default() } });
     let _ = app.update(Message::EditPageSave);
     assert!(app.access_draft.is_none() && !app.edit_dirty());
 }
@@ -753,6 +775,56 @@ fn escape_over_unsaved_settings_flashes_instead_of_closing() {
     let _ = app.on_escape();
     assert!(matches!(app.page, crate::app::Page::User));
     assert!(app.unsaved_flash_on());
+}
+
+#[test]
+fn a_channel_manager_can_drag_only_the_channels_they_manage() {
+    use crate::app::{DragItem, DropTarget};
+    let mut app = app();
+    app.user_id = "me".into();
+    app.server.channels = vec![chan(2, "dev"), chan(4, "ops")];
+    app.server.roles = vec![common::RoleInfo { id: 3, name: "Helper".into(), color: String::new(), permissions: 0, position: 1, mentionable: false, hoisted: false }];
+    app.server.member_roles = [("me".to_string(), vec![3])].into_iter().collect();
+    app.server.overrides = vec![common::ChannelOverride { channel_id: 2, role: 3, view: None, send: None, manage_channels: Some(true), manage_messages: None }];
+    let target = Some(DropTarget::Uncategorized);
+    let _ = app.update(Message::DndPress(DragItem::Channel(2)));
+    let _ = app.update(Message::DndOver(target));
+    assert_eq!(app.dnd.as_ref().and_then(|d| d.over), target, "the channel they manage can be dropped");
+    let _ = app.update(Message::DndPress(DragItem::Channel(4)));
+    let _ = app.update(Message::DndOver(target));
+    assert_eq!(app.dnd.as_ref().and_then(|d| d.over), None, "a channel they do not manage cannot");
+}
+
+#[test]
+fn leaving_a_category_needs_manage_channel_in_that_category() {
+    use crate::app::{DragItem, DropTarget};
+    let mut app = app();
+    app.user_id = "me".into();
+    app.server.channels = vec![chan(2, "dev"), chan(9, "ops")];
+    app.server.categories = vec![common::CategoryInfo { id: 5, name: "Games".into(), channels: vec![chan(2, "dev"), chan(9, "ops")] }];
+    app.server.roles = vec![common::RoleInfo { id: 3, name: "Helper".into(), color: String::new(), permissions: 0, position: 1, mentionable: false, hoisted: false }];
+    app.server.member_roles = [("me".to_string(), vec![3])].into_iter().collect();
+    app.server.overrides = vec![common::ChannelOverride { channel_id: 2, role: 3, view: None, send: None, manage_channels: Some(true), manage_messages: None }];
+    let _ = app.update(Message::DndPress(DragItem::Channel(2)));
+    // Moving within the category needs only the channel.
+    let inside = Some(DropTarget::Channel { id: 9, category: Some(5) });
+    let _ = app.update(Message::DndOver(inside));
+    assert_eq!(app.dnd.as_ref().and_then(|d| d.over), inside, "reordering inside the category is allowed");
+    // Moving it out does not, without Manage channel in the category.
+    let _ = app.update(Message::DndOver(Some(DropTarget::Uncategorized)));
+    assert_eq!(app.dnd.as_ref().and_then(|d| d.over), None, "leaving the category is blocked");
+    // With Manage channel in the category, it can leave.
+    app.server.category_overrides = vec![common::CategoryOverride { category_id: 5, role: 3, view: None, send: None, manage_channels: Some(true), manage_messages: None }];
+    let _ = app.update(Message::DndOver(Some(DropTarget::Uncategorized)));
+    assert_eq!(app.dnd.as_ref().and_then(|d| d.over), Some(DropTarget::Uncategorized), "leaving is allowed with it");
+    // Joining another category needs Manage channel in that one too.
+    app.server.categories.push(common::CategoryInfo { id: 6, name: "Other".into(), channels: Vec::new() });
+    let into_other = Some(DropTarget::Category(6));
+    let _ = app.update(Message::DndOver(into_other));
+    assert_eq!(app.dnd.as_ref().and_then(|d| d.over), None, "joining a category without the permission is blocked");
+    app.server.category_overrides.push(common::CategoryOverride { category_id: 6, role: 3, view: None, send: None, manage_channels: Some(true), manage_messages: None });
+    let _ = app.update(Message::DndOver(into_other));
+    assert_eq!(app.dnd.as_ref().and_then(|d| d.over), into_other, "joining is allowed with it");
 }
 
 #[test]
