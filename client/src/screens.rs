@@ -282,10 +282,110 @@ fn collapsed_category_screen() {
 }
 
 #[test]
-fn rename_channel_screen() {
+fn channel_edit_screen() {
     let mut app = chat_app();
-    let _ = app.update(Message::RenameStart(1, "general".into()));
-    save_at(&app, "rename", 1100.0, 700.0);
+    let _ = app.update(Message::ChannelEditOpen(1));
+    save_at(&app, "channel-edit", 1100.0, 700.0);
+}
+
+#[test]
+fn channel_permissions_screen() {
+    let mut app = chat_app();
+    app.server.roles = vec![
+        common::RoleInfo { id: 1, name: "Admin".into(), color: "#e91e63".into(), permissions: common::perm::ALL, position: 3, mentionable: false, hoisted: false },
+        common::RoleInfo { id: 2, name: "Moderator".into(), color: "#2ecc71".into(), permissions: common::perm::MANAGE_MESSAGES, position: 2, mentionable: false, hoisted: false },
+        common::RoleInfo { id: 0, name: "@everyone".into(), color: "#95a5a6".into(), permissions: 0, position: -1_000_000_000, mentionable: false, hoisted: false },
+    ];
+    let _ = app.update(Message::ChannelEditOpen(1));
+    let _ = app.update(Message::EditSectionPick(crate::app::EditSection::Permissions));
+    save_at(&app, "channel-permissions", 1100.0, 700.0);
+}
+
+#[test]
+fn category_unsaved_screen() {
+    let mut app = chat_app();
+    let _ = app.update(Message::CategoryEditOpen(1, "Text".into()));
+    let _ = app.update(Message::CategoryEditInput("Changed".into()));
+    save_at(&app, "category-unsaved", 1100.0, 700.0);
+}
+
+#[test]
+fn channel_unsaved_screen() {
+    let mut app = chat_app();
+    let _ = app.update(Message::ChannelEditOpen(1));
+    let _ = app.update(Message::RenameInput("changed".into()));
+    save_at(&app, "channel-unsaved", 1100.0, 700.0);
+}
+
+#[test]
+fn category_access_unsaved_screen() {
+    let mut app = chat_app();
+    let _ = app.update(Message::CategoryEditOpen(1, "Text".into()));
+    let _ = app.update(Message::EditSectionPick(crate::app::EditSection::Permissions));
+    let _ = app.update(Message::AccessDraftSet { target: crate::app::AccessTarget::Category(1), subject: common::Subject::Role(0), view: Some(false), send: None });
+    save_at(&app, "category-access-unsaved", 1100.0, 700.0);
+}
+
+#[test]
+fn access_add_roles_screen() {
+    let mut app = chat_app();
+    app.server.roles = vec![
+        common::RoleInfo { id: 2, name: "Moderator".into(), color: "#2ecc71".into(), permissions: 0, position: 2, mentionable: false, hoisted: false },
+        common::RoleInfo { id: 3, name: "Helper".into(), color: "#e91e63".into(), permissions: 0, position: 1, mentionable: false, hoisted: false },
+        common::RoleInfo { id: 0, name: "@everyone".into(), color: "#95a5a6".into(), permissions: 0, position: -1_000_000_000, mentionable: false, hoisted: false },
+    ];
+    app.server.member_ids = [("alice".to_string(), "u1".to_string()), ("bob".to_string(), "u2".to_string())].into_iter().collect();
+    let _ = app.update(Message::CategoryEditOpen(1, "Text".into()));
+    let _ = app.update(Message::EditSectionPick(crate::app::EditSection::Permissions));
+    let _ = app.update(Message::AccessAddOpen(crate::app::AccessTarget::Category(1)));
+    let _ = app.update(Message::AccessAddToggle(common::Subject::Role(3), true));
+    save_at(&app, "category-add-roles", 1100.0, 700.0);
+}
+
+#[test]
+fn channel_sync_screen() {
+    let mut app = chat_app();
+    app.server.categories = vec![common::CategoryInfo {
+        id: 7,
+        name: "Community".into(),
+        channels: vec![common::ChannelRef { id: 1, name: "general".into() }],
+    }];
+    app.server.category_overrides = vec![common::CategoryOverride { category_id: 7, role: 0, view: Some(false), send: None }];
+    let _ = app.update(Message::ChannelEditOpen(1));
+    let _ = app.update(Message::EditSectionPick(crate::app::EditSection::Permissions));
+    save_at(&app, "channel-sync", 1100.0, 700.0);
+}
+
+#[test]
+fn category_private_locked_screen() {
+    let mut app = chat_app();
+    app.server.category_overrides = vec![common::CategoryOverride { category_id: 1, role: 0, view: Some(false), send: None }];
+    let _ = app.update(Message::CategoryEditOpen(1, "Text".into()));
+    let _ = app.update(Message::EditSectionPick(crate::app::EditSection::Permissions));
+    save_at(&app, "category-private-locked", 1100.0, 700.0);
+}
+
+#[test]
+fn category_permissions_screen() {
+    let mut app = chat_app();
+    app.server.roles = vec![
+        common::RoleInfo { id: 2, name: "Moderator".into(), color: "#2ecc71".into(), permissions: common::perm::MANAGE_MESSAGES, position: 2, mentionable: false, hoisted: false },
+        common::RoleInfo { id: 0, name: "@everyone".into(), color: "#95a5a6".into(), permissions: 0, position: -1_000_000_000, mentionable: false, hoisted: false },
+    ];
+    app.server.category_overrides = vec![
+        common::CategoryOverride { category_id: 1, role: 0, view: Some(false), send: None },
+        common::CategoryOverride { category_id: 1, role: 2, view: Some(true), send: Some(true) },
+    ];
+    let _ = app.update(Message::CategoryEditOpen(1, "Text".into()));
+    let _ = app.update(Message::EditSectionPick(crate::app::EditSection::Permissions));
+    save_at(&app, "category-permissions", 1100.0, 700.0);
+}
+
+#[test]
+fn category_edit_screen() {
+    let mut app = chat_app();
+    let _ = app.update(Message::CategoryEditOpen(1, "Text".into()));
+    save_at(&app, "category-edit", 1100.0, 700.0);
 }
 
 #[test]

@@ -58,6 +58,12 @@ pub struct ServerView {
     pub member_roles: HashMap<String, Vec<i64>>,
     /// The channel exceptions for roles (see `common::ChannelOverride`).
     pub overrides: Vec<common::ChannelOverride>,
+    /// The category exceptions for roles (see `common::CategoryOverride`).
+    pub category_overrides: Vec<common::CategoryOverride>,
+    /// The channel exceptions for members (see `common::MemberChannelOverride`).
+    pub member_channel_overrides: Vec<common::MemberChannelOverride>,
+    /// The category exceptions for members (see `common::MemberCategoryOverride`).
+    pub member_category_overrides: Vec<common::MemberCategoryOverride>,
     /// How each member wants to appear, by account id.
     pub member_status: HashMap<String, common::PresenceStatus>,
     /// The badges of this server, and which ones each member has, by account id.

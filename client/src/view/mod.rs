@@ -206,6 +206,14 @@ fn body(app: &App, pal: Pal) -> Element<'_, Message> {
     if !app.is_logged_in() {
         return pages::login(app, pal);
     }
+    if app.chat_ready() {
+        if let Some(channel) = app.channel_edit {
+            return pages::channel_edit(app, channel, pal);
+        }
+        if app.category_edit.is_some() {
+            return pages::category_edit(app, pal);
+        }
+    }
     match app.page {
         Page::Discover => pages::discover(app, pal),
         Page::User => pages::user_settings(app, pal),
