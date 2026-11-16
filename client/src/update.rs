@@ -631,6 +631,7 @@ impl App {
                 if let Some(m) = self.find_message(id) {
                     self.editing = Some((m.id, m.text.clone()));
                     self.edit_box = crate::app::editor_at_end(&m.text);
+                    self.text_sel = None;
                     return operation::focus(EDIT_ID);
                 }
             }
