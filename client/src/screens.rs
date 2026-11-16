@@ -636,6 +636,25 @@ fn linked_accounts_screen() {
 }
 
 #[test]
+fn account_password_and_delete_screen() {
+    let mut app = chat_app();
+    app.page = Page::User;
+    app.user_section = crate::app::UserSection::Account;
+    app.account.has_password = false;
+    app.account.delete_open = true;
+    save_at(&app, "account-delete-dialog", 1100.0, 800.0);
+}
+
+#[test]
+fn linked_accounts_connect_screen() {
+    let mut app = chat_app();
+    app.page = Page::User;
+    app.user_section = crate::app::UserSection::Linked;
+    app.account.discord = None;
+    save_at(&app, "linked-accounts-connect", 1100.0, 700.0);
+}
+
+#[test]
 fn profile_unsaved_bar_screen() {
     let mut app = chat_app();
     app.page = Page::User;

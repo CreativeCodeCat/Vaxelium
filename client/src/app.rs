@@ -212,6 +212,20 @@ pub struct Account {
     pub can_unlink_discord: bool,
     pub discord_error: Option<String>,
     pub discord_busy: bool,
+    /// True while a Discord account is being connected from settings.
+    pub connect_busy: bool,
+    /// Whether the account has a password. Accounts made with Discord start without one.
+    pub has_password: bool,
+    /// The set-password dialog: whether it is open, the password typed, its error, and a request in flight.
+    pub password_open: bool,
+    pub password_input: String,
+    pub password_error: Option<String>,
+    pub password_busy: bool,
+    /// The delete-account dialog: whether it is open, the password typed, its error, and a request in flight.
+    pub delete_open: bool,
+    pub delete_input: String,
+    pub delete_error: Option<String>,
+    pub delete_busy: bool,
 }
 
 /// How a person looks in lists and messages: their picture (base64 PNG, or empty) and banner colour.
@@ -625,6 +639,18 @@ pub enum Message {
     LinkedLoaded(Result<crate::backend::LinkedAccounts, CmdError>),
     DiscordUnlink,
     DiscordUnlinked(Result<(), CmdError>),
+    DiscordConnect,
+    DiscordConnected(Result<String, CmdError>),
+    PasswordOpen,
+    PasswordInput(String),
+    PasswordCancel,
+    PasswordSubmit,
+    PasswordSet(Result<(), CmdError>),
+    AccountDeleteOpen,
+    AccountDeleteInput(String),
+    AccountDeleteCancel,
+    AccountDeleteSubmit,
+    AccountDeleted(Result<(), CmdError>),
     AccountEdit(Field),
     AccountEditCancel,
     AccountNameInput(String),

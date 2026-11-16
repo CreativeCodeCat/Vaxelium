@@ -4,15 +4,20 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender};
-use std::net::TcpListener;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use common::{is_valid_email, AuthReply, AuthRequest, ClientMsg, ServerMsg, DISCORD_CALLBACK_PORT};
+use common::{is_valid_email, AuthReply, AuthRequest, ClientMsg, ServerMsg};
 
 use crate::discover::FoundServer;
 use crate::net::{self, Connection, NetEvent};
 use crate::{auth_client, discord_login, keychain};
+
+/// Opens a Discord login page in the browser, or says how to open it by hand.
+fn open_discord(url: &str) -> Result<(), CmdError> {
+    discord_login::open_browser(url)
+        .map_err(|e| CmdError::new(format!("Could not open your browser ({e}). Open this address to log in: {url}")))
+}
 
 /// How long to wait before trying a server again after its direct messages could not be reached.
 const DM_RETRY: Duration = Duration::from_secs(30);
@@ -48,6 +53,8 @@ pub struct LinkedAccounts {
 /// The account's name, username and email, as the auth service reports them.
 #[derive(Debug, Clone)]
 pub struct Profile {
+    /// False for an account made with Discord that has no password yet.
+    pub has_password: bool,
     pub name: String,
     pub username: String,
     pub email: Option<String>,
@@ -374,24 +381,70 @@ impl Backend {
         }
     }
 
-    /// Logs in with a Discord account. Opens Discord in the browser, and waits for Discord to send the
-    /// browser back to a listener on this computer. Then the code is checked with the auth service.
+    /// Logs in with a Discord account. Opens Discord in the browser and waits until the login finishes.
     pub fn discord_login(&self, remember: bool) -> Result<String, CmdError> {
-        let listener = TcpListener::bind(("127.0.0.1", DISCORD_CALLBACK_PORT)).map_err(|_| {
-            CmdError::new("Another Discord login is already waiting. Finish that one in your browser first.")
-        })?;
-        let redirect_uri = format!("http://127.0.0.1:{DISCORD_CALLBACK_PORT}/callback");
-        let (url, state) = match self.auth(AuthRequest::DiscordStart { redirect_uri: redirect_uri.clone() })? {
-            AuthReply::DiscordUrl { url, state } => (url, state),
-            AuthReply::Error { text } => return Err(CmdError::new(text)),
-            _ => return Err(CmdError::new("Unexpected reply from the auth service.")),
-        };
-        if let Err(e) = discord_login::open_browser(&url) {
-            return Err(CmdError::new(format!("Could not open your browser ({e}). Open this address to log in: {url}")));
-        }
-        let code = discord_login::wait_for_code(&listener, &state, Duration::from_secs(180)).map_err(CmdError::new)?;
-        match self.auth(AuthRequest::DiscordLogin { code, redirect_uri })? {
+        let (url, state) = self.start_discord(String::new())?;
+        open_discord(&url)?;
+        match self.wait_discord(&state)? {
             AuthReply::Session { token, name } => Ok(self.finish_login(token, name, remember)),
+            AuthReply::Error { text } => Err(CmdError::new(text)),
+            _ => Err(CmdError::new("Unexpected reply from the auth service.")),
+        }
+    }
+
+    /// Links a Discord account to the account that is logged in. Returns the Discord name.
+    pub fn link_discord(&self) -> Result<String, CmdError> {
+        let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
+        let (url, state) = self.start_discord(token)?;
+        open_discord(&url)?;
+        match self.wait_discord(&state)? {
+            AuthReply::DiscordLinked { discord } => Ok(discord),
+            AuthReply::Error { text } => Err(CmdError::new(text)),
+            _ => Err(CmdError::new("Unexpected reply from the auth service.")),
+        }
+    }
+
+    /// Asks the auth service to start a Discord login (or a link, with a session token).
+    fn start_discord(&self, token: String) -> Result<(String, String), CmdError> {
+        match self.auth(AuthRequest::DiscordStart { token })? {
+            AuthReply::DiscordUrl { url, state } => Ok((url, state)),
+            AuthReply::Error { text } => Err(CmdError::new(text)),
+            _ => Err(CmdError::new("Unexpected reply from the auth service.")),
+        }
+    }
+
+    /// Polls until the Discord login finishes. The browser may take a while, so this waits up to ten
+    /// minutes, which is also how long the auth service keeps the login.
+    fn wait_discord(&self, state: &str) -> Result<AuthReply, CmdError> {
+        let deadline = Instant::now() + Duration::from_secs(10 * 60);
+        loop {
+            match self.auth(AuthRequest::DiscordPoll { state: state.to_string() })? {
+                AuthReply::DiscordPending => {
+                    if Instant::now() >= deadline {
+                        return Err(CmdError::new("The Discord login took too long. Try again."));
+                    }
+                    std::thread::sleep(Duration::from_secs(1));
+                }
+                other => return Ok(other),
+            }
+        }
+    }
+
+    /// Sets a password on an account that has none.
+    pub fn set_password(&self, password: String) -> Result<(), CmdError> {
+        let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
+        match self.auth(AuthRequest::SetPassword { token, password })? {
+            AuthReply::PasswordSet => Ok(()),
+            AuthReply::Error { text } => Err(CmdError::new(text)),
+            _ => Err(CmdError::new("Unexpected reply from the auth service.")),
+        }
+    }
+
+    /// Permanently deletes the account, after checking the password. The caller logs out afterwards.
+    pub fn delete_account(&self, password: String) -> Result<(), CmdError> {
+        let token = self.token().ok_or_else(|| CmdError::new("Log in first."))?;
+        match self.auth(AuthRequest::DeleteAccount { token, password })? {
+            AuthReply::AccountDeleted => Ok(()),
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),
         }
@@ -518,7 +571,7 @@ impl Backend {
     /// Stores the name the auth service now reports, and moves the saved login to it.
     fn apply_profile(&self, reply: AuthReply) -> Result<Profile, CmdError> {
         match reply {
-            AuthReply::Profile { name, username, email, verified, can_verify, bio, banner, avatar } => {
+            AuthReply::Profile { name, username, email, verified, can_verify, bio, banner, avatar, has_password } => {
                 let (old, token, remember) = {
                     let mut inner = self.lock();
                     let old = std::mem::replace(&mut inner.user, name.clone());
@@ -530,7 +583,7 @@ impl Backend {
                     }
                     keychain::forget(&old);
                 }
-                Ok(Profile { name, username, email, verified, can_verify, bio, banner, avatar })
+                Ok(Profile { name, username, email, verified, can_verify, bio, banner, avatar, has_password })
             }
             AuthReply::Error { text } => Err(CmdError::new(text)),
             _ => Err(CmdError::new("Unexpected reply from the auth service.")),

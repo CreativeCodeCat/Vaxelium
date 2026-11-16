@@ -179,6 +179,9 @@ pub fn login(app: &App, pal: Pal) -> Element<'_, Message> {
         );
     }
 
+    if let Some(legal) = legal_row(pal) {
+        items.push(legal);
+    }
     if let Some(error) = &login_form.error {
         items.push(text(error.clone()).size(13).color(pal.red).into());
         if error.contains(CERT_CHANGED) {
@@ -360,21 +363,158 @@ fn user_nav<'a>(active: UserSection, pal: Pal) -> Element<'a, Message> {
     .into()
 }
 
-/// The Discord link: its state, and an Unlink button when the account can still log in without it.
+/// The Discord link: its state, with Connect when none is linked, or Unlink when the account can still log
+/// in without it.
 fn linked_accounts_view<'a>(acc: &crate::app::Account, pal: Pal) -> Element<'a, Message> {
+    let blurple = Color::from_rgb8(0x58, 0x65, 0xF2);
     let (desc, action): (String, Option<Element<'a, Message>>) = match &acc.discord {
         Some(name) if acc.can_unlink_discord => (
             format!("Connected as {name}."),
             Some(solid(if acc.discord_busy { "Unlinking…" } else { "Unlink" }, Message::DiscordUnlink, pal.red, pal.on_color, None)),
         ),
-        Some(name) => (format!("Connected as {name}. This account signs in with Discord only, so the link cannot be removed."), None),
-        None => ("Not connected. Log in with Discord using the email on this account to link it.".to_string(), None),
+        Some(name) => (format!("Connected as {name}. Set a password in Account settings to be able to unlink it."), None),
+        None => (
+            "Not connected.".to_string(),
+            Some(solid(if acc.connect_busy { "Waiting for Discord…" } else { "Connect" }, Message::DiscordConnect, blurple, Color::WHITE, None)),
+        ),
     };
     let mut items: Vec<Element<'a, Message>> = vec![setting_row("Discord", Some(&desc), space().width(Length::Fixed(0.0)).into(), action, pal)];
     if let Some(error) = &acc.discord_error {
         items.push(text(error.clone()).size(13).color(pal.red).into());
     }
     Column::with_children(items).spacing(12).into()
+}
+
+/// The password row in Account settings. Accounts made with Discord can set one here.
+fn password_row<'a>(acc: &crate::app::Account, pal: Pal) -> Element<'a, Message> {
+    if acc.has_password {
+        setting_row("Password", Some("You can log in with your email and password."), space().width(Length::Fixed(0.0)).into(), None, pal)
+    } else {
+        setting_row(
+            "Password",
+            Some("Set one to log in with your email, unlink Discord and change your email."),
+            space().width(Length::Fixed(0.0)).into(),
+            Some(small_button("Set password", Message::PasswordOpen, pal)),
+            pal,
+        )
+    }
+}
+
+/// The delete-account row at the bottom of Account settings.
+fn delete_row<'a>(pal: Pal) -> Element<'a, Message> {
+    setting_row(
+        "Delete account",
+        Some("Permanently remove your account. Messages you posted stay on the servers where you posted them."),
+        space().width(Length::Fixed(0.0)).into(),
+        Some(solid("Delete account", Message::AccountDeleteOpen, pal.red, pal.on_color, None)),
+        pal,
+    )
+}
+
+/// The dialog that sets a password on an account without one.
+fn password_dialog<'a>(acc: &crate::app::Account, pal: Pal) -> Element<'a, Message> {
+    let mut items: Vec<Element<'a, Message>> = vec![
+        text("Set a password").size(20).color(pal.text_strong).into(),
+        muted_text("At least 8 characters. You will use it with your email address to log in.", 13.0, pal.text_muted),
+        field(
+            "New password",
+            text_input("password", &acc.password_input)
+                .id("acc-password")
+                .secure(true)
+                .on_input(Message::PasswordInput)
+                .on_submit(Message::PasswordSubmit)
+                .padding(10)
+                .style(input_style(pal))
+                .into(),
+        ),
+    ];
+    if let Some(err) = &acc.password_error {
+        items.push(text(err.clone()).size(13).color(pal.red).into());
+    }
+    items.push(
+        row![
+            space().width(Length::Fill),
+            link("Cancel", Message::PasswordCancel, pal.text_muted),
+            solid(if acc.password_busy { "Saving…" } else { "Save" }, Message::PasswordSubmit, pal.accent, pal.on_color, Some(96.0)),
+        ]
+        .spacing(10)
+        .align_y(iced::alignment::Vertical::Center)
+        .into(),
+    );
+    modal(items, pal, Message::PasswordCancel)
+}
+
+/// The dialog that deletes the account. It needs the password, so the account must have one.
+fn delete_dialog<'a>(acc: &crate::app::Account, pal: Pal) -> Element<'a, Message> {
+    let mut items: Vec<Element<'a, Message>> = vec![
+        text("Delete your account?").size(20).color(pal.red).into(),
+        muted_text(
+            "This cannot be undone. Your name, email, profile and Discord link are removed, and you are logged out on this computer. Messages you posted stay on the servers where you posted them.",
+            13.0,
+            pal.text_muted,
+        ),
+    ];
+    if acc.has_password {
+        items.push(field(
+            "Password",
+            text_input("password", &acc.delete_input)
+                .id("acc-delete-password")
+                .secure(true)
+                .on_input(Message::AccountDeleteInput)
+                .on_submit(Message::AccountDeleteSubmit)
+                .padding(10)
+                .style(input_style(pal))
+                .into(),
+        ));
+    } else {
+        items.push(muted_text("Set a password first. Deleting needs your password to confirm it is you.", 13.0, pal.red));
+    }
+    if let Some(err) = &acc.delete_error {
+        items.push(text(err.clone()).size(13).color(pal.red).into());
+    }
+    items.push(
+        row![
+            space().width(Length::Fill),
+            link("Cancel", Message::AccountDeleteCancel, pal.text_muted),
+            solid(
+                if acc.delete_busy { "Deleting…" } else { "Delete account" },
+                Message::AccountDeleteSubmit,
+                pal.red,
+                pal.on_color,
+                None,
+            ),
+        ]
+        .spacing(10)
+        .align_y(iced::alignment::Vertical::Center)
+        .into(),
+    );
+    modal(items, pal, Message::AccountDeleteCancel)
+}
+
+/// The web address of a legal page, from `.env` or the shell, when one is set.
+fn legal_url(var: &str) -> Option<String> {
+    std::env::var(var).ok().map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
+}
+
+/// "By continuing you agree to our Terms of Service and Privacy Policy", with the links that are set.
+fn legal_row<'a>(pal: Pal) -> Option<Element<'a, Message>> {
+    let terms = legal_url("VAXELIUM_TERMS_URL");
+    let privacy = legal_url("VAXELIUM_PRIVACY_URL");
+    if terms.is_none() && privacy.is_none() {
+        return None;
+    }
+    let both = terms.is_some() && privacy.is_some();
+    let mut parts: Vec<Element<'a, Message>> = vec![muted_text("By continuing you agree to our", 12.0, pal.text_muted)];
+    if let Some(url) = terms {
+        parts.push(link("Terms of Service", Message::OpenLink(url), pal.link));
+    }
+    if both {
+        parts.push(muted_text("and", 12.0, pal.text_muted));
+    }
+    if let Some(url) = privacy {
+        parts.push(link("Privacy Policy", Message::OpenLink(url), pal.link));
+    }
+    Some(iced::widget::Row::with_children(parts).spacing(4).align_y(iced::alignment::Vertical::Center).into())
 }
 
 /// The settings content: a column with a sensible maximum width, so long rows do not stretch.
@@ -569,6 +709,7 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
                 pal,
             )
         },
+        password_row(acc, pal),
         divider(pal.selected_bg),
         text("PREFERENCES").size(12).color(pal.text_muted).into(),
         setting_row("Theme", None, theme_button.into(), None, pal),
@@ -579,6 +720,9 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     if let Some(error) = &acc.save_error {
         main.push(text(error.clone()).size(13).color(pal.red).into());
     }
+    main.push(divider(pal.selected_bg));
+    main.push(text("DANGER ZONE").size(12).color(pal.red).into());
+    main.push(delete_row(pal));
     let (content, dirty) = match app.user_section {
         UserSection::Account => {
             let dirty = acc.draft_name.is_some() || acc.draft_username.is_some() || acc.draft_email.is_some() || acc.draft_theme.is_some();
@@ -604,6 +748,12 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     }
     if let Some(which) = acc.editing {
         layers.push(account_edit_dialog(app, which, pal));
+    }
+    if acc.password_open {
+        layers.push(password_dialog(acc, pal));
+    }
+    if acc.delete_open {
+        layers.push(delete_dialog(acc, pal));
     }
     iced::widget::stack(layers).into()
 }
