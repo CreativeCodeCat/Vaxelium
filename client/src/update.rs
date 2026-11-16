@@ -521,6 +521,14 @@ impl App {
             }
             Message::SearchOpen => self.search_open = true,
             Message::Hover(id) => self.hover = id,
+            Message::ReplyStart(id) => {
+                self.menu = None;
+                self.replying_to = Some(id);
+                return iced::widget::operation::focus(crate::app::COMPOSER_ID);
+            }
+            Message::ReplyCancel => self.replying_to = None,
+            Message::JumpTo(id) => return self.jump_to(id),
+            Message::JumpFlashEnd => self.jump_flash = None,
             Message::SearchClear => {
                 self.search.clear();
                 self.search_open = false;
@@ -660,7 +668,8 @@ impl App {
                 if let Some(channel) = text.strip_prefix("/join ") {
                     self.join(channel);
                 } else {
-                    let _ = self.backend.send_main(ClientMsg::Say { text });
+                    let reply_to = self.replying_to.take();
+                    let _ = self.backend.send_main(ClientMsg::Say { text, reply_to });
                 }
             }
             Message::React(id, emoji) => {
@@ -1390,6 +1399,8 @@ impl App {
             self.picker = None;
         } else if self.editing.is_some() {
             self.editing = None;
+        } else if self.replying_to.is_some() {
+            self.replying_to = None;
         } else if self.pending_delete.is_some() {
             self.pending_delete = None;
         } else if self.pending_role_delete.is_some() {

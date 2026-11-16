@@ -55,6 +55,7 @@ fn chat(id: i64, channel_id: i64, author: &str, text: &str, ts: u64) -> ChatMess
         timestamp: ts,
         edited: false,
         reactions: Vec::new(),
+        reply: None,
     }
 }
 

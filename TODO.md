@@ -4,7 +4,6 @@ Features to consider, roughly in order of how much they add.
 
 ## Messages
 
-- [ ] Replies: answer a specific message, shown with a quoted preview that jumps to the original.
 - [ ] File and image attachments: upload, show image previews inline, download other files (the attach icon is there but does nothing yet).
 - [ ] Pinned messages: pin and unpin, and a pinned list per channel.
 - [ ] Link previews (embeds): title, description and image for links posted in chat.
