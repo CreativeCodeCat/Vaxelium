@@ -2,20 +2,40 @@
 //! the window is in `app.rs`, `update.rs` and `view/`.
 
 mod app;
+#[cfg(not(target_arch = "wasm32"))]
+mod auth_client;
+#[cfg(target_arch = "wasm32")]
+#[path = "web/auth_client.rs"]
 mod auth_client;
 mod backend;
 mod bio;
+#[cfg(not(target_arch = "wasm32"))]
 mod discord_login;
+#[cfg(target_arch = "wasm32")]
+#[path = "web/discord_login.rs"]
+mod discord_login;
+#[cfg(not(target_arch = "wasm32"))]
+mod discover;
+#[cfg(target_arch = "wasm32")]
+#[path = "web/discover.rs"]
 mod discover;
 #[cfg(test)]
 #[path = "tests/flows.rs"]
 mod flows;
 mod highlight;
 mod icons;
+#[cfg(not(target_arch = "wasm32"))]
+mod keychain;
+#[cfg(target_arch = "wasm32")]
+#[path = "web/keychain.rs"]
 mod keychain;
 mod latex;
 mod markdown;
 mod model;
+#[cfg(not(target_arch = "wasm32"))]
+mod net;
+#[cfg(target_arch = "wasm32")]
+#[path = "web/net.rs"]
 mod net;
 mod prefs;
 #[cfg(test)]
@@ -24,22 +44,28 @@ mod screens;
 mod search;
 mod theme;
 mod tray;
+#[cfg(not(target_arch = "wasm32"))]
+mod trust;
+#[cfg(target_arch = "wasm32")]
+#[path = "web/trust.rs"]
 mod trust;
 mod update;
 mod util;
 mod view;
+#[cfg(target_arch = "wasm32")]
+mod web;
 
 use std::collections::HashMap;
-use std::sync::{mpsc, Mutex};
+use std::sync::Mutex;
 
 use iced::futures::{SinkExt, Stream};
 use iced::{window, Font, Size, Task};
 
-use app::{offload, App, Message};
+use app::{App, Message};
 use backend::{Backend, Event};
 
 /// The receiving end of the backend's events. Taken once by the subscription that feeds the app.
-static EVENTS: Mutex<Option<mpsc::Receiver<Event>>> = Mutex::new(None);
+static EVENTS: Mutex<Option<backend::EventReceiver>> = Mutex::new(None);
 
 /// Forwards the backend's events into the app's message loop, as they arrive.
 pub fn events_stream() -> impl Stream<Item = Event> {
@@ -47,20 +73,11 @@ pub fn events_stream() -> impl Stream<Item = Event> {
         64,
         |mut output: iced::futures::channel::mpsc::Sender<Event>| async move {
             let rx = EVENTS.lock().unwrap_or_else(|e| e.into_inner()).take();
-            let Some(rx) = rx else {
+            let Some(mut rx) = rx else {
                 return;
             };
-            // The receiver blocks, so it reads on its own thread and hands events to the async side.
-            let (tx, mut from_thread) = iced::futures::channel::mpsc::unbounded();
-            std::thread::spawn(move || {
-                while let Ok(event) = rx.recv() {
-                    if tx.unbounded_send(event).is_err() {
-                        break;
-                    }
-                }
-            });
             use iced::futures::StreamExt;
-            while let Some(event) = from_thread.next().await {
+            while let Some(event) = rx.next().await {
                 if output.send(event).await.is_err() {
                     break;
                 }
@@ -82,8 +99,10 @@ fn emoji_catalog() -> (Vec<(String, String, String)>, HashMap<String, [String; 5
     (emoji, skin)
 }
 
-fn main() -> iced::Result {
-    common::env::load();
+/// Where the settings live: a folder in the user's config directory on the desktop. The browser keeps
+/// them in the site's storage, so it has no folder.
+#[cfg(not(target_arch = "wasm32"))]
+fn config_dir() -> std::path::PathBuf {
     let config = dirs::config_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("com.creativecodecat.vaxelium");
@@ -92,11 +111,49 @@ fn main() -> iced::Result {
     }
     trust::init(config.join("pins.json"));
     tray::start();
+    config
+}
 
-    let (tx, rx) = mpsc::channel();
+#[cfg(target_arch = "wasm32")]
+fn config_dir() -> std::path::PathBuf {
+    console_error_panic_hook::set_once();
+    std::path::PathBuf::new()
+}
+
+/// The web client can only reach the server that served it, so that server is always in its list.
+#[cfg(target_arch = "wasm32")]
+fn with_page_server(mut prefs: prefs::Prefs) -> prefs::Prefs {
+    let host = web::page_host();
+    prefs.servers.retain(|s| s.addr == host);
+    if prefs.servers.is_empty() {
+        prefs.servers.push(prefs::ServerPref {
+            name: host.clone(),
+            addr: host,
+            id: None,
+            icon: None,
+            ignored: Vec::new(),
+            protected: Vec::new(),
+            linked: false,
+        });
+    }
+    prefs
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn with_page_server(prefs: prefs::Prefs) -> prefs::Prefs {
+    prefs
+}
+
+fn main() -> iced::Result {
+    common::env::load();
+    let config = config_dir();
+
+    let (tx, rx) = backend::event_channel();
     *EVENTS.lock().unwrap_or_else(|e| e.into_inner()) = Some(rx);
+    #[cfg(target_arch = "wasm32")]
+    web::set_redraw(tx.clone());
     let backend = Backend::new(tx, config.clone());
-    let prefs = prefs::Prefs::load(&config);
+    let prefs = with_page_server(prefs::Prefs::load(&config));
     let (emoji, skin) = emoji_catalog();
 
     // A daemon, not an application: the app keeps running with no window, so the tray can bring the
@@ -117,6 +174,9 @@ fn main() -> iced::Result {
     // Noto Sans has the small capitals some names use, and all the Latin letters. Open Sans lacked
     // the small capitals, so text containing them was drawn with the wrong glyphs.
     .font(include_bytes!("../ui/fonts/NotoSans-Subset.ttf").as_slice())
+    // The styled letters some names use (𝙲𝚛𝚎𝚊𝚝𝚎, 𝐁𝐨𝐥𝐝, ℌ and the like). The browser has no system
+    // fonts to fall back on, so without this such names are drawn as nothing there.
+    .font(include_bytes!("../ui/fonts/NotoSansMath-Letters.ttf").as_slice())
     .default_font(Font::with_name("Noto Sans"))
     .run()
 }
@@ -151,7 +211,7 @@ fn restore_task(app: &App) -> Task<Message> {
     match app.prefs.session.clone() {
         Some(session) => {
             let backend = app.backend.clone();
-            Task::perform(offload(move || backend.restore(&session.name)), Message::Restored)
+            Task::perform(async move { backend.restore(&session.name).await }, Message::Restored)
         }
         None => Task::none(),
     }

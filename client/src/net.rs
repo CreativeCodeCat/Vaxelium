@@ -16,12 +16,17 @@ pub enum NetEvent {
 }
 
 pub struct Connection {
-    pub outgoing: Sender<ClientMsg>,
+    outgoing: Sender<ClientMsg>,
     /// Second handle to the socket, used to close it when the connection is dropped.
     socket: TcpStream,
 }
 
 impl Connection {
+    /// Queues a message for the server. Fails once the connection has ended.
+    pub fn send(&self, msg: ClientMsg) -> Result<(), ()> {
+        self.outgoing.send(msg).map_err(|_| ())
+    }
+
     /// Sends one last message, gives the thread time to write it, then closes the connection.
     pub fn send_last(self, msg: ClientMsg) {
         let _ = self.outgoing.send(msg);
@@ -41,9 +46,13 @@ impl Drop for Connection {
 const POLL: Duration = Duration::from_millis(100);
 
 /// Connects over TLS, checks the server's certificate, sends the first message (the login), and
-/// starts the thread. Returns the connection and the stream of what the server sends. The stream
-/// ends with a `Disconnected` event.
-pub fn connect(addr: &str, first: ClientMsg) -> Result<(Connection, Receiver<NetEvent>), String> {
+/// starts the thread. What the server sends is passed to `on_event` as it arrives, ending with a
+/// `Disconnected` event.
+pub fn connect(
+    addr: &str,
+    first: ClientMsg,
+    mut on_event: impl FnMut(NetEvent) + Send + 'static,
+) -> Result<Connection, String> {
     let (mut stream, fingerprint) =
         common::tls::connect_blocking(addr, Duration::from_secs(4)).map_err(|e| format!("could not connect: {e}"))?;
     // Check the certificate before the login is sent.
@@ -63,14 +72,21 @@ pub fn connect(addr: &str, first: ClientMsg) -> Result<(Connection, Receiver<Net
             let _ = in_tx.send(NetEvent::Disconnected(reason));
         }
     });
+    // Hands what arrives to the app, on a thread of its own so the socket thread never waits for it.
+    std::thread::spawn(move || {
+        while let Ok(event) = in_rx.recv() {
+            let last = matches!(event, NetEvent::Disconnected(_));
+            on_event(event);
+            if last {
+                break;
+            }
+        }
+    });
 
-    Ok((
-        Connection {
-            outgoing: out_tx,
-            socket,
-        },
-        in_rx,
-    ))
+    Ok(Connection {
+        outgoing: out_tx,
+        socket,
+    })
 }
 
 /// Runs until the connection ends. Returns why, or None when the app has already let go of it.

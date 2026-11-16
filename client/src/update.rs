@@ -5,9 +5,7 @@ use iced::widget::operation;
 use iced::window;
 use iced::Task;
 
-use crate::app::{
-    offload, AccountSaved, App, Field, Message, Page, Picker, ADD_ADDR_ID, COMPOSER_ID, EDIT_ID, NEW_CHANNEL_ID,
-};
+use crate::app::{AccountSaved, App, Field, Message, Page, Picker, ADD_ADDR_ID, COMPOSER_ID, EDIT_ID, NEW_CHANNEL_ID};
 
 impl App {
     /// Handles every message that is not an event, a window action or a drag.
@@ -55,7 +53,7 @@ impl App {
                 self.account.connect_busy = true;
                 self.account.discord_error = None;
                 let backend = self.backend.clone();
-                return Task::perform(offload(move || backend.link_discord()), Message::DiscordConnected);
+                return Task::perform(async move { backend.link_discord().await }, Message::DiscordConnected);
             }
             Message::DiscordConnected(result) => {
                 self.account.connect_busy = false;
@@ -89,7 +87,10 @@ impl App {
                 self.account.password_error = None;
                 let backend = self.backend.clone();
                 let password = self.account.password_input.clone();
-                return Task::perform(offload(move || backend.set_password(password)), Message::PasswordSet);
+                return Task::perform(
+                    async move { backend.set_password(password).await },
+                    Message::PasswordSet,
+                );
             }
             Message::PasswordSet(result) => {
                 self.account.password_busy = false;
@@ -126,7 +127,7 @@ impl App {
                 let backend = self.backend.clone();
                 let password = self.account.delete_input.clone();
                 return Task::perform(
-                    offload(move || backend.delete_account(password)),
+                    async move { backend.delete_account(password).await },
                     Message::AccountDeleted,
                 );
             }
@@ -174,7 +175,7 @@ impl App {
                 }
             }
             Message::AuthBannerClose => self.auth_banner_closed = true,
-            Message::AuthProbe => return Task::perform(offload(crate::auth_client::reachable), Message::AuthProbed),
+            Message::AuthProbe => return Task::perform(crate::auth_client::reachable(), Message::AuthProbed),
             Message::AuthProbed(up) => {
                 if up {
                     // The service is back: hide the banner, and let a later outage show it again.
@@ -672,7 +673,7 @@ impl App {
                     .last_typing_sent
                     .is_none_or(|at| at.elapsed() >= crate::app::TYPING_SEND_EVERY);
                 if typing && due {
-                    self.last_typing_sent = Some(std::time::Instant::now());
+                    self.last_typing_sent = Some(web_time::Instant::now());
                     let _ = self.backend.send_main(ClientMsg::Typing);
                 }
             }
@@ -897,7 +898,10 @@ impl App {
                 self.account.verify_busy = true;
                 self.account.verify_error = None;
                 let backend = self.backend.clone();
-                return Task::perform(offload(move || backend.request_email_code()), Message::CodeRequested);
+                return Task::perform(
+                    async move { backend.request_email_code().await },
+                    Message::CodeRequested,
+                );
             }
             Message::CodeRequested(result) => {
                 self.account.verify_busy = false;
@@ -919,7 +923,7 @@ impl App {
                 self.account.verify_error = None;
                 let code = self.account.verify_code.trim().to_string();
                 let backend = self.backend.clone();
-                return Task::perform(offload(move || backend.verify_email(code)), Message::VerifyDone);
+                return Task::perform(async move { backend.verify_email(code).await }, Message::VerifyDone);
             }
             Message::VerifyDone(result) => {
                 self.account.verify_busy = false;
@@ -959,14 +963,17 @@ impl App {
                 let text = self.card_status_draft.clone().unwrap_or_default().trim().to_string();
                 self.card_status_error = None;
                 let backend = self.backend.clone();
-                return Task::perform(offload(move || backend.set_status_text(text)), Message::CardStatusDone);
+                return Task::perform(
+                    async move { backend.set_status_text(text).await },
+                    Message::CardStatusDone,
+                );
             }
             Message::CardStatusClear => {
                 self.card_status_draft = Some(String::new());
                 self.card_status_error = None;
                 let backend = self.backend.clone();
                 return Task::perform(
-                    offload(move || backend.set_status_text(String::new())),
+                    async move { backend.set_status_text(String::new()).await },
                     Message::CardStatusDone,
                 );
             }
@@ -1086,7 +1093,7 @@ impl App {
             }
             Message::AvatarPick => {
                 self.account.avatar_error = None;
-                return Task::perform(offload(crate::icons::pick_avatar), Message::AvatarPicked);
+                return Task::perform(crate::icons::pick_avatar(), Message::AvatarPicked);
             }
             // A picked or removed picture is a draft until Save; Reset drops it.
             Message::AvatarPicked(result) => match result {
@@ -1143,7 +1150,7 @@ impl App {
                     self.account.about_banner.clone(),
                 );
                 let backend = self.backend.clone();
-                let about = Task::perform(offload(move || backend.set_about(bio, banner)), Message::AboutDone);
+                let about = Task::perform(async move { backend.set_about(bio, banner).await }, Message::AboutDone);
                 // A picture change is saved with the rest.
                 return match self.account.avatar_draft.clone() {
                     Some(draft) => Task::batch([about, self.save_avatar((!draft.is_empty()).then_some(draft))]),
@@ -1212,7 +1219,7 @@ impl App {
                 if section == crate::app::UserSection::Linked {
                     self.account.discord_error = None;
                     let backend = self.backend.clone();
-                    return Task::perform(offload(move || backend.linked_accounts()), Message::LinkedLoaded);
+                    return Task::perform(async move { backend.linked_accounts().await }, Message::LinkedLoaded);
                 }
                 if section == crate::app::UserSection::Profile {
                     self.account.about_bio = self.account.bio.clone();
@@ -1236,7 +1243,7 @@ impl App {
                 self.account.discord_busy = true;
                 self.account.discord_error = None;
                 let backend = self.backend.clone();
-                return Task::perform(offload(move || backend.unlink_discord()), Message::DiscordUnlinked);
+                return Task::perform(async move { backend.unlink_discord().await }, Message::DiscordUnlinked);
             }
             Message::DiscordUnlinked(result) => {
                 self.account.discord_busy = false;
@@ -1399,7 +1406,7 @@ impl App {
             Message::ServerReset => self.reset_server_form(),
             Message::IconPick => {
                 self.server_form.icon_error = None;
-                return Task::perform(offload(crate::icons::pick_server_icon), Message::IconPicked);
+                return Task::perform(crate::icons::pick_server_icon(), Message::IconPicked);
             }
             Message::IconPicked(result) => match result {
                 Ok(Some(png)) => {
@@ -1510,10 +1517,10 @@ impl App {
         });
         let backend = self.backend.clone();
         Task::perform(
-            offload(move || {
-                let result = backend.profile_card(&id);
+            async move {
+                let result = backend.profile_card(&id).await;
                 (id, result)
-            }),
+            },
             |(id, result)| Message::CardLoaded(id, result),
         )
     }
@@ -1609,7 +1616,7 @@ impl App {
     /// Closes the channel edit page. Refused, with the save bar flashing red, while it has unsaved changes.
     fn close_channel_edit(&mut self) -> Task<Message> {
         if self.edit_dirty() {
-            self.unsaved_flash = Some(std::time::Instant::now());
+            self.unsaved_flash = Some(web_time::Instant::now());
             return Task::none();
         }
         self.unsaved_flash = None;
@@ -1622,7 +1629,7 @@ impl App {
     /// Closes the category edit page. Refused, with the save bar flashing red, while it has unsaved changes.
     fn close_category_edit(&mut self) -> Task<Message> {
         if self.edit_dirty() {
-            self.unsaved_flash = Some(std::time::Instant::now());
+            self.unsaved_flash = Some(web_time::Instant::now());
             return Task::none();
         }
         self.unsaved_flash = None;
@@ -1633,7 +1640,7 @@ impl App {
 
     fn close_settings(&mut self) -> Task<Message> {
         if self.settings_unsaved() {
-            self.unsaved_flash = Some(std::time::Instant::now());
+            self.unsaved_flash = Some(web_time::Instant::now());
             return Task::none();
         }
         self.unsaved_flash = None;
@@ -1645,7 +1652,7 @@ impl App {
 
     fn load_profile(&self) -> Task<Message> {
         let backend = self.backend.clone();
-        Task::perform(offload(move || backend.profile()), Message::ProfileLoaded)
+        Task::perform(async move { backend.profile().await }, Message::ProfileLoaded)
     }
 
     /// Saves the account drafts one by one: name, username, email, then theme. The theme is kept on
@@ -1664,7 +1671,7 @@ impl App {
         self.account.save_error = None;
         let backend = self.backend.clone();
         Task::perform(
-            offload(move || {
+            async move {
                 let mut out = AccountSaved {
                     profile: None,
                     email: None,
@@ -1677,7 +1684,9 @@ impl App {
                 let name_change = name.filter(|n| *n != current_name);
                 let username_change = username.filter(|u| *u != current_username);
                 if name_change.is_some() || username_change.is_some() {
-                    let result = backend.update_profile(name_change.clone(), username_change.clone());
+                    let result = backend
+                        .update_profile(name_change.clone(), username_change.clone())
+                        .await;
                     match result {
                         Ok(p) => {
                             out.profile = Some(p);
@@ -1695,7 +1704,7 @@ impl App {
                     out.username_saved = true;
                 }
                 if let Some((new_email, password)) = email {
-                    match backend.change_email(password, new_email) {
+                    match backend.change_email(password, new_email).await {
                         Ok(addr) => {
                             out.email = Some(addr);
                             out.email_saved = true;
@@ -1710,7 +1719,7 @@ impl App {
                     out.email_saved = true;
                 }
                 out
-            }),
+            },
             Message::AccountSaved,
         )
     }
@@ -1759,7 +1768,7 @@ impl App {
     fn save_avatar(&mut self, png: Option<String>) -> Task<Message> {
         self.account.avatar_error = None;
         let backend = self.backend.clone();
-        Task::perform(offload(move || backend.set_avatar(png)), Message::AvatarDone)
+        Task::perform(async move { backend.set_avatar(png).await }, Message::AvatarDone)
     }
 }
 

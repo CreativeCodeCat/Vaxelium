@@ -4,8 +4,6 @@
 use std::io::{BufRead, BufReader, Write};
 use std::time::Duration;
 
-use std::sync::mpsc::Sender;
-
 use common::{ClientMsg, ServerMsg};
 
 use crate::backend::Event;
@@ -46,7 +44,7 @@ fn ask(addr: &str, msg: &ClientMsg) -> Result<ServerMsg, String> {
 }
 
 /// Starts a background search. Each server that answers is sent on `events` as `Event::Discovered`.
-pub fn start(via: String, events: Sender<Event>) {
+pub fn start(via: String, events: crate::backend::EventSender) {
     std::thread::spawn(move || {
         let Ok(ServerMsg::Peers { addrs }) = ask(&via, &ClientMsg::Peers { known: Vec::new() }) else {
             return;
@@ -76,7 +74,7 @@ pub fn start(via: String, events: Sender<Event>) {
                         public,
                         self_signed,
                     };
-                    let _ = events.send(Event::Discovered(found));
+                    let _ = events.unbounded_send(Event::Discovered(found));
                 }
             }));
         }

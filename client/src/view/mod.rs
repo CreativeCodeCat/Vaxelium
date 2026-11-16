@@ -361,11 +361,17 @@ fn titlebar(app: &App, pal: Pal) -> Element<'_, Message> {
             .align_y(iced::alignment::Vertical::Center),
     )
     .on_press(Message::WinDrag);
-    let controls = row![
-        titlebar_button(icons::MINIMIZE, Message::WinMinimize, pal.text, pal.hover_bg),
-        titlebar_button(icons::MAXIMIZE, Message::WinMaxToggle, pal.text, pal.hover_bg),
-        titlebar_button(icons::CLOSE, Message::WinClose, pal.text, pal.red),
-    ];
+    // A browser tab has its own controls, so the web client shows none of its own.
+    let controls: Element<'_, Message> = if cfg!(target_arch = "wasm32") {
+        space().into()
+    } else {
+        row![
+            titlebar_button(icons::MINIMIZE, Message::WinMinimize, pal.text, pal.hover_bg),
+            titlebar_button(icons::MAXIMIZE, Message::WinMaxToggle, pal.text, pal.hover_bg),
+            titlebar_button(icons::CLOSE, Message::WinClose, pal.text, pal.red),
+        ]
+        .into()
+    };
     container(row![drag, controls])
         .width(Length::Fill)
         .style(move |_: &Theme| round(pal.rail_bg, 0.0))

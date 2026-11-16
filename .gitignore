@@ -3,3 +3,4 @@
 .env
 *.key
 /client/gen
+/server/web/dist

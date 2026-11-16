@@ -1,7 +1,6 @@
 //! Checks the app's state changes when servers send messages, without a network or a window.
 
 use std::collections::HashMap;
-use std::sync::mpsc;
 
 use common::{ChannelRef, ChatMessage, ServerMsg, UserStatus};
 use iced::Point;
@@ -11,7 +10,7 @@ use crate::backend::{Backend, Event};
 use crate::prefs::{Prefs, ServerPref};
 
 fn app() -> App {
-    let (tx, _rx) = mpsc::channel();
+    let (tx, _rx) = crate::backend::event_channel();
     let backend = Backend::new(tx, std::env::temp_dir().join("vaxelium-flows"));
     let mut prefs = Prefs::default();
     prefs.servers = vec![ServerPref {

@@ -3,7 +3,6 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::mpsc;
 
 use common::{ChatMessage, DirectMessage};
 use iced::Size;
@@ -18,7 +17,7 @@ fn shots_dir() -> PathBuf {
 }
 
 fn app() -> App {
-    let (tx, _rx) = mpsc::channel();
+    let (tx, _rx) = crate::backend::event_channel();
     let dir = std::env::temp_dir().join("vaxelium-screens");
     let backend = Backend::new(tx, dir);
     let mut prefs = Prefs::default();

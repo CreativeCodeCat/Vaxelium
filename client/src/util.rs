@@ -44,10 +44,34 @@ pub fn name_color(pal: &Pal, name: &str) -> Color {
     pal.avatars[(hash % 8) as usize]
 }
 
+/// Where a saved login is kept, for the words beside "Keep me logged in".
+pub const ON_DEVICE: &str = if cfg!(target_arch = "wasm32") {
+    "on this browser"
+} else {
+    "on this computer"
+};
+
+/// Waits for `duration` without blocking the app.
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn sleep(duration: std::time::Duration) {
+    crate::app::offload(move || std::thread::sleep(duration)).await
+}
+
+/// Waits for `duration` without blocking the app, on the browser's timer.
+#[cfg(target_arch = "wasm32")]
+pub async fn sleep(duration: std::time::Duration) {
+    let promise = js_sys::Promise::new(&mut |resolve, _| {
+        if let Some(window) = web_sys::window() {
+            let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, duration.as_millis() as i32);
+        }
+    });
+    let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
+}
+
 /// The current time, in Unix seconds.
 pub fn now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
 }
@@ -122,13 +146,19 @@ pub fn day_of(date: NaiveDate) -> i64 {
 }
 
 /// Path to the Twemoji artwork for an emoji, under the emoji folder of the app's assets.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn emoji_path(emoji: &str) -> std::path::PathBuf {
+    std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/emoji")).join(emoji_file(emoji))
+}
+
+/// The file name of an emoji's artwork, such as `1f44d.svg` for 👍.
+pub fn emoji_file(emoji: &str) -> String {
     let code: Vec<String> = emoji
         .chars()
         .filter(|&c| c as u32 != 0xFE0F)
         .map(|c| format!("{:x}", c as u32))
         .collect();
-    std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/emoji")).join(format!("{}.svg", code.join("-")))
+    format!("{}.svg", code.join("-"))
 }
 
 /// The colour of a `#rrggbb` string, or `None` when it is empty or not in that form.

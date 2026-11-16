@@ -1,7 +1,5 @@
 //! Line icons, drawn in the text colour. Generated from the icon set of the old client.
 
-use std::path::PathBuf;
-
 use base64::Engine;
 use iced::widget::svg;
 use iced::{Color, Element, Length};
@@ -48,25 +46,43 @@ pub fn icon<'a, M: 'a>(svg_text: &'static str, size: f32, color: Color) -> Eleme
         .into()
 }
 
-/// Lets the owner pick a picture. Returns it as a base64 PNG of 128x128, or None if cancelled.
 /// Picks a picture for a profile. Shrunk to the same 128x128 PNG as a server icon.
-pub fn pick_avatar() -> Result<Option<String>, CmdError> {
-    pick_server_icon()
+pub async fn pick_avatar() -> Result<Option<String>, CmdError> {
+    pick_server_icon().await
 }
 
-pub fn pick_server_icon() -> Result<Option<String>, CmdError> {
-    let Some(path) = rfd::FileDialog::new()
+/// Lets the owner pick a picture. Returns it as a base64 PNG of 128x128, or None if cancelled.
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn pick_server_icon() -> Result<Option<String>, CmdError> {
+    crate::app::offload(|| {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Images", &["png", "jpg", "jpeg"])
+            .pick_file()
+        else {
+            return Ok(None);
+        };
+        let bytes = std::fs::read(&path).map_err(|e| CmdError::new(format!("Could not read that image: {e}")))?;
+        icon_png_base64(&bytes).map(Some).map_err(CmdError::new)
+    })
+    .await
+}
+
+/// Lets the owner pick a picture with the browser's file picker.
+#[cfg(target_arch = "wasm32")]
+pub async fn pick_server_icon() -> Result<Option<String>, CmdError> {
+    let Some(file) = rfd::AsyncFileDialog::new()
         .add_filter("Images", &["png", "jpg", "jpeg"])
         .pick_file()
+        .await
     else {
         return Ok(None);
     };
-    icon_png_base64(&path).map(Some).map_err(CmdError::new)
+    icon_png_base64(&file.read().await).map(Some).map_err(CmdError::new)
 }
 
-/// Resizes an image file to a 128x128 PNG and returns it base64-encoded.
-fn icon_png_base64(path: &PathBuf) -> Result<String, String> {
-    let img = image::open(path).map_err(|e| format!("Could not read that image: {e}"))?;
+/// Resizes an image to a 128x128 PNG and returns it base64-encoded.
+fn icon_png_base64(bytes: &[u8]) -> Result<String, String> {
+    let img = image::load_from_memory(bytes).map_err(|e| format!("Could not read that image: {e}"))?;
     let img = img.resize_to_fill(128, 128, image::imageops::FilterType::Lanczos3);
     let mut png = std::io::Cursor::new(Vec::new());
     img.write_to(&mut png, image::ImageFormat::Png)
