@@ -389,6 +389,28 @@ fn math_message_screen() {
 }
 
 #[test]
+fn math_layout_screen() {
+    let mut app = chat_app();
+    let now = crate::util::now();
+    let body = "Inline: $\\sqrt[3]{8} = 2$, $x^{q}$, $\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}$\n\n$$\n\\left( \\frac{a}{b} \\right) + \\sqrt[3]{x+1} + \\begin{bmatrix} 1 & 0 \\\\ 0 & 1 \\end{bmatrix}\n$$\n\n$$\nf(x) = \\begin{cases} x & x \\geq 0 \\\\ -x & x < 0 \\end{cases}\n$$";
+    app.messages.insert(
+        1,
+        vec![Entry::Chat(ChatMessage {
+            id: 16,
+            channel_id: 1,
+            channel: "general".into(),
+            author: "alice".into(),
+            author_id: "u1".into(),
+            text: body.into(),
+            timestamp: now,
+            edited: false,
+            reactions: Vec::new(),
+        })],
+    );
+    save_at(&app, "math-layout", 1100.0, 800.0);
+}
+
+#[test]
 fn dragging_across_message_text_selects_it() {
     let mut app = chat_app();
     let now = crate::util::now();
@@ -1385,4 +1407,25 @@ fn a_manage_server_role_alone_shows_server_settings() {
         })
         .collect();
     assert!(labels.iter().any(|l| l == "Server settings"), "items: {labels:?}");
+}
+
+#[test]
+fn latex_sample_screen() {
+    let mut app = chat_app();
+    let body = include_str!("latex_sample.md");
+    app.messages.insert(
+        1,
+        vec![Entry::Chat(ChatMessage {
+            id: 17,
+            channel_id: 1,
+            channel: "general".into(),
+            author: "alice".into(),
+            author_id: "u1".into(),
+            text: body.into(),
+            timestamp: crate::util::now(),
+            edited: false,
+            reactions: Vec::new(),
+        })],
+    );
+    save_at(&app, "latex-sample", 1100.0, 1500.0);
 }
