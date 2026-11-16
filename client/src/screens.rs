@@ -96,6 +96,33 @@ fn save(ui: &mut iced_test::Simulator<'_, Message>, app: &App, name: &str) {
 
 }
 
+/// A mouse drag: press at the first point, move through the rest, release at the last. Each step is
+/// sent to a freshly built view and its messages are applied to the app, as the running app does.
+fn drag(app: &mut App, points: &[(f32, f32)]) {
+    use iced::mouse::{Button, Event as Mouse};
+    let (&first, rest) = points.split_first().expect("a drag has a start");
+    let mut steps: Vec<(iced::Point, iced::Event)> = vec![(
+        iced::Point::new(first.0, first.1),
+        iced::Event::Mouse(Mouse::ButtonPressed(Button::Left)),
+    )];
+    for &(x, y) in rest {
+        steps.push((iced::Point::new(x, y), iced::Event::Mouse(Mouse::CursorMoved { position: iced::Point::new(x, y) })));
+    }
+    let (last, _) = *steps.last().expect("at least the press");
+    steps.push((last, iced::Event::Mouse(Mouse::ButtonReleased(Button::Left))));
+    for (at, event) in steps {
+        let messages = {
+            let mut ui = simulate(app);
+            ui.point_at((at.x, at.y));
+            ui.simulate([event]);
+            ui.into_messages()
+        };
+        for message in messages {
+            let _ = app.update(message);
+        }
+    }
+}
+
 fn simulate(app: &App) -> iced_test::Simulator<'_, Message> {
     iced_test::Simulator::with_size(iced::Settings::default(), Size::new(1100.0, 700.0), crate::view::view(app))
 }
@@ -257,6 +284,156 @@ fn categories_screen() {
         channels: vec![common::ChannelRef { id: 3, name: "dev".into() }, common::ChannelRef { id: 2, name: "random".into() }],
     }];
     save_at(&app, "categories", 1100.0, 700.0);
+}
+
+#[test]
+fn markdown_message_screen() {
+    let mut app = chat_app();
+    let now = crate::util::now();
+    let body = "## Release notes\n**Bold**, *italic*, ~~gone~~ and `inline code`.\n\n```rust\nfn main() {\n    println!(\"hi\");\n}\n```\n\n> Quoted advice, see https://example.com\n\n1. first\n2. second\n   - nested\n\n| name | role |\n|---|---|\n| alice | owner |\n| bob | member |\n\n---\n[a link](https://example.com/docs) and <b>raw html</b>";
+    app.messages.insert(
+        1,
+        vec![Entry::Chat(ChatMessage {
+            id: 11,
+            channel_id: 1,
+            channel: "general".into(),
+            author: "alice".into(),
+            author_id: "u1".into(),
+            text: body.into(),
+            timestamp: now,
+            edited: false,
+            reactions: Vec::new(),
+        })],
+    );
+    save_at(&app, "markdown-message", 1100.0, 900.0);
+}
+
+#[test]
+fn composer_multiline_screen() {
+    let mut app = chat_app();
+    app.set_input("first line of a longer message\nsecond line\nthird line".into());
+    save_at(&app, "composer-multiline", 1100.0, 700.0);
+}
+
+#[test]
+fn math_message_screen() {
+    let mut app = chat_app();
+    let now = crate::util::now();
+    let body = "Inline maths: $E = mc^2$, and $x_1 + x_{10} \\leq \\infty$.\n\n$$\n\\frac{a+b}{c} + \\sqrt{x^2 + 1} = \\sum_{i=1}^{n} i\n$$\n\nBlock maths: $$a^2 + b^2 = c^2$$";
+    app.messages.insert(
+        1,
+        vec![Entry::Chat(ChatMessage {
+            id: 12,
+            channel_id: 1,
+            channel: "general".into(),
+            author: "alice".into(),
+            author_id: "u1".into(),
+            text: body.into(),
+            timestamp: now,
+            edited: false,
+            reactions: Vec::new(),
+        })],
+    );
+    save_at(&app, "math-message", 1100.0, 800.0);
+}
+
+#[test]
+fn dragging_across_message_text_selects_it() {
+    let mut app = chat_app();
+    let now = crate::util::now();
+    app.messages.insert(
+        1,
+        vec![Entry::Chat(ChatMessage {
+            id: 13,
+            channel_id: 1,
+            channel: "general".into(),
+            author: "bob".into(),
+            author_id: "u2".into(),
+            text: "Select some **bold** words here".into(),
+            timestamp: now,
+            edited: false,
+            reactions: Vec::new(),
+        })],
+    );
+    // The pointer moves as a real drag does: press here, then move and release there. The messages the
+    // widgets send are then applied to the app, which draws the selection.
+    drag(&mut app, &[(440.0, 240.0), (560.0, 240.0)]);
+    save_at(&app, "text-selection", 1100.0, 700.0);
+}
+
+#[test]
+fn clicking_a_link_in_a_message_still_opens_it() {
+    let mut app = chat_app();
+    let now = crate::util::now();
+    app.messages.insert(
+        1,
+        vec![Entry::Chat(ChatMessage {
+            id: 14,
+            channel_id: 1,
+            channel: "general".into(),
+            author: "bob".into(),
+            author_id: "u2".into(),
+            text: "see https://example.com for details".into(),
+            timestamp: now,
+            edited: false,
+            reactions: Vec::new(),
+        })],
+    );
+    let mut ui = simulate(&app);
+    ui.point_at((520.0, 240.0));
+    ui.simulate([
+        iced::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left)),
+        iced::Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left)),
+    ]);
+    let opened = ui
+        .into_messages()
+        .into_iter()
+        .any(|m| matches!(m, Message::OpenLink(ref url) if url == "https://example.com"));
+    assert!(opened, "a click on the link should open it");
+}
+
+#[test]
+fn dragging_over_several_lines_selects_them() {
+    let mut app = chat_app();
+    let now = crate::util::now();
+    app.messages.insert(
+        1,
+        vec![Entry::Chat(ChatMessage {
+            id: 15,
+            channel_id: 1,
+            channel: "general".into(),
+            author: "bob".into(),
+            author_id: "u2".into(),
+            text: "first line of text\nsecond line\nthird line".into(),
+            timestamp: now,
+            edited: false,
+            reactions: Vec::new(),
+        })],
+    );
+    drag(&mut app, &[(440.0, 240.0), (700.0, 275.0)]);
+    save_at(&app, "multiline-selection", 1100.0, 700.0);
+}
+
+#[test]
+fn dragging_across_markdown_blocks_selects_them() {
+    let mut app = chat_app();
+    let now = crate::util::now();
+    app.messages.insert(
+        1,
+        vec![Entry::Chat(ChatMessage {
+            id: 16,
+            channel_id: 1,
+            channel: "general".into(),
+            author: "bob".into(),
+            author_id: "u2".into(),
+            text: "First paragraph here\n\n- item one\n- item two\n\nLast paragraph".into(),
+            timestamp: now,
+            edited: false,
+            reactions: Vec::new(),
+        })],
+    );
+    drag(&mut app, &[(440.0, 240.0), (520.0, 312.0)]);
+    save_at(&app, "markdown-selection", 1100.0, 700.0);
 }
 
 #[test]
@@ -551,7 +728,7 @@ fn at_mention_menu_screen() {
     let mut app = chat_app();
     with_roles(&mut app);
     app.server.roles[1].mentionable = true;
-    app.input = "hey @".into();
+    app.set_input("hey @".into());
     save_at(&app, "at-mention-menu", 1100.0, 700.0);
 }
 

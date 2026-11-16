@@ -414,6 +414,12 @@ pub struct App {
     pub editing: Option<(i64, String)>,
     pub pending_delete: Option<i64>,
     pub input: String,
+    /// The editor that shows `input` and takes the typing. `input` is kept in step with it.
+    pub composer: iced::widget::text_editor::Content,
+    /// The editor for the message being edited. Its text is kept in `editing`.
+    pub edit_box: iced::widget::text_editor::Content,
+    /// The selected text of a message, if one is selected.
+    pub text_sel: Option<TextSel>,
     /// When the last input happened (mouse or keyboard), for automatic Idle.
     pub last_active: std::time::Instant,
     /// Whether the status follows input (Online, then Idle when away). Choosing a status other than
@@ -485,6 +491,16 @@ pub struct App {
     pub hover: Option<i64>,
 }
 
+/// A selection of message text. `anchor` and `focus` are (block, span) positions in the message, where a
+/// block is one piece of text in the message and a span is one character of it.
+#[derive(Debug, Clone)]
+pub struct TextSel {
+    pub message: i64,
+    pub anchor: (usize, usize),
+    pub focus: (usize, usize),
+    pub dragging: bool,
+}
+
 /// Every message the window and the background work send to the app.
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -496,6 +512,10 @@ pub enum Message {
     WindowOpened(window::Id),
     CursorMoved(Point),
     MouseReleased,
+    /// The mouse was pressed on, or dragged over, a block of text in a message.
+    TextStep { message: i64, block: usize, step: crate::view::selectable::Step },
+    /// Ctrl+C, which copies the selected text of a message.
+    CopySelectedText,
     Escape,
     FlashTick,
     /// The tray icon was clicked, or its Show or Hide item chosen: show or hide the window.
@@ -616,7 +636,7 @@ pub enum Message {
     /// Hide a member's messages and direct messages on every server, or show them again.
     BlockToggle(String),
 
-    InputChanged(String),
+    ComposerAction(iced::widget::text_editor::Action),
     Send,
     React(i64, String),
     PickerOpen(i64),
@@ -624,7 +644,7 @@ pub enum Message {
     PickerQuery(String),
     PickerTone(usize),
     EditStart(i64),
-    EditChanged(String),
+    EditAction(iced::widget::text_editor::Action),
     EditSave,
     DeleteAsk(i64),
     DeleteConfirm,
@@ -802,7 +822,20 @@ fn send_dm(app: &App, addr: &str, msg: ClientMsg) {
     let _ = app.backend.send_dm(addr, msg);
 }
 
+/// An editor showing `text` with the cursor at its end, so typing continues the text.
+pub fn editor_at_end(text: &str) -> iced::widget::text_editor::Content {
+    let mut content = iced::widget::text_editor::Content::with_text(text);
+    content.perform(iced::widget::text_editor::Action::Move(iced::widget::text_editor::Motion::DocumentEnd));
+    content
+}
+
 impl App {
+    /// Sets the composer's text, in the field and in the editor that shows it.
+    pub fn set_input(&mut self, text: String) {
+        self.composer = editor_at_end(&text);
+        self.input = text;
+    }
+
     pub fn new(backend: Backend, prefs: Prefs, emoji: Vec<(String, String, String)>, skin: HashMap<String, [String; 5]>) -> Self {
         Self {
             backend,
@@ -855,6 +888,9 @@ impl App {
             editing: None,
             pending_delete: None,
             input: String::new(),
+            composer: iced::widget::text_editor::Content::new(),
+            edit_box: iced::widget::text_editor::Content::new(),
+            text_sel: None,
             last_active: std::time::Instant::now(),
             auto_status: true,
             auto_idle: false,
@@ -940,7 +976,7 @@ impl App {
         self.search_more = false;
         self.editing = None;
         self.pending_delete = None;
-        self.input.clear();
+        self.set_input(String::new());
         self.status.clear();
     }
 
@@ -1859,7 +1895,36 @@ impl App {
                 }
                 Task::none()
             }
+            Message::TextStep { message, block, step } => {
+                use crate::view::selectable::Step;
+                match step {
+                    Step::Press(span) => {
+                        self.text_sel = Some(TextSel { message, anchor: (block, span), focus: (block, span), dragging: true });
+                    }
+                    Step::Over(span) => {
+                        if let Some(sel) = self.text_sel.as_mut() {
+                            if sel.message == message && sel.dragging {
+                                sel.focus = (block, span);
+                            }
+                        }
+                    }
+                }
+                Task::none()
+            }
+            Message::CopySelectedText => match self.text_sel.clone() {
+                Some(sel) => match self.find_message(sel.message) {
+                    Some(m) => {
+                        let text = crate::view::markdown_view::selected_text(&m.text, sel.anchor, sel.focus, self.pal());
+                        iced::clipboard::write(text)
+                    }
+                    None => Task::none(),
+                },
+                None => Task::none(),
+            },
             Message::MouseReleased => {
+                if let Some(sel) = self.text_sel.as_mut() {
+                    sel.dragging = false;
+                }
                 if let Some(drag) = self.drag.take() {
                     self.set_layout(drag.key, drag.width);
                     self.save_prefs();
@@ -2038,6 +2103,11 @@ impl App {
                     key: keyboard::Key::Named(keyboard::key::Named::Escape),
                     ..
                 }) => Some(Message::Escape),
+                iced::Event::Keyboard(keyboard::Event::KeyPressed { key: keyboard::Key::Character(ref c), modifiers, .. })
+                    if modifiers.command() && c.as_str() == "c" =>
+                {
+                    Some(Message::CopySelectedText)
+                }
                 iced::Event::Keyboard(keyboard::Event::KeyPressed { .. }) => Some(Message::Activity),
                 _ => None,
             }),
