@@ -162,3 +162,16 @@ fn single_line_breaks_stay_line_breaks() {
     };
     assert_eq!(text_of(pieces), "one\ntwo");
 }
+
+#[test]
+fn display_maths_over_lines() {
+    // A line that is only `=` would otherwise make the line above it a heading.
+    let blocks = parse("$$\na\n=\nb\n$$");
+    assert!(blocks.iter().all(|b| !matches!(b, Block::Heading { .. })), "{blocks:?}");
+    assert!(
+        blocks
+            .iter()
+            .any(|b| matches!(b, Block::Math(src) if src.contains('a') && src.contains('b'))),
+        "{blocks:?}"
+    );
+}

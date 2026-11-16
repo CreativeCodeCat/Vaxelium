@@ -108,12 +108,41 @@ pub fn parse(body: &str) -> Vec<Block> {
     options.insert(Options::ENABLE_TASKLISTS);
     options.insert(Options::ENABLE_MATH);
 
+    let body = &join_display_maths(body);
     let mut builder = Builder::default();
     for (event, range) in Parser::new_ext(body, options).into_offset_iter() {
         builder.event(event, range, body);
     }
     builder.flush();
     builder.root
+}
+
+/// Display maths written over several lines, between `$$` lines, put on one line. Otherwise a line
+/// inside it such as `=` would make the line before it a heading, and a blank line would end it. Each
+/// newline becomes one space, so every byte stays where it was. Code blocks are left alone.
+fn join_display_maths(body: &str) -> String {
+    let mut out = String::with_capacity(body.len());
+    let mut in_maths = false;
+    let mut in_code = false;
+    for line in body.split_inclusive('\n') {
+        let trimmed = line.trim();
+        if !in_maths && (trimmed.starts_with("```") || trimmed.starts_with("~~~")) {
+            in_code = !in_code;
+        }
+        if !in_code && trimmed.contains("$$") {
+            // A line that opens and closes on its own, such as `$$x$$`, leaves the state as it was.
+            let marks = trimmed.matches("$$").count();
+            if marks % 2 == 1 {
+                in_maths = !in_maths;
+            }
+        }
+        if in_maths {
+            out.push_str(&line.replace('\n', " "));
+        } else {
+            out.push_str(line);
+        }
+    }
+    out
 }
 
 #[derive(Default)]

@@ -315,16 +315,83 @@ fn math_block<'a>(src: &str, pal: Pal) -> Element<'a, Message> {
 /// A formula laid out in two dimensions: superscripts raised, subscripts lowered, fractions stacked
 /// with a bar, and roots with a bar over their body.
 fn math_view<'a>(nodes: &[Node], size: f32, pal: Pal) -> Element<'a, Message> {
-    let items: Vec<Element<'a, Message>> = nodes.iter().map(|n| math_node(n, size, pal)).collect();
-    row(items).align_y(iced::alignment::Vertical::Top).into()
+    let mut items: Vec<Element<'a, Message>> = Vec::new();
+    let mut i = 0;
+    while i < nodes.len() {
+        // The scripts after a piece: at most one superscript and one subscript, in either order.
+        let mut sup = None;
+        let mut sub = None;
+        let mut used = 0;
+        while let Some(next) = nodes.get(i + 1 + used) {
+            match next {
+                Node::Sup(arg) if sup.is_none() => sup = Some(&**arg),
+                Node::Sub(arg) if sub.is_none() => sub = Some(&**arg),
+                _ => break,
+            }
+            used += 1;
+        }
+        if used == 0 {
+            items.push(math_node(&nodes[i], size, pal));
+            i += 1;
+            continue;
+        }
+        items.push(scripted(&nodes[i], sup, sub, size, pal));
+        i += 1 + used;
+    }
+    row(items).align_y(iced::alignment::Vertical::Center).into()
+}
+
+/// Big operators whose limits go above and below them in display maths.
+fn has_limits(node: &Node) -> bool {
+    matches!(node, Node::Text(t) if matches!(t.as_str(), "∑" | "∏" | "⋃" | "⋂" | "lim" | "max" | "min" | "sup" | "inf"))
+}
+
+/// A piece with its superscript and subscript. A sum's limits are stacked above and below it; any other
+/// piece has them beside it, one over the other.
+fn scripted<'a>(base: &Node, sup: Option<&Node>, sub: Option<&Node>, size: f32, pal: Pal) -> Element<'a, Message> {
+    let small = |n: &Node| math_view(std::slice::from_ref(n), size * 0.7, pal);
+    if has_limits(base) {
+        let big = matches!(base, Node::Text(t) if t.chars().count() == 1);
+        let base: Element<'a, Message> = match base {
+            Node::Text(t) if big => text(t.clone()).size(size * 1.4).color(pal.text).into(),
+            other => math_node(other, size, pal),
+        };
+        let mut parts: Vec<Element<'a, Message>> = Vec::new();
+        parts.extend(sup.map(small));
+        parts.push(base);
+        parts.extend(sub.map(small));
+        return column(parts).align_x(iced::alignment::Horizontal::Center).into();
+    }
+    // Parts of a row are centred on each other, so a spacer below raises a lone superscript and a
+    // spacer above lowers a lone subscript.
+    let lift = Length::Fixed(size * 0.45);
+    let scripts: Element<'a, Message> = match (sup, sub) {
+        (Some(sup), Some(sub)) => column![small(sup), small(sub)].into(),
+        (Some(sup), None) => column![small(sup), space().height(lift)].into(),
+        (None, Some(sub)) => column![space().height(lift), small(sub)].into(),
+        (None, None) => space().into(),
+    };
+    // An integral sign is drawn large, with its limits beside it.
+    let base: Element<'a, Message> = match base {
+        Node::Text(t) if matches!(t.as_str(), "∫" | "∮" | "∬") => {
+            text(t.clone()).size(size * 1.4).color(pal.text).into()
+        }
+        other => math_node(other, size, pal),
+    };
+    row![base, scripts].align_y(iced::alignment::Vertical::Center).into()
 }
 
 fn math_node<'a>(node: &Node, size: f32, pal: Pal) -> Element<'a, Message> {
     match node {
         Node::Text(t) => text(t.clone()).size(size).color(pal.text).into(),
         Node::Group(inner) => math_view(inner, size, pal),
-        // Top alignment in the row raises a superscript; a spacer lowers a subscript.
-        Node::Sup(arg) => math_view(std::slice::from_ref(&**arg), size * 0.7, pal),
+        // Parts of a row are centred on each other, so a spacer below raises a superscript and a spacer
+        // above lowers a subscript.
+        Node::Sup(arg) => column![
+            math_view(std::slice::from_ref(&**arg), size * 0.7, pal),
+            space().height(Length::Fixed(size * 0.45)),
+        ]
+        .into(),
         Node::Sub(arg) => column![
             space().height(Length::Fixed(size * 0.45)),
             math_view(std::slice::from_ref(&**arg), size * 0.7, pal),
@@ -343,9 +410,9 @@ fn math_node<'a>(node: &Node, size: f32, pal: Pal) -> Element<'a, Message> {
             .align_x(iced::alignment::Horizontal::Center)
             .into()
         }
-        Node::Root(body) => {
+        Node::Root(index, body) => {
             let width = est_width(body, size) + 4.0;
-            row![
+            let sign = row![
                 text("√").size(size * 1.1).color(pal.text),
                 column![
                     container(space())
@@ -355,10 +422,128 @@ fn math_node<'a>(node: &Node, size: f32, pal: Pal) -> Element<'a, Message> {
                     math_view(body, size, pal),
                 ],
             ]
-            .align_y(iced::alignment::Vertical::Top)
-            .into()
+            .align_y(iced::alignment::Vertical::Top);
+            match index {
+                // The index sits small, up against the root sign.
+                Some(index) => row![
+                    column![
+                        space().height(Length::Fixed(size * 0.1)),
+                        math_view(index, size * 0.55, pal)
+                    ],
+                    sign
+                ]
+                .align_y(iced::alignment::Vertical::Top)
+                .into(),
+                None => sign.into(),
+            }
         }
+        Node::Fenced(open, body, close) => {
+            let height = est_height(body, size);
+            fenced(open, math_view(body, size, pal), close, height, size, pal)
+        }
+        Node::Matrix(open, rows, close) => {
+            // `cases` lines its cells up on the left; a matrix centres them.
+            let align = if close.is_empty() && !open.is_empty() {
+                iced::alignment::Horizontal::Left
+            } else {
+                iced::alignment::Horizontal::Center
+            };
+            let grid = grid(rows, size, pal, size * 0.8, |_| align);
+            fenced(open, grid, close, matrix_height(rows, size), size, pal)
+        }
+        // Each `&` splits a line where the lines meet: the part before is set to the right, the part
+        // after to the left, so the `=` signs line up.
+        Node::Aligned(rows) => grid(rows, size, pal, size * 0.3, |i| {
+            if i % 2 == 0 {
+                iced::alignment::Horizontal::Right
+            } else {
+                iced::alignment::Horizontal::Left
+            }
+        }),
     }
+}
+
+/// Rows of cells in columns as wide as their widest cell, each cell placed in its column by `align`.
+fn grid<'a>(
+    rows: &[Vec<Vec<Node>>],
+    size: f32,
+    pal: Pal,
+    gap: f32,
+    align: impl Fn(usize) -> iced::alignment::Horizontal,
+) -> Element<'a, Message> {
+    let widths = column_widths(rows, size);
+    let lines: Vec<Element<'a, Message>> = rows
+        .iter()
+        .map(|cells| {
+            let items: Vec<Element<'a, Message>> = cells
+                .iter()
+                .enumerate()
+                .map(|(i, cell)| {
+                    container(math_view(cell, size, pal))
+                        .width(Length::Fixed(widths[i]))
+                        .align_x(align(i))
+                        .into()
+                })
+                .collect();
+            row(items)
+                .spacing(gap)
+                .align_y(iced::alignment::Vertical::Center)
+                .into()
+        })
+        .collect();
+    column(lines).spacing(MATRIX_GAP).into()
+}
+
+/// The gap between the rows of a matrix.
+const MATRIX_GAP: f32 = 4.0;
+
+/// `body` between brackets drawn as tall as it is. An empty bracket is left out.
+fn fenced<'a>(
+    open: &str,
+    body: Element<'a, Message>,
+    close: &str,
+    height: f32,
+    size: f32,
+    pal: Pal,
+) -> Element<'a, Message> {
+    // A glyph's line is about 1.3 times its size, so this makes the bracket as tall as the body.
+    let bracket = |b: &str| -> Element<'a, Message> {
+        text(b.to_string())
+            .size((height / 1.3).max(size))
+            .color(pal.text)
+            .into()
+    };
+    let mut items: Vec<Element<'a, Message>> = Vec::new();
+    if !open.is_empty() {
+        items.push(bracket(open));
+    }
+    items.push(body);
+    if !close.is_empty() {
+        items.push(bracket(close));
+    }
+    row(items).spacing(2).align_y(iced::alignment::Vertical::Center).into()
+}
+
+/// The width of each column of a matrix: its widest cell.
+fn column_widths(rows: &[Vec<Vec<Node>>], size: f32) -> Vec<f32> {
+    let columns = rows.iter().map(Vec::len).max().unwrap_or(0);
+    (0..columns)
+        .map(|i| {
+            rows.iter()
+                .filter_map(|cells| cells.get(i))
+                .map(|cell| est_width(cell, size))
+                .fold(0.0, f32::max)
+        })
+        .collect()
+}
+
+/// The height of a matrix: its rows and the gaps between them.
+fn matrix_height(rows: &[Vec<Vec<Node>>], size: f32) -> f32 {
+    let lines: f32 = rows
+        .iter()
+        .map(|cells| cells.iter().map(|c| est_height(c, size)).fold(size * 1.3, f32::max))
+        .sum();
+    lines + MATRIX_GAP * rows.len().saturating_sub(1) as f32
 }
 
 /// A rough width of a formula, used where a bar has to be drawn to a length.
@@ -370,9 +555,42 @@ fn est_width(nodes: &[Node], size: f32) -> f32 {
             Node::Group(inner) => est_width(inner, size),
             Node::Sup(arg) | Node::Sub(arg) => est_width(std::slice::from_ref(&**arg), size * 0.7),
             Node::Frac(top, bottom) => est_width(top, size * 0.9).max(est_width(bottom, size * 0.9)),
-            Node::Root(body) => est_width(body, size) + size * 0.6,
+            Node::Root(index, body) => {
+                est_width(body, size) + size * 0.6 + index.as_deref().map_or(0.0, |i| est_width(i, size * 0.55))
+            }
+            Node::Fenced(open, body, close) => {
+                let bracket = (est_height(body, size) / 1.3).max(size) * 0.4;
+                est_width(body, size) + bracket * (!open.is_empty() as u8 + !close.is_empty() as u8) as f32
+            }
+            Node::Aligned(rows) => {
+                let widths = column_widths(rows, size);
+                widths.iter().sum::<f32>() + size * 0.3 * widths.len().saturating_sub(1) as f32
+            }
+            Node::Matrix(open, rows, close) => {
+                let widths = column_widths(rows, size);
+                let bracket = (matrix_height(rows, size) / 1.3).max(size) * 0.4;
+                widths.iter().sum::<f32>()
+                    + size * 0.8 * widths.len().saturating_sub(1) as f32
+                    + bracket * (!open.is_empty() as u8 + !close.is_empty() as u8) as f32
+            }
         })
         .sum()
+}
+
+/// A rough height of a formula, used to size brackets to what they hold.
+fn est_height(nodes: &[Node], size: f32) -> f32 {
+    nodes
+        .iter()
+        .map(|n| match n {
+            Node::Text(_) => size * 1.3,
+            Node::Group(inner) => est_height(inner, size),
+            Node::Sup(arg) | Node::Sub(arg) => est_height(std::slice::from_ref(&**arg), size * 0.7) + size * 0.45,
+            Node::Frac(top, bottom) => est_height(top, size * 0.9) + est_height(bottom, size * 0.9) + 1.0,
+            Node::Root(_, body) => est_height(body, size) + 1.0,
+            Node::Fenced(_, body, _) => est_height(body, size),
+            Node::Matrix(_, rows, _) | Node::Aligned(rows) => matrix_height(rows, size),
+        })
+        .fold(size * 1.3, f32::max)
 }
 
 /// The highlight colour of selected text.
