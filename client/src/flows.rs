@@ -676,6 +676,52 @@ fn a_ping_marks_the_channel_only_for_members_of_that_role() {
 }
 
 #[test]
+fn a_too_long_message_is_kept_in_the_box_and_not_sent() {
+    let mut app = app();
+    welcome(&mut app);
+    app.set_input("x".repeat(crate::app::MAX_MESSAGE_CHARS + 1));
+    let _ = app.update(Message::Send);
+    assert_eq!(app.input.chars().count(), crate::app::MAX_MESSAGE_CHARS + 1, "the text stays in the box");
+    assert!(app.status.starts_with("Error:"));
+}
+
+#[test]
+fn text_past_the_limit_is_cut_off_as_it_is_pasted() {
+    use iced::widget::text_editor::{Action, Edit};
+    use std::sync::Arc;
+    let mut app = app();
+    welcome(&mut app);
+    let pasted = "y".repeat(crate::app::MAX_MESSAGE_CHARS + 50);
+    let _ = app.update(Message::ComposerAction(Action::Edit(Edit::Paste(Arc::new(pasted)))));
+    assert_eq!(app.input.chars().count(), crate::app::MAX_MESSAGE_CHARS, "the extra characters are gone");
+    assert_eq!(app.composer.text().chars().count(), crate::app::MAX_MESSAGE_CHARS, "and gone from the editor");
+}
+
+#[test]
+fn deleting_back_under_the_limit_in_the_composer_clears_the_warning() {
+    use iced::widget::text_editor::{Action, Edit};
+    let mut app = app();
+    welcome(&mut app);
+    app.set_input("x".repeat(crate::app::MAX_MESSAGE_CHARS + 1));
+    let _ = app.update(Message::Send);
+    assert!(app.status.starts_with("Error:"));
+    let _ = app.update(Message::ComposerAction(Action::Edit(Edit::Backspace)));
+    assert_eq!(app.input.chars().count(), crate::app::MAX_MESSAGE_CHARS, "one character removed");
+    assert!(app.status.is_empty(), "status after backspace: {:?}", app.status);
+}
+
+#[test]
+fn the_too_long_error_clears_once_the_message_is_short_enough() {
+    let mut app = app();
+    welcome(&mut app);
+    app.status = format!("Error: message longer than {} characters", crate::app::MAX_MESSAGE_CHARS);
+    app.set_input("x".repeat(crate::app::MAX_MESSAGE_CHARS + 1));
+    assert!(app.status.starts_with("Error:"), "still too long, so the error stays");
+    app.set_input("x".repeat(10));
+    assert!(app.status.is_empty(), "shortened, so the error goes");
+}
+
+#[test]
 fn a_message_can_span_several_lines() {
     use iced::widget::text_editor::{Action, Edit};
     let mut app = app();

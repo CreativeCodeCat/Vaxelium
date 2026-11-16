@@ -437,6 +437,64 @@ fn dragging_across_markdown_blocks_selects_them() {
 }
 
 #[test]
+fn html_elements_message_screen() {
+    let mut app = chat_app();
+    let now = crate::util::now();
+    let body = "9. HTML Elements\n<details>\n<summary>Click to expand</summary>\n\nThis is hidden expandable content.\n</details>\n\n<kbd>Ctrl</kbd> + <kbd>C</kbd>\n<mark>Highlighted text</mark>";
+    app.messages.insert(
+        1,
+        vec![Entry::Chat(ChatMessage {
+            id: 17,
+            channel_id: 1,
+            channel: "general".into(),
+            author: "bob".into(),
+            author_id: "u2".into(),
+            text: body.into(),
+            timestamp: now,
+            edited: false,
+            reactions: Vec::new(),
+        })],
+    );
+    save_at(&app, "html-elements", 1100.0, 700.0);
+}
+
+#[test]
+fn clicking_a_details_summary_opens_it() {
+    let mut app = chat_app();
+    let now = crate::util::now();
+    app.messages.insert(
+        1,
+        vec![Entry::Chat(ChatMessage {
+            id: 18,
+            channel_id: 1,
+            channel: "general".into(),
+            author: "bob".into(),
+            author_id: "u2".into(),
+            text: "<details>\n<summary>Click to expand</summary>\n\nThis is hidden expandable content.\n</details>".into(),
+            timestamp: now,
+            edited: false,
+            reactions: Vec::new(),
+        })],
+    );
+    // A click on the summary, which sits at the top of the message. A button needs the press and the
+    // release in the same view, so both are sent in one step.
+    let messages = {
+        let mut ui = simulate(&app);
+        ui.point_at((470.0, 240.0));
+        ui.simulate([
+            iced::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left)),
+            iced::Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left)),
+        ]);
+        ui.into_messages()
+    };
+    for message in messages {
+        let _ = app.update(message);
+    }
+    assert!(app.details_flipped.contains(&(18, 0)), "the click opened the section");
+    save_at(&app, "details-open", 1100.0, 700.0);
+}
+
+#[test]
 fn small_caps_screen() {
     let mut app = chat_app();
     let now = crate::util::now();

@@ -554,7 +554,14 @@ impl App {
             Message::ComposerAction(action) => {
                 let edits = matches!(action, iced::widget::text_editor::Action::Edit(_));
                 self.composer.perform(action);
-                self.input = self.composer.text();
+                // Characters past the limit are removed as they arrive, so the box never holds too many.
+                let text = self.composer.text();
+                if text.chars().count() > crate::app::MAX_MESSAGE_CHARS {
+                    self.set_input(text.chars().take(crate::app::MAX_MESSAGE_CHARS).collect());
+                } else {
+                    self.input = text;
+                }
+                self.clear_length_error(self.input.chars().count());
                 if !edits {
                     return Task::none();
                 }
@@ -583,6 +590,11 @@ impl App {
             }
             Message::Send => {
                 let text = self.input.trim().to_string();
+                // A message the server would refuse stays in the box, so it can be shortened and sent.
+                if text.chars().count() > crate::app::MAX_MESSAGE_CHARS {
+                    self.status = crate::app::too_long_status();
+                    return Task::none();
+                }
                 self.set_input(String::new());
                 if text.is_empty() {
                     return Task::none();
@@ -624,11 +636,24 @@ impl App {
             }
             Message::EditAction(action) => {
                 self.edit_box.perform(action);
+                let text = self.edit_box.text();
+                if text.chars().count() > crate::app::MAX_MESSAGE_CHARS {
+                    let cut: String = text.chars().take(crate::app::MAX_MESSAGE_CHARS).collect();
+                    self.edit_box = crate::app::editor_at_end(&cut);
+                }
+                self.clear_length_error(self.edit_box.text().chars().count());
                 if let Some((_, text)) = self.editing.as_mut() {
                     *text = self.edit_box.text();
                 }
             }
             Message::EditSave => {
+                // An edit the server would refuse stays open, so it can be shortened and saved.
+                if let Some((_, text)) = self.editing.as_ref() {
+                    if text.trim().chars().count() > crate::app::MAX_MESSAGE_CHARS {
+                        self.status = crate::app::too_long_status();
+                        return Task::none();
+                    }
+                }
                 if let Some((id, text)) = self.editing.take() {
                     self.message_action(id, ClientMsg::Edit { id, text });
                 }

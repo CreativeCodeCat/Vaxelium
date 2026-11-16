@@ -420,6 +420,8 @@ pub struct App {
     pub edit_box: iced::widget::text_editor::Content,
     /// The selected text of a message, if one is selected.
     pub text_sel: Option<TextSel>,
+    /// The `<details>` sections a click has opened or shut, as (message id, section number in the message).
+    pub details_flipped: HashSet<(i64, usize)>,
     /// When the last input happened (mouse or keyboard), for automatic Idle.
     pub last_active: std::time::Instant,
     /// Whether the status follows input (Online, then Idle when away). Choosing a status other than
@@ -516,6 +518,8 @@ pub enum Message {
     TextStep { message: i64, block: usize, step: crate::view::selectable::Step },
     /// Ctrl+C, which copies the selected text of a message.
     CopySelectedText,
+    /// A click on the summary of a `<details>` section.
+    ToggleDetails { message: i64, index: usize },
     Escape,
     FlashTick,
     /// The tray icon was clicked, or its Show or Hide item chosen: show or hide the window.
@@ -822,6 +826,14 @@ fn send_dm(app: &App, addr: &str, msg: ClientMsg) {
     let _ = app.backend.send_dm(addr, msg);
 }
 
+/// The most characters a message can have. The server refuses longer ones.
+pub const MAX_MESSAGE_CHARS: usize = 2000;
+
+/// The status line shown when the server refuses a message for being too long.
+pub fn too_long_status() -> String {
+    format!("Error: message longer than {MAX_MESSAGE_CHARS} characters")
+}
+
 /// An editor showing `text` with the cursor at its end, so typing continues the text.
 pub fn editor_at_end(text: &str) -> iced::widget::text_editor::Content {
     let mut content = iced::widget::text_editor::Content::with_text(text);
@@ -834,6 +846,15 @@ impl App {
     pub fn set_input(&mut self, text: String) {
         self.composer = editor_at_end(&text);
         self.input = text;
+        self.clear_length_error(self.input.chars().count());
+    }
+
+    /// Clears the "message too long" error once the text is short enough again, so the error goes away
+    /// when it is fixed.
+    pub fn clear_length_error(&mut self, len: usize) {
+        if self.status == too_long_status() && len <= MAX_MESSAGE_CHARS {
+            self.status.clear();
+        }
     }
 
     pub fn new(backend: Backend, prefs: Prefs, emoji: Vec<(String, String, String)>, skin: HashMap<String, [String; 5]>) -> Self {
@@ -891,6 +912,7 @@ impl App {
             composer: iced::widget::text_editor::Content::new(),
             edit_box: iced::widget::text_editor::Content::new(),
             text_sel: None,
+            details_flipped: HashSet::new(),
             last_active: std::time::Instant::now(),
             auto_status: true,
             auto_idle: false,
@@ -1908,6 +1930,12 @@ impl App {
                             }
                         }
                     }
+                }
+                Task::none()
+            }
+            Message::ToggleDetails { message, index } => {
+                if !self.details_flipped.remove(&(message, index)) {
+                    self.details_flipped.insert((message, index));
                 }
                 Task::none()
             }
