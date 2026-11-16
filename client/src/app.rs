@@ -1589,7 +1589,7 @@ impl App {
                 // The copy items are last, below a divider: the name (for channels, not direct messages), then the ID.
                 items.push(MenuItem::Divider);
                 if !is_dm_channel(&name) {
-                    items.push(item("Copy Channel Name", None, false, Message::CopyText(format!("#{name}"))));
+                    items.push(item("Copy Name", None, false, Message::CopyText(format!("#{name}"))));
                 }
                 items.push(item("Copy ID", None, false, Message::CopyText(id.to_string())));
                 (format!("channel-{name}"), items, None)
