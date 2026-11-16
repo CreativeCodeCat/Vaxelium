@@ -23,7 +23,9 @@ pub fn init(path: PathBuf) {
 
 fn save(pins: &BTreeMap<String, String>) {
     let Some(path) = FILE.get() else { return };
-    let Ok(text) = serde_json::to_string_pretty(pins) else { return };
+    let Ok(text) = serde_json::to_string_pretty(pins) else {
+        return;
+    };
     if let Err(e) = std::fs::write(path, text) {
         eprintln!("could not save remembered certificates: {e}");
     }

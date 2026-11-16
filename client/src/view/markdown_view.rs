@@ -41,14 +41,26 @@ pub fn message_body<'a>(app: &App, message: i64, body: &str, pal: Pal) -> Elemen
         .text_sel
         .as_ref()
         .filter(|s| s.message == message)
-        .map(|s| Selection { from: s.anchor, to: s.focus, dragging: s.dragging });
+        .map(|s| Selection {
+            from: s.anchor,
+            to: s.focus,
+            dragging: s.dragging,
+        });
     let flipped: HashSet<usize> = app
         .details_flipped
         .iter()
         .filter(|(m, _)| *m == message)
         .map(|(_, index)| *index)
         .collect();
-    let mut view = View { texts, next: 0, message, selection, pal, flipped, details_next: 0 };
+    let mut view = View {
+        texts,
+        next: 0,
+        message,
+        selection,
+        pal,
+        flipped,
+        details_next: 0,
+    };
     view.blocks(&blocks)
 }
 
@@ -72,17 +84,29 @@ pub fn selected_text(body: &str, from: (usize, usize), to: (usize, usize), pal: 
 fn describe(blocks: &[Block], pings: &[RolePing], pal: Pal, out: &mut Vec<Text>) {
     for block in blocks {
         match block {
-            Block::Paragraph(pieces) => out.push(Text { units: split(units(pieces, pings, pal)), size: 15.0 }),
+            Block::Paragraph(pieces) => out.push(Text {
+                units: split(units(pieces, pings, pal)),
+                size: 15.0,
+            }),
             Block::Heading { level, pieces } => {
                 let bold: Vec<Piece> = pieces.iter().cloned().map(|p| Piece { bold: true, ..p }).collect();
-                out.push(Text { units: split(units(&bold, pings, pal)), size: heading_size(*level) });
+                out.push(Text {
+                    units: split(units(&bold, pings, pal)),
+                    size: heading_size(*level),
+                });
             }
             Block::Code { lang, text: code } => {
                 let parts: Vec<Unit> = highlight::tokens(lang, code)
                     .into_iter()
-                    .map(|(kind, part)| Unit { code: true, ..unit(&part, token_color(kind, pal)) })
+                    .map(|(kind, part)| Unit {
+                        code: true,
+                        ..unit(&part, token_color(kind, pal))
+                    })
                     .collect();
-                out.push(Text { units: split(parts), size: 13.0 });
+                out.push(Text {
+                    units: split(parts),
+                    size: 13.0,
+                });
             }
             Block::Quote(inner) => describe(inner, pings, pal, out),
             Block::List { items, .. } => {
@@ -93,11 +117,17 @@ fn describe(blocks: &[Block], pings: &[RolePing], pal: Pal, out: &mut Vec<Text>)
             Block::Table { header, rows } => {
                 for cell in header {
                     let bold: Vec<Piece> = cell.iter().cloned().map(|p| Piece { bold: true, ..p }).collect();
-                    out.push(Text { units: split(units(&bold, pings, pal)), size: 14.0 });
+                    out.push(Text {
+                        units: split(units(&bold, pings, pal)),
+                        size: 14.0,
+                    });
                 }
                 for row in rows {
                     for cell in row {
-                        out.push(Text { units: split(units(cell, pings, pal)), size: 14.0 });
+                        out.push(Text {
+                            units: split(units(cell, pings, pal)),
+                            size: 14.0,
+                        });
                     }
                 }
             }
@@ -138,7 +168,9 @@ impl View {
         };
         let units = t.units.clone();
         let size = t.size;
-        let selected = self.selection.and_then(|s| range_in_block(s.from, s.to, index, units.len()));
+        let selected = self
+            .selection
+            .and_then(|s| range_in_block(s.from, s.to, index, units.len()));
         let dragging = self.selection.is_some_and(|s| s.dragging);
         let message = self.message;
         selectable(
@@ -147,7 +179,11 @@ impl View {
             selection_color(self.pal),
             selected,
             dragging,
-            move |step: Step| Message::TextStep { message, block: index, step },
+            move |step: Step| Message::TextStep {
+                message,
+                block: index,
+                step,
+            },
             Message::OpenLink,
         )
     }
@@ -164,10 +200,13 @@ impl View {
             Block::Code { .. } => {
                 // Long lines scroll sideways instead of wrapping, so the code keeps its layout.
                 let code_text = self.text_block();
-                container(scrollable(code_text).direction(scrollable::Direction::Horizontal(scrollable::Scrollbar::default())))
-                    .padding(8)
-                    .style(move |_: &Theme| round(panel_background(pal), 6.0))
-                    .into()
+                container(
+                    scrollable(code_text)
+                        .direction(scrollable::Direction::Horizontal(scrollable::Scrollbar::default())),
+                )
+                .padding(8)
+                .style(move |_: &Theme| round(panel_background(pal), 6.0))
+                .into()
             }
             // A quote is a panel. A bar beside it would need to stretch to the quote's height, and that
             // collapses the message's layout.
@@ -180,23 +219,38 @@ impl View {
                     .iter()
                     .enumerate()
                     .map(|(i, item)| {
-                        let marker = if *ordered { format!("{}.", start + i as u64) } else { "•".to_string() };
-                        row![text(marker).size(15).color(pal.text).width(Length::Fixed(28.0)), self.blocks(item)]
-                            .spacing(4)
-                            .into()
+                        let marker = if *ordered {
+                            format!("{}.", start + i as u64)
+                        } else {
+                            "•".to_string()
+                        };
+                        row![
+                            text(marker).size(15).color(pal.text).width(Length::Fixed(28.0)),
+                            self.blocks(item)
+                        ]
+                        .spacing(4)
+                        .into()
                     })
                     .collect();
                 column(rows).spacing(4).into()
             }
             Block::Rule => divider(pal.selected_bg),
-            Block::Details { summary, open, blocks: inner } => {
+            Block::Details {
+                summary,
+                open,
+                blocks: inner,
+            } => {
                 let index = self.details_next;
                 self.details_next += 1;
                 // Clicking the summary flips the section. A section that starts open is shut by one click.
                 let is_open = *open != self.flipped.contains(&index);
                 let message = self.message;
                 let arrow = if is_open { "▾" } else { "▸" };
-                let label = if summary.is_empty() { "Details".to_string() } else { summary.clone() };
+                let label = if summary.is_empty() {
+                    "Details".to_string()
+                } else {
+                    summary.clone()
+                };
                 let head = iced::widget::button(text(format!("{arrow} {label}")).size(15).color(pal.text_strong))
                     .style(iced::widget::button::text)
                     .padding([2, 0])
@@ -250,9 +304,12 @@ fn table_row<'a>(cells: Vec<Element<'a, Message>>, pal: Pal) -> Element<'a, Mess
 /// A display formula. It scrolls sideways when it is wider than the message.
 fn math_block<'a>(src: &str, pal: Pal) -> Element<'a, Message> {
     let nodes = latex::parse(src);
-    container(scrollable(math_view(&nodes, 18.0, pal)).direction(scrollable::Direction::Horizontal(scrollable::Scrollbar::default())))
-        .padding(6)
-        .into()
+    container(
+        scrollable(math_view(&nodes, 18.0, pal))
+            .direction(scrollable::Direction::Horizontal(scrollable::Scrollbar::default())),
+    )
+    .padding(6)
+    .into()
 }
 
 /// A formula laid out in two dimensions: superscripts raised, subscripts lowered, fractions stacked
@@ -475,21 +532,5 @@ fn panel_background(pal: Pal) -> Color {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_selection_across_blocks_copies_them_with_line_breaks() {
-        // Blocks in order: "First", the list items "one" and "two", then "Last".
-        let body = "First\n\n- one\n- two\n\nLast";
-        let pal = crate::theme::palette("dark");
-        let copied = selected_text(body, (0, 2), (3, 1), pal);
-        assert_eq!(copied, "rst\none\ntwo\nLa");
-    }
-
-    #[test]
-    fn a_selection_inside_one_block_copies_just_that_part() {
-        let pal = crate::theme::palette("dark");
-        assert_eq!(selected_text("Hello **bold** world", (0, 6), (0, 9), pal), "bold");
-    }
-}
+#[path = "../tests/view/markdown_view.rs"]
+mod tests;

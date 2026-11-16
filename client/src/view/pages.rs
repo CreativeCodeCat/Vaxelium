@@ -1,13 +1,15 @@
 //! The full pages: login, the server status page, discovery, and the settings pages.
 
-use iced::widget::{button, column, container, mouse_area, row, scrollable, space, svg, text, text_editor, text_input, toggler, Column};
+use iced::widget::{
+    button, column, container, mouse_area, row, scrollable, space, svg, text, text_editor, text_input, toggler, Column,
+};
 use iced::{border, Background, Color, Element, Length, Padding, Theme};
 
 use super::{divider, link, muted_text, round, server_icon, solid};
 use crate::app::{App, EditSection, Field, Message, RoleDraft, RoleTab, ServerSection, UserSection, ADD_ADDR_ID};
-use common::{RoleInfo, EVERYONE_ROLE};
 use crate::icons;
 use crate::theme::Pal;
+use common::{RoleInfo, EVERYONE_ROLE};
 
 const CERT_CHANGED: &str = "certificate has changed";
 
@@ -28,7 +30,14 @@ fn card<'a>(content: Vec<Element<'a, Message>>, pal: Pal) -> Element<'a, Message
 }
 
 fn field<'a>(label: &str, input: Element<'a, Message>) -> Element<'a, Message> {
-    column![text(label.to_uppercase()).size(12).color(Color::from_rgb(0.6, 0.6, 0.6)), input].spacing(6).into()
+    column![
+        text(label.to_uppercase())
+            .size(12)
+            .color(Color::from_rgb(0.6, 0.6, 0.6)),
+        input
+    ]
+    .spacing(6)
+    .into()
 }
 
 /// The multi-line box uses the same colours as the single-line inputs.
@@ -55,28 +64,35 @@ pub fn input_style(pal: Pal) -> impl Fn(&Theme, text_input::Status) -> text_inpu
 
 /// A full-width button with rounded corners, for the login page.
 fn wide_button<'a>(label: &str, msg: Message, bg: Color, fg: Color) -> Element<'a, Message> {
-    button(container(text(label.to_string()).size(15).color(fg)).width(Length::Fill).align_x(iced::alignment::Horizontal::Center))
-        .width(Length::Fill)
-        .padding(crate::util::pad2(12.0, 14.0))
-        .on_press(msg)
-        .style(move |_: &Theme, status: iced::widget::button::Status| {
-            let shade = match status {
-                iced::widget::button::Status::Hovered => Color { a: 0.85, ..bg },
-                _ => bg,
-            };
-            iced::widget::button::Style {
-                background: Some(Background::Color(shade)),
-                text_color: fg,
-                border: border::rounded(8.0),
-                ..iced::widget::button::Style::default()
-            }
-        })
-        .into()
+    button(
+        container(text(label.to_string()).size(15).color(fg))
+            .width(Length::Fill)
+            .align_x(iced::alignment::Horizontal::Center),
+    )
+    .width(Length::Fill)
+    .padding(crate::util::pad2(12.0, 14.0))
+    .on_press(msg)
+    .style(move |_: &Theme, status: iced::widget::button::Status| {
+        let shade = match status {
+            iced::widget::button::Status::Hovered => Color { a: 0.85, ..bg },
+            _ => bg,
+        };
+        iced::widget::button::Style {
+            background: Some(Background::Color(shade)),
+            text_color: fg,
+            border: border::rounded(8.0),
+            ..iced::widget::button::Style::default()
+        }
+    })
+    .into()
 }
 
 /// A line, the word "or", and another line.
 fn or_divider<'a>(pal: Pal) -> Element<'a, Message> {
-    let line = Color { a: 0.35, ..pal.text_muted };
+    let line = Color {
+        a: 0.35,
+        ..pal.text_muted
+    };
     row![divider(line), muted_text("or", 12.0, pal.text_muted), divider(line)]
         .spacing(10)
         .align_y(iced::alignment::Vertical::Center)
@@ -92,8 +108,21 @@ pub fn login(app: &App, pal: Pal) -> Element<'_, Message> {
 
     if login_form.email_open {
         items.push(link("← Back", Message::LoginEmailClose, pal.link));
-        items.push(text(if login_form.register { "Create your account" } else { "Log in with email" }).size(26).color(pal.text_strong).into());
-        items.push(muted_text("One account works on every Vaxelium server.", 14.0, pal.text_muted));
+        items.push(
+            text(if login_form.register {
+                "Create your account"
+            } else {
+                "Log in with email"
+            })
+            .size(26)
+            .color(pal.text_strong)
+            .into(),
+        );
+        items.push(muted_text(
+            "One account works on every Vaxelium server.",
+            14.0,
+            pal.text_muted,
+        ));
         if login_form.register {
             items.push(field(
                 "Display name",
@@ -140,18 +169,47 @@ pub fn login(app: &App, pal: Pal) -> Element<'_, Message> {
         ));
         items.push(
             row![
-                muted_text(if login_form.register { "Already have an account?" } else { "Need an account?" }, 14.0, pal.text_muted),
-                link(if login_form.register { "Log in" } else { "Register" }, Message::LoginToggle, pal.link),
+                muted_text(
+                    if login_form.register {
+                        "Already have an account?"
+                    } else {
+                        "Need an account?"
+                    },
+                    14.0,
+                    pal.text_muted
+                ),
+                link(
+                    if login_form.register { "Log in" } else { "Register" },
+                    Message::LoginToggle,
+                    pal.link
+                ),
             ]
             .spacing(6)
             .align_y(iced::alignment::Vertical::Center)
             .into(),
         );
     } else {
-        items.push(text(if login_form.register { "Create an account" } else { "Welcome back!" }).size(26).color(pal.text_strong).into());
-        items.push(muted_text("One account works on every Vaxelium server.", 14.0, pal.text_muted));
+        items.push(
+            text(if login_form.register {
+                "Create an account"
+            } else {
+                "Welcome back!"
+            })
+            .size(26)
+            .color(pal.text_strong)
+            .into(),
+        );
+        items.push(muted_text(
+            "One account works on every Vaxelium server.",
+            14.0,
+            pal.text_muted,
+        ));
         items.push(wide_button(
-            if login_form.register { "Register with Email" } else { "Log in with Email" },
+            if login_form.register {
+                "Register with Email"
+            } else {
+                "Log in with Email"
+            },
             Message::LoginEmailOpen,
             pal.accent,
             pal.on_color,
@@ -166,7 +224,11 @@ pub fn login(app: &App, pal: Pal) -> Element<'_, Message> {
         };
         items.push(wide_button(discord_label, Message::DiscordLogin, blurple, Color::WHITE));
         if login_form.discord_waiting {
-            items.push(muted_text("Finish logging in to Discord in your browser.", 13.0, pal.text_muted));
+            items.push(muted_text(
+                "Finish logging in to Discord in your browser.",
+                13.0,
+                pal.text_muted,
+            ));
         }
         items.push(
             row![
@@ -185,7 +247,13 @@ pub fn login(app: &App, pal: Pal) -> Element<'_, Message> {
     if let Some(error) = &login_form.error {
         items.push(text(error.clone()).size(13).color(pal.red).into());
         if error.contains(CERT_CHANGED) {
-            items.push(solid("Trust the new certificate", Message::TrustAuth, pal.accent, pal.on_color, None));
+            items.push(solid(
+                "Trust the new certificate",
+                Message::TrustAuth,
+                pal.accent,
+                pal.on_color,
+                None,
+            ));
         }
     }
     card(items, pal)
@@ -196,26 +264,62 @@ pub fn server_status(app: &App, pal: Pal) -> Element<'_, Message> {
     let mut items: Vec<Element<'_, Message>> = Vec::new();
     if app.prefs.servers.is_empty() {
         items.push(text("Add a server").size(26).color(pal.text_strong).into());
-        items.push(muted_text("Enter the address of a Vaxelium server to start chatting.", 14.0, pal.text_muted));
-        items.push(solid("Add a server", Message::AddServerOpen, pal.accent, pal.on_color, None));
+        items.push(muted_text(
+            "Enter the address of a Vaxelium server to start chatting.",
+            14.0,
+            pal.text_muted,
+        ));
+        items.push(solid(
+            "Add a server",
+            Message::AddServerOpen,
+            pal.accent,
+            pal.on_color,
+            None,
+        ));
     } else if app.main.connecting || (app.main.id.is_some() && !app.main.welcomed && app.main.error.is_none()) {
-        items.push(text(format!("Joining {}...", app.selected_name().unwrap_or_else(|| "server".into()))).size(26).color(pal.text_strong).into());
-        items.push(muted_text("Checking your account with the server.", 14.0, pal.text_muted));
+        items.push(
+            text(format!(
+                "Joining {}...",
+                app.selected_name().unwrap_or_else(|| "server".into())
+            ))
+            .size(26)
+            .color(pal.text_strong)
+            .into(),
+        );
+        items.push(muted_text(
+            "Checking your account with the server.",
+            14.0,
+            pal.text_muted,
+        ));
     } else if let Some(error) = &app.main.error {
         items.push(text("Couldn't join the server").size(26).color(pal.text_strong).into());
         items.push(text(error.clone()).size(14).color(pal.red).into());
         if error.contains(CERT_CHANGED) {
-            items.push(solid("Trust the new certificate", Message::TrustServer, pal.accent, pal.on_color, None));
+            items.push(solid(
+                "Trust the new certificate",
+                Message::TrustServer,
+                pal.accent,
+                pal.on_color,
+                None,
+            ));
         } else if app.selected.is_some() {
             items.push(solid("Try again", Message::RetryServer, pal.accent, pal.on_color, None));
         }
     } else {
         items.push(text("Pick a server").size(26).color(pal.text_strong).into());
-        items.push(muted_text("Choose one from the icons on the left, or add a new one with +.", 14.0, pal.text_muted));
+        items.push(muted_text(
+            "Choose one from the icons on the left, or add a new one with +.",
+            14.0,
+            pal.text_muted,
+        ));
     }
     items.push(
         row![
-            muted_text(format!("Signed in as {}", app.user.clone().unwrap_or_default()), 13.0, pal.text_muted),
+            muted_text(
+                format!("Signed in as {}", app.user.clone().unwrap_or_default()),
+                13.0,
+                pal.text_muted
+            ),
             link("Log out", Message::Logout, pal.link),
         ]
         .spacing(8)
@@ -230,7 +334,11 @@ pub fn discover(app: &App, pal: Pal) -> Element<'_, Message> {
     let d = &app.discover;
     let mut items: Vec<Element<'_, Message>> = vec![
         page_head("Find servers", pal, Message::DiscoverClose),
-        muted_text("Servers found through the servers you know. Pick one to add it.", 14.0, pal.text_muted),
+        muted_text(
+            "Servers found through the servers you know. Pick one to add it.",
+            14.0,
+            pal.text_muted,
+        ),
     ];
     if let Some(error) = &d.error {
         items.push(text(error.clone()).size(14).color(pal.red).into());
@@ -241,9 +349,18 @@ pub fn discover(app: &App, pal: Pal) -> Element<'_, Message> {
         let saved = app.prefs.servers.iter().any(|s| s.addr == f.addr);
         let expanded = d.expanded.contains(&f.addr);
         // A house beside the name marks a server that other servers know about.
-        let mut title = row![text(f.name.clone()).size(16).color(pal.text_strong)].spacing(8).align_y(iced::alignment::Vertical::Center);
+        let mut title = row![text(f.name.clone()).size(16).color(pal.text_strong)]
+            .spacing(8)
+            .align_y(iced::alignment::Vertical::Center);
         if f.public {
-            title = title.push(svg(svg::Handle::from_path(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/assets/house.svg"))).width(Length::Fixed(14.0)).height(Length::Fixed(14.0)));
+            title = title.push(
+                svg(svg::Handle::from_path(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/ui/assets/house.svg"
+                )))
+                .width(Length::Fixed(14.0))
+                .height(Length::Fixed(14.0)),
+            );
         }
         let mut info = Column::new().spacing(2).push(title);
         if !f.description.is_empty() {
@@ -264,11 +381,21 @@ pub fn discover(app: &App, pal: Pal) -> Element<'_, Message> {
         let side: Element<'_, Message> = if saved {
             text("Added").size(13).color(pal.text_muted).into()
         } else {
-            solid("Add", Message::DiscoverAdd(f.addr.clone()), pal.accent, pal.on_color, None)
+            solid(
+                "Add",
+                Message::DiscoverAdd(f.addr.clone()),
+                pal.accent,
+                pal.on_color,
+                None,
+            )
         };
-        let card_row = row![server_icon(f.icon.as_deref(), &f.name, 48.0, &pal, 8.0), info.width(Length::Fill), side]
-            .spacing(14)
-            .align_y(iced::alignment::Vertical::Center);
+        let card_row = row![
+            server_icon(f.icon.as_deref(), &f.name, 48.0, &pal, 8.0),
+            info.width(Length::Fill),
+            side
+        ]
+        .spacing(14)
+        .align_y(iced::alignment::Vertical::Center);
         items.push(
             mouse_area(
                 container(card_row)
@@ -280,9 +407,14 @@ pub fn discover(app: &App, pal: Pal) -> Element<'_, Message> {
             .into(),
         );
     }
-    scrollable(Column::with_children(items).spacing(12).padding(crate::util::pad2(24.0, 40.0)).width(Length::Fill))
-        .height(Length::Fill)
-        .into()
+    scrollable(
+        Column::with_children(items)
+            .spacing(12)
+            .padding(crate::util::pad2(24.0, 40.0))
+            .width(Length::Fill),
+    )
+    .height(Length::Fill)
+    .into()
 }
 
 /// The heading row of a full page: a section name, the title and a close button.
@@ -293,7 +425,12 @@ fn page_title<'a>(title: &str, pal: Pal) -> Element<'a, Message> {
 
 /// A settings page: its navigation on the left, and its content on the right with the close button in
 /// the same top-right corner on every settings page.
-fn settings_frame<'a>(nav: Element<'a, Message>, body: Element<'a, Message>, close: Message, pal: Pal) -> Element<'a, Message> {
+fn settings_frame<'a>(
+    nav: Element<'a, Message>,
+    body: Element<'a, Message>,
+    close: Message,
+    pal: Pal,
+) -> Element<'a, Message> {
     let corner = row![space().width(Length::Fill), close_button(close, pal)].padding(crate::util::pad2(12.0, 16.0));
     let right = column![corner, body].width(Length::Fill).height(Length::Fill);
     container(row![nav, right].height(Length::Fill))
@@ -305,7 +442,10 @@ fn settings_frame<'a>(nav: Element<'a, Message>, body: Element<'a, Message>, clo
 
 fn page_head<'a>(title: &str, pal: Pal, close: Message) -> Element<'a, Message> {
     row![
-        text(title.to_string()).size(22).color(pal.text_strong).width(Length::Fill),
+        text(title.to_string())
+            .size(22)
+            .color(pal.text_strong)
+            .width(Length::Fill),
         close_button(close, pal),
     ]
     .align_y(iced::alignment::Vertical::Center)
@@ -315,13 +455,19 @@ fn page_head<'a>(title: &str, pal: Pal, close: Message) -> Element<'a, Message> 
 /// The X in the corner of a page, with ESC under it, as Discord has it.
 fn close_button<'a>(close: Message, pal: Pal) -> Element<'a, Message> {
     button(
-        column![icons::icon(icons::CLOSE, 16.0, pal.text_muted), text("ESC").size(11).color(pal.text_muted)]
-            .align_x(iced::alignment::Horizontal::Center)
-            .spacing(2),
+        column![
+            icons::icon(icons::CLOSE, 16.0, pal.text_muted),
+            text("ESC").size(11).color(pal.text_muted)
+        ]
+        .align_x(iced::alignment::Horizontal::Center)
+        .spacing(2),
     )
     .padding(4)
     .on_press(close)
-    .style(|_: &Theme, _| button::Style { background: None, ..button::Style::default() })
+    .style(|_: &Theme, _| button::Style {
+        background: None,
+        ..button::Style::default()
+    })
     .into()
 }
 
@@ -343,19 +489,26 @@ fn user_nav<'a>(active: UserSection, pal: Pal) -> Element<'a, Message> {
                 } else {
                     Color::TRANSPARENT
                 };
-                button::Style { background: Some(Background::Color(bg)), text_color: color, border: border::rounded(4.0), ..button::Style::default() }
+                button::Style {
+                    background: Some(Background::Color(bg)),
+                    text_color: color,
+                    border: border::rounded(4.0),
+                    ..button::Style::default()
+                }
             })
             .into()
     };
-    container(column![
-        text("USER SETTINGS").size(12).color(pal.text_muted),
-        Column::new()
-            .spacing(4)
-            .push(tab("Account", UserSection::Account))
-            .push(tab("Profile", UserSection::Profile))
-            .push(tab("Linked accounts", UserSection::Linked)),
-    ]
-    .spacing(8))
+    container(
+        column![
+            text("USER SETTINGS").size(12).color(pal.text_muted),
+            Column::new()
+                .spacing(4)
+                .push(tab("Account", UserSection::Account))
+                .push(tab("Profile", UserSection::Profile))
+                .push(tab("Linked accounts", UserSection::Linked)),
+        ]
+        .spacing(8),
+    )
     .padding(crate::util::pad2(24.0, 12.0))
     .width(Length::Fixed(220.0))
     .height(Length::Fill)
@@ -370,15 +523,40 @@ fn linked_accounts_view<'a>(acc: &crate::app::Account, pal: Pal) -> Element<'a, 
     let (desc, action): (String, Option<Element<'a, Message>>) = match &acc.discord {
         Some(name) if acc.can_unlink_discord => (
             format!("Connected as {name}."),
-            Some(solid(if acc.discord_busy { "Unlinking…" } else { "Unlink" }, Message::DiscordUnlink, pal.red, pal.on_color, None)),
+            Some(solid(
+                if acc.discord_busy { "Unlinking…" } else { "Unlink" },
+                Message::DiscordUnlink,
+                pal.red,
+                pal.on_color,
+                None,
+            )),
         ),
-        Some(name) => (format!("Connected as {name}. Set a password in Account settings to be able to unlink it."), None),
+        Some(name) => (
+            format!("Connected as {name}. Set a password in Account settings to be able to unlink it."),
+            None,
+        ),
         None => (
             "Not connected.".to_string(),
-            Some(solid(if acc.connect_busy { "Waiting for Discord…" } else { "Connect" }, Message::DiscordConnect, blurple, Color::WHITE, None)),
+            Some(solid(
+                if acc.connect_busy {
+                    "Waiting for Discord…"
+                } else {
+                    "Connect"
+                },
+                Message::DiscordConnect,
+                blurple,
+                Color::WHITE,
+                None,
+            )),
         ),
     };
-    let mut items: Vec<Element<'a, Message>> = vec![setting_row("Discord", Some(&desc), space().width(Length::Fixed(0.0)).into(), action, pal)];
+    let mut items: Vec<Element<'a, Message>> = vec![setting_row(
+        "Discord",
+        Some(&desc),
+        space().width(Length::Fixed(0.0)).into(),
+        action,
+        pal,
+    )];
     if let Some(error) = &acc.discord_error {
         items.push(text(error.clone()).size(13).color(pal.red).into());
     }
@@ -388,7 +566,13 @@ fn linked_accounts_view<'a>(acc: &crate::app::Account, pal: Pal) -> Element<'a, 
 /// The password row in Account settings. Accounts made with Discord can set one here.
 fn password_row<'a>(acc: &crate::app::Account, pal: Pal) -> Element<'a, Message> {
     if acc.has_password {
-        setting_row("Password", Some("You can log in with your email and password."), space().width(Length::Fixed(0.0)).into(), None, pal)
+        setting_row(
+            "Password",
+            Some("You can log in with your email and password."),
+            space().width(Length::Fixed(0.0)).into(),
+            None,
+            pal,
+        )
     } else {
         setting_row(
             "Password",
@@ -406,7 +590,13 @@ fn delete_row<'a>(pal: Pal) -> Element<'a, Message> {
         "Delete account",
         Some("Permanently remove your account. Messages you posted stay on the servers where you posted them."),
         space().width(Length::Fixed(0.0)).into(),
-        Some(solid("Delete account", Message::AccountDeleteOpen, pal.red, pal.on_color, None)),
+        Some(solid(
+            "Delete account",
+            Message::AccountDeleteOpen,
+            pal.red,
+            pal.on_color,
+            None,
+        )),
         pal,
     )
 }
@@ -415,7 +605,11 @@ fn delete_row<'a>(pal: Pal) -> Element<'a, Message> {
 fn password_dialog<'a>(acc: &crate::app::Account, pal: Pal) -> Element<'a, Message> {
     let mut items: Vec<Element<'a, Message>> = vec![
         text("Set a password").size(20).color(pal.text_strong).into(),
-        muted_text("At least 8 characters. You will use it with your email address to log in.", 13.0, pal.text_muted),
+        muted_text(
+            "At least 8 characters. You will use it with your email address to log in.",
+            13.0,
+            pal.text_muted,
+        ),
         field(
             "New password",
             text_input("password", &acc.password_input)
@@ -435,7 +629,13 @@ fn password_dialog<'a>(acc: &crate::app::Account, pal: Pal) -> Element<'a, Messa
         row![
             space().width(Length::Fill),
             link("Cancel", Message::PasswordCancel, pal.text_muted),
-            solid(if acc.password_busy { "Saving…" } else { "Save" }, Message::PasswordSubmit, pal.accent, pal.on_color, Some(96.0)),
+            solid(
+                if acc.password_busy { "Saving…" } else { "Save" },
+                Message::PasswordSubmit,
+                pal.accent,
+                pal.on_color,
+                Some(96.0)
+            ),
         ]
         .spacing(10)
         .align_y(iced::alignment::Vertical::Center)
@@ -467,7 +667,11 @@ fn delete_dialog<'a>(acc: &crate::app::Account, pal: Pal) -> Element<'a, Message
                 .into(),
         ));
     } else {
-        items.push(muted_text("Set a password first. Deleting needs your password to confirm it is you.", 13.0, pal.red));
+        items.push(muted_text(
+            "Set a password first. Deleting needs your password to confirm it is you.",
+            13.0,
+            pal.red,
+        ));
     }
     if let Some(err) = &acc.delete_error {
         items.push(text(err.clone()).size(13).color(pal.red).into());
@@ -477,7 +681,11 @@ fn delete_dialog<'a>(acc: &crate::app::Account, pal: Pal) -> Element<'a, Message
             space().width(Length::Fill),
             link("Cancel", Message::AccountDeleteCancel, pal.text_muted),
             solid(
-                if acc.delete_busy { "Deleting…" } else { "Delete account" },
+                if acc.delete_busy {
+                    "Deleting…"
+                } else {
+                    "Delete account"
+                },
                 Message::AccountDeleteSubmit,
                 pal.red,
                 pal.on_color,
@@ -493,7 +701,10 @@ fn delete_dialog<'a>(acc: &crate::app::Account, pal: Pal) -> Element<'a, Message
 
 /// The web address of a legal page, from `.env` or the shell, when one is set.
 fn legal_url(var: &str) -> Option<String> {
-    std::env::var(var).ok().map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
+    std::env::var(var)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
 }
 
 /// "By continuing you agree to our Terms of Service and Privacy Policy", with the links that are set.
@@ -514,7 +725,12 @@ fn legal_row<'a>(pal: Pal) -> Option<Element<'a, Message>> {
     if let Some(url) = privacy {
         parts.push(link("Privacy Policy", Message::OpenLink(url), pal.link));
     }
-    Some(iced::widget::Row::with_children(parts).spacing(4).align_y(iced::alignment::Vertical::Center).into())
+    Some(
+        iced::widget::Row::with_children(parts)
+            .spacing(4)
+            .align_y(iced::alignment::Vertical::Center)
+            .into(),
+    )
 }
 
 /// The settings content: a column with a sensible maximum width, so long rows do not stretch.
@@ -522,34 +738,60 @@ fn settings_column<'a>(items: Vec<Element<'a, Message>>) -> Element<'a, Message>
     let inner = container(Column::with_children(items).spacing(6).width(Length::Fill))
         .max_width(760.0)
         .width(Length::Fill);
-    scrollable(container(inner).padding(crate::util::pad2(24.0, 40.0)).width(Length::Fill))
-        .height(Length::Fill)
-        .into()
+    scrollable(
+        container(inner)
+            .padding(crate::util::pad2(24.0, 40.0))
+            .width(Length::Fill),
+    )
+    .height(Length::Fill)
+    .into()
 }
 
-fn setting_row<'a>(label: &str, desc: Option<&str>, value: Element<'a, Message>, action: Option<Element<'a, Message>>, pal: Pal) -> Element<'a, Message> {
+fn setting_row<'a>(
+    label: &str,
+    desc: Option<&str>,
+    value: Element<'a, Message>,
+    action: Option<Element<'a, Message>>,
+    pal: Pal,
+) -> Element<'a, Message> {
     let mut what = Column::new().push(text(label.to_string()).size(15).color(pal.text));
     if let Some(d) = desc {
         what = what.push(text(d.to_string()).size(12).color(pal.text_muted));
     }
-    let mut r = row![what.width(Length::Fill), value].spacing(12).align_y(iced::alignment::Vertical::Center);
+    let mut r = row![what.width(Length::Fill), value]
+        .spacing(12)
+        .align_y(iced::alignment::Vertical::Center);
     if let Some(a) = action {
         r = r.push(a);
     }
-    container(r).padding(crate::util::pad2(8.0, 0.0)).width(Length::Fill).into()
+    container(r)
+        .padding(crate::util::pad2(8.0, 0.0))
+        .width(Length::Fill)
+        .into()
 }
 
 /// The profile picture. Saved as soon as it is picked, like a server icon.
 fn avatar_editor<'a>(acc: &'a crate::app::Account, name: &str, pal: Pal) -> Element<'a, Message> {
     // Shows the draft while one is pending, so the change can be seen before it is saved.
     let shown = acc.avatar_draft.as_deref().unwrap_or(&acc.avatar);
-    let mut buttons = row![solid("Change picture", Message::AvatarPick, pal.accent, pal.on_color, None)].spacing(12).align_y(iced::alignment::Vertical::Center);
+    let mut buttons = row![solid(
+        "Change picture",
+        Message::AvatarPick,
+        pal.accent,
+        pal.on_color,
+        None
+    )]
+    .spacing(12)
+    .align_y(iced::alignment::Vertical::Center);
     if !shown.is_empty() {
         buttons = buttons.push(link("Remove", Message::AvatarRemove, pal.link));
     }
     let mut column_items: Vec<Element<'a, Message>> = vec![
         text("PROFILE PICTURE").size(12).color(pal.text_muted).into(),
-        row![super::avatar(shown, &acc.about_banner, name, 72.0, &pal), buttons].spacing(16).align_y(iced::alignment::Vertical::Center).into(),
+        row![super::avatar(shown, &acc.about_banner, name, 72.0, &pal), buttons]
+            .spacing(16)
+            .align_y(iced::alignment::Vertical::Center)
+            .into(),
     ];
     if let Some(err) = &acc.avatar_error {
         column_items.push(text(err.clone()).size(13).color(pal.red).into());
@@ -591,16 +833,27 @@ fn about_editor<'a>(app: &'a App, pal: Pal) -> Element<'a, Message> {
                     let mut ring = border::rounded(12.0);
                     ring.color = if on { pal.text_strong } else { Color::TRANSPARENT };
                     ring.width = if on { 2.0 } else { 0.0 };
-                    button::Style { background: Some(Background::Color(color)), border: ring, ..button::Style::default() }
+                    button::Style {
+                        background: Some(Background::Color(color)),
+                        border: ring,
+                        ..button::Style::default()
+                    }
                 }),
         );
     }
-    swatches = swatches.push(link(if picked.is_empty() { "Default ✓" } else { "Default" }, Message::AboutBanner(String::new()), pal.link));
+    swatches = swatches.push(link(
+        if picked.is_empty() { "Default ✓" } else { "Default" },
+        Message::AboutBanner(String::new()),
+        pal.link,
+    ));
     rows.push(swatches.into());
     if let Some(err) = &acc.about_error {
         rows.push(text(err.clone()).size(13).color(pal.red).into());
     }
-    container(Column::with_children(rows).spacing(8)).padding(crate::util::pad2(8.0, 0.0)).width(Length::Fill).into()
+    container(Column::with_children(rows).spacing(8))
+        .padding(crate::util::pad2(8.0, 0.0))
+        .width(Length::Fill)
+        .into()
 }
 
 fn small_button<'a>(label: &str, msg: Message, pal: Pal) -> Element<'a, Message> {
@@ -612,7 +865,12 @@ fn small_button<'a>(label: &str, msg: Message, pal: Pal) -> Element<'a, Message>
                 button::Status::Hovered => pal.hover_bg,
                 _ => pal.input_bg,
             };
-            button::Style { background: Some(Background::Color(bg)), text_color: pal.text_strong, border: border::rounded(4.0), ..button::Style::default() }
+            button::Style {
+                background: Some(Background::Color(bg)),
+                text_color: pal.text_strong,
+                border: border::rounded(4.0),
+                ..button::Style::default()
+            }
         })
         .into()
 }
@@ -634,12 +892,19 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     // value, put the reason under the label, and drop the Edit buttons that could not save anyway.
     let unavailable = acc.username.is_none() && acc.draft_username.is_none() && acc.email_error.is_some();
     let reason = acc.email_error.clone();
-    let shown_user = acc.draft_username.clone().or_else(|| acc.username.clone()).unwrap_or_else(|| "Unavailable".into());
+    let shown_user = acc
+        .draft_username
+        .clone()
+        .or_else(|| acc.username.clone())
+        .unwrap_or_else(|| "Unavailable".into());
     let email: Element<'_, Message> = match (&acc.draft_email, &acc.email) {
         (Some((e, _)), _) => text(e.clone()).size(14).color(pal.text).into(),
         (None, Some(e)) => text(e.clone()).size(14).color(pal.text).into(),
         _ if unavailable => text("Unavailable").size(14).color(pal.text_muted).into(),
-        _ => text("Not on record yet. Set it with Edit.").size(14).color(pal.text_muted).into(),
+        _ => text("Not on record yet. Set it with Edit.")
+            .size(14)
+            .color(pal.text_muted)
+            .into(),
     };
     let theme_name = app.theme_id_name(&acc.draft_theme.clone().unwrap_or_else(|| app.prefs.theme.clone()));
     let theme_button = button(
@@ -648,8 +913,8 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
             space().width(Length::Fill),
             icons::icon(icons::CHEVRON_DOWN, 14.0, pal.text_muted),
         ]
-            .spacing(12)
-            .align_y(iced::alignment::Vertical::Center),
+        .spacing(12)
+        .align_y(iced::alignment::Vertical::Center),
     )
     .padding(crate::util::pad2(7.0, 10.0))
     .width(Length::Fixed(190.0))
@@ -684,11 +949,29 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
         .into(),
         divider(pal.selected_bg),
         text("ACCOUNT INFO").size(12).color(pal.text_muted).into(),
-        setting_row("Display name", None, text(shown_name).size(14).color(pal.text_strong).into(), Some(small_button("Edit", Message::AccountEdit(Field::Name), pal)), pal),
+        setting_row(
+            "Display name",
+            None,
+            text(shown_name).size(14).color(pal.text_strong).into(),
+            Some(small_button("Edit", Message::AccountEdit(Field::Name), pal)),
+            pal,
+        ),
         if unavailable {
-            setting_row("Username", reason.as_deref(), text(shown_user).size(14).color(pal.text_muted).into(), None, pal)
+            setting_row(
+                "Username",
+                reason.as_deref(),
+                text(shown_user).size(14).color(pal.text_muted).into(),
+                None,
+                pal,
+            )
         } else {
-            setting_row("Username", None, text(format!("@{shown_user}")).size(14).color(pal.text).into(), Some(small_button("Edit", Message::AccountEdit(Field::Username), pal)), pal)
+            setting_row(
+                "Username",
+                None,
+                text(format!("@{shown_user}")).size(14).color(pal.text).into(),
+                Some(small_button("Edit", Message::AccountEdit(Field::Username), pal)),
+                pal,
+            )
         },
         if unavailable {
             setting_row("Email", reason.as_deref(), email, None, pal)
@@ -715,7 +998,13 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
         setting_row("Theme", None, theme_button.into(), None, pal),
         divider(pal.selected_bg),
         text("SESSION").size(12).color(pal.text_muted).into(),
-        setting_row("Log out", Some("Sign out of Vaxelium on this computer."), space().width(Length::Fixed(0.0)).into(), Some(solid("Log Out", Message::Logout, pal.red, pal.on_color, None)), pal),
+        setting_row(
+            "Log out",
+            Some("Sign out of Vaxelium on this computer."),
+            space().width(Length::Fixed(0.0)).into(),
+            Some(solid("Log Out", Message::Logout, pal.red, pal.on_color, None)),
+            pal,
+        ),
     ];
     if let Some(error) = &acc.save_error {
         main.push(text(error.clone()).size(13).color(pal.red).into());
@@ -725,18 +1014,36 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     main.push(delete_row(pal));
     let (content, dirty) = match app.user_section {
         UserSection::Account => {
-            let dirty = acc.draft_name.is_some() || acc.draft_username.is_some() || acc.draft_email.is_some() || acc.draft_theme.is_some();
+            let dirty = acc.draft_name.is_some()
+                || acc.draft_username.is_some()
+                || acc.draft_email.is_some()
+                || acc.draft_theme.is_some();
             (settings_column(main), dirty)
         }
-        UserSection::Linked => (settings_column(vec![page_title("Linked accounts", pal), linked_accounts_view(acc, pal)]), false),
+        UserSection::Linked => (
+            settings_column(vec![page_title("Linked accounts", pal), linked_accounts_view(acc, pal)]),
+            false,
+        ),
         UserSection::Profile => {
             // The bar appears only when the bio or banner differ from what is saved.
             let dirty = acc.about_bio != acc.bio || acc.about_banner != acc.banner || acc.avatar_draft.is_some();
             let name = app.user.clone().unwrap_or_default();
-            (settings_column(vec![page_title("Profile", pal), avatar_editor(acc, &name, pal), about_editor(app, pal)]), dirty)
+            (
+                settings_column(vec![
+                    page_title("Profile", pal),
+                    avatar_editor(acc, &name, pal),
+                    about_editor(app, pal),
+                ]),
+                dirty,
+            )
         }
     };
-    let page = settings_frame(user_nav(app.user_section, pal), content, Message::UserSettingsClose, pal);
+    let page = settings_frame(
+        user_nav(app.user_section, pal),
+        content,
+        Message::UserSettingsClose,
+        pal,
+    );
     let mut layers: Vec<Element<'_, Message>> = vec![page];
     if dirty {
         let (reset, save) = match app.user_section {
@@ -744,7 +1051,13 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
             // Linked accounts saves each change as it happens, so it never shows the bar.
             UserSection::Profile | UserSection::Linked => (Message::AboutReset, Message::AboutSave),
         };
-        layers.push(unsaved_bar(app, pal, reset, save, "Careful – you have unsaved changes!"));
+        layers.push(unsaved_bar(
+            app,
+            pal,
+            reset,
+            save,
+            "Careful – you have unsaved changes!",
+        ));
     }
     if let Some(which) = acc.editing {
         layers.push(account_edit_dialog(app, which, pal));
@@ -760,7 +1073,12 @@ pub fn user_settings(app: &App, pal: Pal) -> Element<'_, Message> {
 
 /// Blends `a` towards `b` by `t` (0 is `a`, 1 is `b`).
 fn mix(a: Color, b: Color, t: f32) -> Color {
-    Color { r: a.r + (b.r - a.r) * t, g: a.g + (b.g - a.g) * t, b: a.b + (b.b - a.b) * t, a: a.a }
+    Color {
+        r: a.r + (b.r - a.r) * t,
+        g: a.g + (b.g - a.g) * t,
+        b: a.b + (b.b - a.b) * t,
+        a: a.a,
+    }
 }
 
 /// The bar that appears when there are changes to save. It floats over the bottom of the page,
@@ -769,15 +1087,24 @@ fn unsaved_bar<'a>(app: &App, pal: Pal, reset: Message, save: Message, title: &s
     // Red while a close was refused, so the user sees they have not saved.
     let flash = app.unsaved_flash_on();
     // A hint, not an alarm: the background warms slightly and the edge takes the red.
-    let bg = if flash { mix(pal.rail_bg, pal.red, 0.22) } else { pal.rail_bg };
+    let bg = if flash {
+        mix(pal.rail_bg, pal.red, 0.22)
+    } else {
+        pal.rail_bg
+    };
     let edge = if flash { pal.red } else { bg };
-    let card = container(row![
-        text(title.to_string()).size(14).color(pal.text_strong).width(Length::Fill),
-        link("Reset", reset, pal.link),
-        solid("Save Changes", save, pal.green, pal.on_color, None),
-    ]
-    .spacing(12)
-    .align_y(iced::alignment::Vertical::Center))
+    let card = container(
+        row![
+            text(title.to_string())
+                .size(14)
+                .color(pal.text_strong)
+                .width(Length::Fill),
+            link("Reset", reset, pal.link),
+            solid("Save Changes", save, pal.green, pal.on_color, None),
+        ]
+        .spacing(12)
+        .align_y(iced::alignment::Vertical::Center),
+    )
     .padding(crate::util::pad2(12.0, 16.0))
     .max_width(640.0)
     .style(move |_: &Theme| container::Style {
@@ -793,7 +1120,6 @@ fn unsaved_bar<'a>(app: &App, pal: Pal, reset: Message, save: Message, title: &s
         .padding(crate::util::pad(0.0, 0.0, 24.0, 0.0))
         .into()
 }
-
 
 fn account_edit_dialog(app: &App, which: Field, pal: Pal) -> Element<'_, Message> {
     let acc = &app.account;
@@ -819,8 +1145,24 @@ fn account_edit_dialog(app: &App, which: Field, pal: Pal) -> Element<'_, Message
         Field::Email => (
             "Change email",
             column![
-                field("New email", text_input("you@example.com", &acc.email_input).on_input(Message::AccountEmailInput).padding(10).style(input_style(pal)).into()),
-                field("Current password", text_input("", &acc.email_password).secure(true).on_input(Message::AccountEmailPassword).on_submit(Message::AccountEditSubmit).padding(10).style(input_style(pal)).into()),
+                field(
+                    "New email",
+                    text_input("you@example.com", &acc.email_input)
+                        .on_input(Message::AccountEmailInput)
+                        .padding(10)
+                        .style(input_style(pal))
+                        .into()
+                ),
+                field(
+                    "Current password",
+                    text_input("", &acc.email_password)
+                        .secure(true)
+                        .on_input(Message::AccountEmailPassword)
+                        .on_submit(Message::AccountEditSubmit)
+                        .padding(10)
+                        .style(input_style(pal))
+                        .into()
+                ),
             ]
             .spacing(12)
             .into(),
@@ -850,7 +1192,10 @@ pub fn modal<'a>(items: Vec<Element<'a, Message>>, pal: Pal, close: Message) -> 
         .width(Length::Fixed(440.0))
         .style(move |_: &Theme| round(pal.sidebar_bg, 8.0));
     let backdrop = mouse_area(
-        container(space()).width(Length::Fill).height(Length::Fill).style(|_: &Theme| round(Color { a: 0.5, ..Color::BLACK }, 0.0)),
+        container(space())
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(|_: &Theme| round(Color { a: 0.5, ..Color::BLACK }, 0.0)),
     )
     .on_press(close);
     let centred = container(card)
@@ -869,7 +1214,13 @@ pub fn server_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     let (content, dirty): (Element<'_, Message>, bool) = match section {
         ServerSection::Profile => {
             let (items, dirty) = profile_items(app, pal);
-            let content = scrollable(Column::with_children(items).spacing(14).padding(crate::util::pad2(24.0, 40.0)).width(Length::Fill)).height(Length::Fill);
+            let content = scrollable(
+                Column::with_children(items)
+                    .spacing(14)
+                    .padding(crate::util::pad2(24.0, 40.0))
+                    .width(Length::Fill),
+            )
+            .height(Length::Fill);
             (content.into(), dirty)
         }
         ServerSection::Roles => roles_section(app, pal),
@@ -883,9 +1234,18 @@ pub fn server_settings(app: &App, pal: Pal) -> Element<'_, Message> {
     };
     let manage = app.my_permissions() & common::perm::MANAGE_ROLES != 0;
     let may_edit_profile = app.is_owner() || app.can(common::perm::MANAGE_SERVER);
-    let page = settings_frame(server_nav(&name, may_edit_profile, manage, section, pal), content, Message::ServerSettingsClose, pal);
+    let page = settings_frame(
+        server_nav(&name, may_edit_profile, manage, section, pal),
+        content,
+        Message::ServerSettingsClose,
+        pal,
+    );
     if dirty {
-        iced::widget::stack![page, unsaved_bar(app, pal, reset, save, "Careful – you have unsaved changes!")].into()
+        iced::widget::stack![
+            page,
+            unsaved_bar(app, pal, reset, save, "Careful – you have unsaved changes!")
+        ]
+        .into()
     } else {
         page.into()
     }
@@ -919,7 +1279,13 @@ fn nav_button<'a>(label: &str, msg: Message, selected: bool, pal: Pal) -> Elemen
 }
 
 /// A navigation item whose text can take a colour, such as a role's.
-fn nav_button_tinted<'a>(label: &str, msg: Message, selected: bool, tint: Option<Color>, pal: Pal) -> Element<'a, Message> {
+fn nav_button_tinted<'a>(
+    label: &str,
+    msg: Message,
+    selected: bool,
+    tint: Option<Color>,
+    pal: Pal,
+) -> Element<'a, Message> {
     let color = tint.unwrap_or(if selected { pal.text_strong } else { pal.text_muted });
     button(text(label.to_string()).size(15).color(color))
         .width(Length::Fill)
@@ -933,7 +1299,12 @@ fn nav_button_tinted<'a>(label: &str, msg: Message, selected: bool, tint: Option
             } else {
                 Color::TRANSPARENT
             };
-            button::Style { background: Some(Background::Color(bg)), text_color: color, border: border::rounded(4.0), ..button::Style::default() }
+            button::Style {
+                background: Some(Background::Color(bg)),
+                text_color: color,
+                border: border::rounded(4.0),
+                ..button::Style::default()
+            }
         })
         .into()
 }
@@ -953,14 +1324,22 @@ fn profile_items(app: &App, pal: Pal) -> (Vec<Element<'_, Message>>, bool) {
     let icon: Element<'_, Message> = server_icon(app.server.icon.as_deref(), &name, 64.0, &pal, 8.0);
     let mut items: Vec<Element<'_, Message>> = vec![
         page_title("Server Profile", pal),
-        muted_text("Customise how your server appears to its members.", 14.0, pal.text_muted),
+        muted_text(
+            "Customise how your server appears to its members.",
+            14.0,
+            pal.text_muted,
+        ),
         text("SERVER ICON").size(12).color(pal.text_muted).into(),
         row![
             icon,
             column![
                 row![
                     small_button("Upload image", Message::IconPick, pal),
-                    if app.server.icon.is_some() { link("Remove icon", Message::IconRemove, pal.link) } else { space().width(Length::Fixed(0.0)).into() },
+                    if app.server.icon.is_some() {
+                        link("Remove icon", Message::IconRemove, pal.link)
+                    } else {
+                        space().width(Length::Fixed(0.0)).into()
+                    },
                 ]
                 .spacing(12),
                 icon_error(form.icon_error.clone(), pal),
@@ -971,7 +1350,16 @@ fn profile_items(app: &App, pal: Pal) -> (Vec<Element<'_, Message>>, bool) {
         .spacing(16)
         .align_y(iced::alignment::Vertical::Center)
         .into(),
-        field("Name", text_input("My server", &form.name).id("server-name").on_input(Message::ServerName).on_submit(Message::ServerSave).padding(10).style(input_style(pal)).into()),
+        field(
+            "Name",
+            text_input("My server", &form.name)
+                .id("server-name")
+                .on_input(Message::ServerName)
+                .on_submit(Message::ServerSave)
+                .padding(10)
+                .style(input_style(pal))
+                .into(),
+        ),
         field(
             "Description",
             iced::widget::text_editor(&app.description_editor)
@@ -997,14 +1385,46 @@ const ROLE_COLORS: [&str; 20] = [
 
 /// The permissions a role can grant: the label, what it lets a member do, and its bit.
 const PERMISSIONS: [(&str, &str, u32); 8] = [
-    ("Administrator", "Has every permission, even ones switched off. Turning it on asks first.", common::perm::ADMINISTRATOR),
-    ("Manage roles", "Allows members to create and edit roles below their own, and give them to members below them.", common::perm::MANAGE_ROLES),
-    ("Manage server", "Allows members to change the server's name, description and picture.", common::perm::MANAGE_SERVER),
-    ("Manage channels", "Allows members to create, rename, move and delete channels and categories.", common::perm::MANAGE_CHANNELS),
-    ("Manage messages", "Allows members to delete other members' messages.", common::perm::MANAGE_MESSAGES),
-    ("Bypass ignore", "Members with this cannot be ignored or blocked by anyone.", common::perm::BYPASS_IGNORE),
-    ("View channels", "Lets members see the channels. A channel can hide them from this role.", common::perm::VIEW_CHANNEL),
-    ("Message channels", "Lets members send messages. A channel can stop this role from sending.", common::perm::SEND_MESSAGES),
+    (
+        "Administrator",
+        "Has every permission, even ones switched off. Turning it on asks first.",
+        common::perm::ADMINISTRATOR,
+    ),
+    (
+        "Manage roles",
+        "Allows members to create and edit roles below their own, and give them to members below them.",
+        common::perm::MANAGE_ROLES,
+    ),
+    (
+        "Manage server",
+        "Allows members to change the server's name, description and picture.",
+        common::perm::MANAGE_SERVER,
+    ),
+    (
+        "Manage channels",
+        "Allows members to create, rename, move and delete channels and categories.",
+        common::perm::MANAGE_CHANNELS,
+    ),
+    (
+        "Manage messages",
+        "Allows members to delete other members' messages.",
+        common::perm::MANAGE_MESSAGES,
+    ),
+    (
+        "Bypass ignore",
+        "Members with this cannot be ignored or blocked by anyone.",
+        common::perm::BYPASS_IGNORE,
+    ),
+    (
+        "View channels",
+        "Lets members see the channels. A channel can hide them from this role.",
+        common::perm::VIEW_CHANNEL,
+    ),
+    (
+        "Message channels",
+        "Lets members send messages. A channel can stop this role from sending.",
+        common::perm::SEND_MESSAGES,
+    ),
 ];
 
 /// The Roles section, laid out like Discord's: the roles on the left, and the chosen role's settings on the right.
@@ -1028,7 +1448,13 @@ pub(crate) fn role_changed(app: &App, draft: &RoleDraft) -> bool {
 
 /// The members section: every member with their status and roles, read-only.
 pub(crate) fn members_section(app: &App, pal: Pal) -> Element<'_, Message> {
-    let members: Vec<(&String, bool)> = app.server.online.iter().map(|n| (n, true)).chain(app.server.offline.iter().map(|n| (n, false))).collect();
+    let members: Vec<(&String, bool)> = app
+        .server
+        .online
+        .iter()
+        .map(|n| (n, true))
+        .chain(app.server.offline.iter().map(|n| (n, false)))
+        .collect();
     let count = members.len();
     let head = |label: &str, width: Length| text(label.to_string()).size(12).color(pal.text_muted).width(width);
     let mut table: Vec<Element<'_, Message>> = vec![
@@ -1047,8 +1473,14 @@ pub(crate) fn members_section(app: &App, pal: Pal) -> Element<'_, Message> {
     for (name, online) in members {
         table.push(member_row(app, name, online, pal));
     }
-    let card = container(Column::with_children(table).width(Length::Fill)).style(move |_: &Theme| round(pal.sidebar_bg, 8.0));
-    let footer = text(format!("Showing {count} {}", if count == 1 { "member" } else { "members" })).size(13).color(pal.text_muted);
+    let card =
+        container(Column::with_children(table).width(Length::Fill)).style(move |_: &Theme| round(pal.sidebar_bg, 8.0));
+    let footer = text(format!(
+        "Showing {count} {}",
+        if count == 1 { "member" } else { "members" }
+    ))
+    .size(13)
+    .color(pal.text_muted);
     scrollable(
         column![card, footer]
             .spacing(14)
@@ -1073,27 +1505,49 @@ fn member_row<'a>(app: &App, name: &String, online: bool, pal: Pal) -> Element<'
     let (picture, banner) = app.member_id_look(name);
     let color = app.member_color(&id).unwrap_or(pal.text);
     let held: &[i64] = app.server.member_roles.get(&id).map(|v| v.as_slice()).unwrap_or(&[]);
-    let roles: Vec<&RoleInfo> = app.server.roles.iter().filter(|r| r.id != EVERYONE_ROLE && held.contains(&r.id)).collect();
-    let who = row![super::avatar(picture, banner, name, 28.0, &pal), text(name.clone()).size(14).color(color)]
-        .spacing(10)
-        .align_y(iced::alignment::Vertical::Center)
-        .width(Length::FillPortion(MEMBER_PORTION));
+    let roles: Vec<&RoleInfo> = app
+        .server
+        .roles
+        .iter()
+        .filter(|r| r.id != EVERYONE_ROLE && held.contains(&r.id))
+        .collect();
+    let who = row![
+        super::avatar(picture, banner, name, 28.0, &pal),
+        text(name.clone()).size(14).color(color)
+    ]
+    .spacing(10)
+    .align_y(iced::alignment::Vertical::Center)
+    .width(Length::FillPortion(MEMBER_PORTION));
     let status = text(if online { "Online" } else { "Offline" })
         .size(13)
         .color(if online { pal.green } else { pal.text_muted })
         .width(Length::Fixed(STATUS_W));
     let created_at = app.profiles.get(&id).map(|p| p.created).unwrap_or(0);
-    let created = text(crate::util::joined_label(created_at)).size(13).color(pal.text_muted).width(Length::Fixed(DATE_W));
+    let created = text(crate::util::joined_label(created_at))
+        .size(13)
+        .color(pal.text_muted)
+        .width(Length::Fixed(DATE_W));
     let joined_here = app.server.member_joined.get(&id).copied().unwrap_or(0);
-    let joined = text(crate::util::joined_label(joined_here)).size(13).color(pal.text_muted).width(Length::Fixed(DATE_W));
-    let mut chips = row![].spacing(6).align_y(iced::alignment::Vertical::Center).width(Length::FillPortion(ROLES_PORTION));
+    let joined = text(crate::util::joined_label(joined_here))
+        .size(13)
+        .color(pal.text_muted)
+        .width(Length::Fixed(DATE_W));
+    let mut chips = row![]
+        .spacing(6)
+        .align_y(iced::alignment::Vertical::Center)
+        .width(Length::FillPortion(ROLES_PORTION));
     for role in roles.iter().take(3) {
         let swatch = crate::util::hex_color(&role.color).unwrap_or(pal.text_muted);
-        let dot = container(space().width(Length::Fixed(8.0)).height(Length::Fixed(8.0))).style(move |_: &Theme| round(swatch, 4.0));
+        let dot = container(space().width(Length::Fixed(8.0)).height(Length::Fixed(8.0)))
+            .style(move |_: &Theme| round(swatch, 4.0));
         let chip = row![dot, text(role.name.clone()).size(12).color(pal.text)]
             .spacing(6)
             .align_y(iced::alignment::Vertical::Center);
-        chips = chips.push(container(chip).padding(crate::util::pad2(2.0, 8.0)).style(move |_: &Theme| round(pal.hover_bg, 10.0)));
+        chips = chips.push(
+            container(chip)
+                .padding(crate::util::pad2(2.0, 8.0))
+                .style(move |_: &Theme| round(pal.hover_bg, 10.0)),
+        );
     }
     if roles.len() > 3 {
         chips = chips.push(text(format!("+{}", roles.len() - 3)).size(12).color(pal.text_muted));
@@ -1111,21 +1565,35 @@ fn member_row<'a>(app: &App, name: &String, online: bool, pal: Pal) -> Element<'
 fn badges_section(app: &App, pal: Pal) -> (Element<'_, Message>, bool) {
     let mut items: Vec<Element<'_, Message>> = vec![
         text("BADGES").size(12).color(pal.text_muted).into(),
-        text("Badges show on members' profile cards. Give them to members from a member's card.").size(13).color(pal.text_muted).into(),
+        text("Badges show on members' profile cards. Give them to members from a member's card.")
+            .size(13)
+            .color(pal.text_muted)
+            .into(),
     ];
     for badge in &app.server.badges {
-        let members = app.server.member_badges.values().filter(|ids| ids.contains(&badge.id)).count();
+        let members = app
+            .server
+            .member_badges
+            .values()
+            .filter(|ids| ids.contains(&badge.id))
+            .count();
         let color = crate::util::hex_color(&badge.color).unwrap_or(pal.text_strong);
-        let dot = container(space()).width(Length::Fixed(10.0)).height(Length::Fixed(10.0)).style(move |_: &Theme| container::Style {
-            background: Some(Background::Color(color)),
-            border: border::rounded(5.0),
-            ..container::Style::default()
-        });
+        let dot = container(space())
+            .width(Length::Fixed(10.0))
+            .height(Length::Fixed(10.0))
+            .style(move |_: &Theme| container::Style {
+                background: Some(Background::Color(color)),
+                border: border::rounded(5.0),
+                ..container::Style::default()
+            });
         items.push(
             row![
                 dot,
                 text(badge.name.clone()).size(14).color(pal.text),
-                text(pluralise(members, "member")).size(12).color(pal.text_muted).width(Length::Fill),
+                text(pluralise(members, "member"))
+                    .size(12)
+                    .color(pal.text_muted)
+                    .width(Length::Fill),
                 small_button("Delete", Message::BadgeDelete(badge.id), pal),
             ]
             .spacing(10)
@@ -1154,34 +1622,58 @@ fn badges_section(app: &App, pal: Pal) -> (Element<'_, Message>, bool) {
                     let mut ring = border::rounded(12.0);
                     ring.color = if on { pal.text_strong } else { Color::TRANSPARENT };
                     ring.width = if on { 2.0 } else { 0.0 };
-                    button::Style { background: Some(Background::Color(color)), border: ring, ..button::Style::default() }
+                    button::Style {
+                        background: Some(Background::Color(color)),
+                        border: ring,
+                        ..button::Style::default()
+                    }
                 }),
         );
     }
     items.push(swatches.into());
     items.push(small_button("Create badge", Message::BadgeCreate, pal));
-    let content = scrollable(Column::with_children(items).spacing(14).padding(crate::util::pad2(24.0, 40.0)).width(Length::Fill)).height(Length::Fill);
+    let content = scrollable(
+        Column::with_children(items)
+            .spacing(14)
+            .padding(crate::util::pad2(24.0, 40.0))
+            .width(Length::Fill),
+    )
+    .height(Length::Fill);
     (content.into(), false)
 }
 
 fn roles_section(app: &App, pal: Pal) -> (Element<'_, Message>, bool) {
     let dirty = app.role_form.as_ref().is_some_and(|draft| role_changed(app, draft));
     let selected = app.role_form.as_ref().map(|d| d.id);
-    let mut list: Vec<Element<'_, Message>> = vec![
-        row![
-            text(format!("ROLES — {}", app.server.roles.len())).size(12).color(pal.text_muted).width(Length::Fill),
-            small_button("New role", Message::RoleEdit(None), pal),
-        ]
-        .align_y(iced::alignment::Vertical::Center)
-        .into(),
-    ];
+    let mut list: Vec<Element<'_, Message>> = vec![row![
+        text(format!("ROLES — {}", app.server.roles.len()))
+            .size(12)
+            .color(pal.text_muted)
+            .width(Length::Fill),
+        small_button("New role", Message::RoleEdit(None), pal),
+    ]
+    .align_y(iced::alignment::Vertical::Center)
+    .into()];
     for role in &app.server.roles {
-        list.push(role_row(role, members_with(app, role.id), selected == Some(Some(role.id)), pal));
+        list.push(role_row(
+            role,
+            members_with(app, role.id),
+            selected == Some(Some(role.id)),
+            pal,
+        ));
     }
-    let roles_list = container(scrollable(Column::with_children(list).spacing(4).padding(crate::util::pad2(16.0, 10.0)).width(Length::Fill)).height(Length::Fill))
-        .width(Length::Fixed(240.0))
-        .height(Length::Fill)
-        .style(move |_: &Theme| round(pal.app_bg, 0.0));
+    let roles_list = container(
+        scrollable(
+            Column::with_children(list)
+                .spacing(4)
+                .padding(crate::util::pad2(16.0, 10.0))
+                .width(Length::Fill),
+        )
+        .height(Length::Fill),
+    )
+    .width(Length::Fixed(240.0))
+    .height(Length::Fill)
+    .style(move |_: &Theme| round(pal.app_bg, 0.0));
     let editor: Element<'_, Message> = match app.role_form.as_ref() {
         Some(draft) => role_editor(app, draft, pal),
         None => container(
@@ -1199,15 +1691,28 @@ fn roles_section(app: &App, pal: Pal) -> (Element<'_, Message>, bool) {
         .align_x(iced::alignment::Horizontal::Center)
         .into(),
     };
-    let body = scrollable(container(editor).padding(crate::util::pad(24.0, 32.0, 96.0, 32.0)).max_width(640.0).width(Length::Fill)).height(Length::Fill).width(Length::Fill);
+    let body = scrollable(
+        container(editor)
+            .padding(crate::util::pad(24.0, 32.0, 96.0, 32.0))
+            .max_width(640.0)
+            .width(Length::Fill),
+    )
+    .height(Length::Fill)
+    .width(Length::Fill);
     // A thin vertical line between the list of roles and the editor.
-    let rule = container(space().width(Length::Fixed(1.0)).height(Length::Fill)).height(Length::Fill).style(move |_: &Theme| round(pal.hover_bg, 0.0));
+    let rule = container(space().width(Length::Fixed(1.0)).height(Length::Fill))
+        .height(Length::Fill)
+        .style(move |_: &Theme| round(pal.hover_bg, 0.0));
     (row![roles_list, rule, body].height(Length::Fill).into(), dirty)
 }
 
 /// How many members hold a role.
 fn members_with(app: &App, role: i64) -> usize {
-    app.server.member_roles.values().filter(|held| held.contains(&role)).count()
+    app.server
+        .member_roles
+        .values()
+        .filter(|held| held.contains(&role))
+        .count()
 }
 
 /// One role in the list: a colour, its name, how many hold it, and a click to edit it.
@@ -1221,9 +1726,12 @@ fn role_row<'a>(role: &RoleInfo, members: usize, selected: bool, pal: Pal) -> El
     };
     let marker = container(space().width(Length::Fixed(3.0)).height(Length::Fixed(30.0)))
         .style(move |_: &Theme| round(if selected { pal.accent } else { Color::TRANSPARENT }, 2.0));
-    let dot = container(space().width(Length::Fixed(12.0)).height(Length::Fixed(12.0))).style(move |_: &Theme| round(color, 6.0));
+    let dot = container(space().width(Length::Fixed(12.0)).height(Length::Fixed(12.0)))
+        .style(move |_: &Theme| round(color, 6.0));
     let label = column![
-        text(role.name.clone()).size(15).color(if selected { pal.text_strong } else { pal.text }),
+        text(role.name.clone())
+            .size(15)
+            .color(if selected { pal.text_strong } else { pal.text }),
         text(subtitle).size(12).color(pal.text_muted),
     ]
     .spacing(2);
@@ -1243,7 +1751,12 @@ fn role_row<'a>(role: &RoleInfo, members: usize, selected: bool, pal: Pal) -> El
         } else {
             Color::TRANSPARENT
         };
-        button::Style { background: Some(Background::Color(bg)), text_color: pal.text, border: border::rounded(6.0), ..button::Style::default() }
+        button::Style {
+            background: Some(Background::Color(bg)),
+            text_color: pal.text,
+            border: border::rounded(6.0),
+            ..button::Style::default()
+        }
     })
     .into()
 }
@@ -1264,18 +1777,33 @@ fn role_editor<'a>(app: &'a App, draft: &'a RoleDraft, pal: Pal) -> Element<'a, 
     // A new role is always allowed here (the server checks the permission). An existing role must sit below the viewer's highest.
     let editable = draft.id.map_or(true, |id| app.outranks_role(id));
     let swatch = crate::util::hex_color(&draft.color).unwrap_or(pal.text_muted);
-    let granted = PERMISSIONS.iter().filter(|(_, _, bit)| draft.permissions & bit == *bit).count();
+    let granted = PERMISSIONS
+        .iter()
+        .filter(|(_, _, bit)| draft.permissions & bit == *bit)
+        .count();
     let (title, detail) = match draft.id {
         Some(id) => (
             draft.name.clone(),
-            format!("{} · {granted} of {} permissions", pluralise(members_with(app, id), "member"), PERMISSIONS.len()),
+            format!(
+                "{} · {granted} of {} permissions",
+                pluralise(members_with(app, id), "member"),
+                PERMISSIONS.len()
+            ),
         ),
-        None => ("New role".to_string(), "Give it a name, a colour and some permissions".to_string()),
+        None => (
+            "New role".to_string(),
+            "Give it a name, a colour and some permissions".to_string(),
+        ),
     };
     let header = container(
         row![
-            container(space().width(Length::Fixed(44.0)).height(Length::Fixed(44.0))).style(move |_: &Theme| round(swatch, 10.0)),
-            column![text(title).size(20).color(pal.text_strong), text(detail).size(13).color(pal.text_muted)].spacing(4),
+            container(space().width(Length::Fixed(44.0)).height(Length::Fixed(44.0)))
+                .style(move |_: &Theme| round(swatch, 10.0)),
+            column![
+                text(title).size(20).color(pal.text_strong),
+                text(detail).size(13).color(pal.text_muted)
+            ]
+            .spacing(4),
         ]
         .spacing(16)
         .align_y(iced::alignment::Vertical::Center),
@@ -1286,7 +1814,11 @@ fn role_editor<'a>(app: &'a App, draft: &'a RoleDraft, pal: Pal) -> Element<'a, 
 
     let mut items: Vec<Element<'a, Message>> = vec![header.into()];
     if !editable {
-        items.push(muted_text("Your highest role is not above this one, so you cannot change it.", 13.0, pal.text_muted));
+        items.push(muted_text(
+            "Your highest role is not above this one, so you cannot change it.",
+            13.0,
+            pal.text_muted,
+        ));
     }
     items.push(
         row![
@@ -1313,7 +1845,11 @@ fn role_editor<'a>(app: &'a App, draft: &'a RoleDraft, pal: Pal) -> Element<'a, 
         }
         Some(id) => {
             if editable && !everyone {
-                buttons = buttons.push(link("Delete role", Message::RoleDeleteAsk(id, draft.name.clone()), pal.red));
+                buttons = buttons.push(link(
+                    "Delete role",
+                    Message::RoleDeleteAsk(id, draft.name.clone()),
+                    pal.red,
+                ));
             }
         }
     }
@@ -1339,14 +1875,27 @@ fn tab_button<'a>(label: &str, tab: RoleTab, active: RoleTab, pal: Pal) -> Eleme
     let title = button(text(label.to_string()).size(15).color(color))
         .padding(crate::util::pad2(4.0, 2.0))
         .on_press(Message::RoleTab(tab))
-        .style(|_: &Theme, _: button::Status| button::Style { background: None, ..button::Style::default() });
+        .style(|_: &Theme, _: button::Status| button::Style {
+            background: None,
+            ..button::Style::default()
+        });
     column![title, underline].spacing(4).width(Length::Shrink).into()
 }
 
-fn display_tab<'a>(app: &'a App, draft: &'a RoleDraft, everyone: bool, editable: bool, pal: Pal) -> Vec<Element<'a, Message>> {
+fn display_tab<'a>(
+    app: &'a App,
+    draft: &'a RoleDraft,
+    everyone: bool,
+    editable: bool,
+    pal: Pal,
+) -> Vec<Element<'a, Message>> {
     let mut items: Vec<Element<'a, Message>> = Vec::new();
     if everyone {
-        items.push(muted_text("Every member holds @everyone. Its colour and permissions apply to everyone.", 13.0, pal.text_muted));
+        items.push(muted_text(
+            "Every member holds @everyone. Its colour and permissions apply to everyone.",
+            13.0,
+            pal.text_muted,
+        ));
     }
     let mut name = text_input("Moderator", &draft.name).padding(10).style(input_style(pal));
     if editable && !everyone {
@@ -1368,7 +1917,11 @@ fn display_tab<'a>(app: &'a App, draft: &'a RoleDraft, everyone: bool, editable:
                     let mut ring = border::rounded(13.0);
                     ring.color = if on { pal.text_strong } else { Color::TRANSPARENT };
                     ring.width = if on { 2.0 } else { 0.0 };
-                    button::Style { background: Some(Background::Color(color)), border: ring, ..button::Style::default() }
+                    button::Style {
+                        background: Some(Background::Color(color)),
+                        border: ring,
+                        ..button::Style::default()
+                    }
                 });
             if editable {
                 swatch = swatch.on_press(Message::RoleColorPick(hex.to_string()));
@@ -1381,16 +1934,27 @@ fn display_tab<'a>(app: &'a App, draft: &'a RoleDraft, everyone: bool, editable:
     if editable {
         items.push(field(
             "Custom colour",
-            text_input("#rrggbb, or empty for none", &draft.color).on_input(Message::RoleDraftColor).padding(10).style(input_style(pal)).into(),
+            text_input("#rrggbb, or empty for none", &draft.color)
+                .on_input(Message::RoleDraftColor)
+                .padding(10)
+                .style(input_style(pal))
+                .into(),
         ));
     }
     let preview = crate::util::hex_color(&draft.color).unwrap_or(pal.text_strong);
-    let shown = if draft.name.trim().is_empty() { "Role name".to_string() } else { draft.name.trim().to_string() };
+    let shown = if draft.name.trim().is_empty() {
+        "Role name".to_string()
+    } else {
+        draft.name.trim().to_string()
+    };
     items.push(
-        row![text("Preview").size(13).color(pal.text_muted), text(shown).size(15).color(preview)]
-            .spacing(10)
-            .align_y(iced::alignment::Vertical::Center)
-            .into(),
+        row![
+            text("Preview").size(13).color(pal.text_muted),
+            text(shown).size(15).color(preview)
+        ]
+        .spacing(10)
+        .align_y(iced::alignment::Vertical::Center)
+        .into(),
     );
 
     // How the role behaves for members: pinged by name, and grouped in the member list.
@@ -1416,14 +1980,24 @@ fn display_tab<'a>(app: &'a App, draft: &'a RoleDraft, everyone: bool, editable:
     // Moving is among the real roles. @everyone stays at the bottom.
     if let Some(id) = draft.id {
         if editable && !everyone {
-            let real: Vec<i64> = app.server.roles.iter().map(|r| r.id).filter(|&r| r != EVERYONE_ROLE).collect();
+            let real: Vec<i64> = app
+                .server
+                .roles
+                .iter()
+                .map(|r| r.id)
+                .filter(|&r| r != EVERYONE_ROLE)
+                .collect();
             if let Some(index) = real.iter().position(|&r| r == id) {
                 let mut moves = row![].spacing(12);
                 if index > 0 {
                     moves = moves.push(link("Move up", Message::RoleMove(id, Some(real[index - 1])), pal.link));
                 }
                 if index + 1 < real.len() {
-                    moves = moves.push(link("Move down", Message::RoleMove(id, real.get(index + 2).copied()), pal.link));
+                    moves = moves.push(link(
+                        "Move down",
+                        Message::RoleMove(id, real.get(index + 2).copied()),
+                        pal.link,
+                    ));
                 }
                 items.push(moves.into());
             }
@@ -1433,13 +2007,24 @@ fn display_tab<'a>(app: &'a App, draft: &'a RoleDraft, everyone: bool, editable:
 }
 
 /// A labelled switch for a role option. `on_toggle` is `None` where the role cannot be changed.
-fn flag_row<'a>(label: &'a str, hint: &'a str, on: bool, on_toggle: Option<fn(bool) -> Message>, pal: Pal) -> Element<'a, Message> {
+fn flag_row<'a>(
+    label: &'a str,
+    hint: &'a str,
+    on: bool,
+    on_toggle: Option<fn(bool) -> Message>,
+    pal: Pal,
+) -> Element<'a, Message> {
     let mut switch = toggler(on);
     if let Some(msg) = on_toggle {
         switch = switch.on_toggle(msg);
     }
     row![
-        column![text(label).size(15).color(pal.text_strong), muted_text(hint, 12.0, pal.text_muted)].spacing(4).width(Length::Fill),
+        column![
+            text(label).size(15).color(pal.text_strong),
+            muted_text(hint, 12.0, pal.text_muted)
+        ]
+        .spacing(4)
+        .width(Length::Fill),
         switch,
     ]
     .spacing(12)
@@ -1451,15 +2036,24 @@ fn flag_row<'a>(label: &'a str, hint: &'a str, on: bool, on_toggle: Option<fn(bo
 /// non-@everyone role that gives one up while no other role has it leaves nobody with it, which can
 /// lock people out. Empty when the save is safe.
 pub(crate) fn lockout_risk(app: &App, draft: &RoleDraft) -> Vec<&'static str> {
-    let Some(id) = draft.id else { return Vec::new() };
+    let Some(id) = draft.id else {
+        return Vec::new();
+    };
     if id == common::EVERYONE_ROLE {
         return Vec::new();
     }
-    let Some(current) = app.server.roles.iter().find(|r| r.id == id) else { return Vec::new() };
+    let Some(current) = app.server.roles.iter().find(|r| r.id == id) else {
+        return Vec::new();
+    };
     let mut lost = Vec::new();
-    for (bit, label) in [(common::perm::VIEW_CHANNEL, "View channels"), (common::perm::SEND_MESSAGES, "Message channels")] {
+    for (bit, label) in [
+        (common::perm::VIEW_CHANNEL, "View channels"),
+        (common::perm::SEND_MESSAGES, "Message channels"),
+    ] {
         let removed = current.permissions & bit != 0 && draft.permissions & bit == 0;
-        let others_hold = app.server.roles.iter().any(|r| r.id != common::EVERYONE_ROLE && r.id != id && r.permissions & (bit | common::perm::ADMINISTRATOR) != 0);
+        let others_hold = app.server.roles.iter().any(|r| {
+            r.id != common::EVERYONE_ROLE && r.id != id && r.permissions & (bit | common::perm::ADMINISTRATOR) != 0
+        });
         if removed && !others_hold {
             lost.push(label);
         }
@@ -1475,7 +2069,11 @@ pub(crate) fn grants_administrator(app: &App, draft: &RoleDraft) -> bool {
     }
     match draft.id {
         None => true,
-        Some(id) => !app.server.roles.iter().any(|r| r.id == id && r.permissions & common::perm::ADMINISTRATOR != 0),
+        Some(id) => !app
+            .server
+            .roles
+            .iter()
+            .any(|r| r.id == id && r.permissions & common::perm::ADMINISTRATOR != 0),
     }
 }
 
@@ -1485,7 +2083,11 @@ pub(crate) fn everyone_keeps(app: &App, role: Option<i64>, bit: u32) -> bool {
     let kept = common::perm::VIEW_CHANNEL | common::perm::SEND_MESSAGES;
     role == Some(common::EVERYONE_ROLE)
         && kept & bit != 0
-        && !app.server.roles.iter().any(|r| r.id != common::EVERYONE_ROLE && r.permissions & (bit | common::perm::ADMINISTRATOR) != 0)
+        && !app
+            .server
+            .roles
+            .iter()
+            .any(|r| r.id != common::EVERYONE_ROLE && r.permissions & (bit | common::perm::ADMINISTRATOR) != 0)
 }
 
 fn permissions_tab<'a>(app: &'a App, draft: &'a RoleDraft, editable: bool, pal: Pal) -> Vec<Element<'a, Message>> {
@@ -1511,7 +2113,12 @@ fn permissions_tab<'a>(app: &'a App, draft: &'a RoleDraft, editable: bool, pal: 
         };
         items.push(
             row![
-                column![text(label).size(15).color(pal.text_strong), muted_text(hint, 12.0, pal.text_muted)].spacing(4).width(Length::Fill),
+                column![
+                    text(label).size(15).color(pal.text_strong),
+                    muted_text(hint, 12.0, pal.text_muted)
+                ]
+                .spacing(4)
+                .width(Length::Fill),
                 toggle,
             ]
             .spacing(12)
@@ -1527,7 +2134,11 @@ pub fn join_server(app: &App, pal: Pal) -> Element<'_, Message> {
     let add = &app.add_server;
     let mut items: Vec<Element<'_, Message>> = vec![
         text("Join a Server").size(20).color(pal.text_strong).into(),
-        muted_text("Enter an address below to join an existing server", 13.0, pal.text_muted),
+        muted_text(
+            "Enter an address below to join an existing server",
+            13.0,
+            pal.text_muted,
+        ),
         field(
             "Server address",
             text_input("chat.example.com", &add.addr)
@@ -1538,7 +2149,11 @@ pub fn join_server(app: &App, pal: Pal) -> Element<'_, Message> {
                 .style(input_style(pal))
                 .into(),
         ),
-        muted_text("Addresses should look like chat.example.com or myserver.example.net", 12.0, pal.text_muted),
+        muted_text(
+            "Addresses should look like chat.example.com or myserver.example.net",
+            12.0,
+            pal.text_muted,
+        ),
     ];
     if let Some(err) = &add.error {
         items.push(text(err.clone()).size(13).color(pal.red).into());
@@ -1547,7 +2162,9 @@ pub fn join_server(app: &App, pal: Pal) -> Element<'_, Message> {
         button(row![
             column![
                 text("Don't have an address?").size(14).color(pal.text_strong),
-                text("Find servers on your network and the internet").size(12).color(pal.text_muted),
+                text("Find servers on your network and the internet")
+                    .size(12)
+                    .color(pal.text_muted),
             ]
             .width(Length::Fill),
             icons::icon(icons::CHEVRON_RIGHT, 14.0, pal.text_muted),
@@ -1555,14 +2172,25 @@ pub fn join_server(app: &App, pal: Pal) -> Element<'_, Message> {
         .padding(Padding::from(10.0))
         .width(Length::Fill)
         .on_press(Message::FromAddDiscover)
-        .style(move |_: &Theme, _| button::Style { background: Some(Background::Color(pal.input_bg)), text_color: pal.text, border: border::rounded(6.0), ..button::Style::default() })
+        .style(move |_: &Theme, _| button::Style {
+            background: Some(Background::Color(pal.input_bg)),
+            text_color: pal.text,
+            border: border::rounded(6.0),
+            ..button::Style::default()
+        })
         .into(),
     );
     items.push(
         row![
             space().width(Length::Fill),
             link("Back", Message::AddServerClose, pal.text_muted),
-            solid("Join Server", Message::AddServerSubmit, pal.accent, pal.on_color, Some(132.0)),
+            solid(
+                "Join Server",
+                Message::AddServerSubmit,
+                pal.accent,
+                pal.on_color,
+                Some(132.0)
+            ),
         ]
         .spacing(10)
         .align_y(iced::alignment::Vertical::Center)
@@ -1570,7 +2198,6 @@ pub fn join_server(app: &App, pal: Pal) -> Element<'_, Message> {
     );
     modal(items, pal, Message::AddServerClose)
 }
-
 
 /// The edit page of a channel, opened from its menu: its name, and what each role may do there.
 pub fn channel_edit(app: &App, channel: i64, pal: Pal) -> Element<'_, Message> {
@@ -1580,22 +2207,54 @@ pub fn channel_edit(app: &App, channel: i64, pal: Pal) -> Element<'_, Message> {
     let section = app.edit_section;
     let content = match section {
         EditSection::Overview => settings_column(vec![
-            name_field(draft, crate::app::RENAME_ID, Message::RenameInput, Message::RenameSubmit, "Channel Name", "new-channel-name", pal),
-            muted_text("Messages and the channel's place in its category move with it.", 13.0, pal.text_muted),
+            name_field(
+                draft,
+                crate::app::RENAME_ID,
+                Message::RenameInput,
+                Message::RenameSubmit,
+                "Channel Name",
+                "new-channel-name",
+                pal,
+            ),
+            muted_text(
+                "Messages and the channel's place in its category move with it.",
+                13.0,
+                pal.text_muted,
+            ),
         ]),
-        EditSection::Permissions => settings_column(vec![access_page(app, crate::app::AccessTarget::Channel(channel), pal)]),
+        EditSection::Permissions => {
+            settings_column(vec![access_page(app, crate::app::AccessTarget::Channel(channel), pal)])
+        }
     };
     let nav = page_nav(
         &format!("#{name}"),
         vec![
-            ("Overview", Message::EditSectionPick(EditSection::Overview), section == EditSection::Overview),
-            ("Permissions", Message::EditSectionPick(EditSection::Permissions), section == EditSection::Permissions),
+            (
+                "Overview",
+                Message::EditSectionPick(EditSection::Overview),
+                section == EditSection::Overview,
+            ),
+            (
+                "Permissions",
+                Message::EditSectionPick(EditSection::Permissions),
+                section == EditSection::Permissions,
+            ),
         ],
         pal,
     );
     let page = settings_frame(nav, content, Message::ChannelEditClose, pal);
     if dirty {
-        iced::widget::stack![page, unsaved_bar(app, pal, Message::EditPageReset, Message::EditPageSave, "Careful – you have unsaved changes!")].into()
+        iced::widget::stack![
+            page,
+            unsaved_bar(
+                app,
+                pal,
+                Message::EditPageReset,
+                Message::EditPageSave,
+                "Careful – you have unsaved changes!"
+            )
+        ]
+        .into()
     } else {
         page
     }
@@ -1604,26 +2263,49 @@ pub fn channel_edit(app: &App, channel: i64, pal: Pal) -> Element<'_, Message> {
 /// The edit page of a category, opened from its menu: its name and permissions, and deleting it.
 /// Deleting it keeps its channels, which become uncategorized.
 pub fn category_edit(app: &App, pal: Pal) -> Element<'_, Message> {
-    let (id, old, draft) = app.category_edit.as_ref().map_or((0, "", ""), |(id, old, new)| (*id, old.as_str(), new.as_str()));
+    let (id, old, draft) = app
+        .category_edit
+        .as_ref()
+        .map_or((0, "", ""), |(id, old, new)| (*id, old.as_str(), new.as_str()));
     let dirty = app.edit_dirty();
     let section = app.edit_section;
     let delete = button(
-        row![icons::icon(icons::TRASH, 16.0, pal.red), text("Delete Category").size(15).color(pal.red)]
-            .spacing(8)
-            .align_y(iced::alignment::Vertical::Center),
+        row![
+            icons::icon(icons::TRASH, 16.0, pal.red),
+            text("Delete Category").size(15).color(pal.red)
+        ]
+        .spacing(8)
+        .align_y(iced::alignment::Vertical::Center),
     )
     .width(Length::Fill)
     .padding(crate::util::pad2(6.0, 10.0))
     .on_press(Message::DeleteCategoryAsk(id, old.to_string()))
     .style(move |_: &Theme, status: button::Status| {
-        let bg = if matches!(status, button::Status::Hovered) { pal.hover_bg } else { Color::TRANSPARENT };
-        button::Style { background: Some(Background::Color(bg)), text_color: pal.red, border: border::rounded(4.0), ..button::Style::default() }
+        let bg = if matches!(status, button::Status::Hovered) {
+            pal.hover_bg
+        } else {
+            Color::TRANSPARENT
+        };
+        button::Style {
+            background: Some(Background::Color(bg)),
+            text_color: pal.red,
+            border: border::rounded(4.0),
+            ..button::Style::default()
+        }
     });
     let nav = category_nav(
         old,
         vec![
-            ("Overview", Message::EditSectionPick(EditSection::Overview), section == EditSection::Overview),
-            ("Permissions", Message::EditSectionPick(EditSection::Permissions), section == EditSection::Permissions),
+            (
+                "Overview",
+                Message::EditSectionPick(EditSection::Overview),
+                section == EditSection::Overview,
+            ),
+            (
+                "Permissions",
+                Message::EditSectionPick(EditSection::Permissions),
+                section == EditSection::Permissions,
+            ),
         ],
         delete,
         pal,
@@ -1631,20 +2313,45 @@ pub fn category_edit(app: &App, pal: Pal) -> Element<'_, Message> {
     let content = match section {
         EditSection::Overview => settings_column(vec![
             text("Overview").size(20).color(pal.text_strong).into(),
-            name_field(draft, crate::app::CATEGORY_EDIT_ID, Message::CategoryEditInput, Message::CategoryEditSubmit, "Category Name", "new-category-name", pal),
+            name_field(
+                draft,
+                crate::app::CATEGORY_EDIT_ID,
+                Message::CategoryEditInput,
+                Message::CategoryEditSubmit,
+                "Category Name",
+                "new-category-name",
+                pal,
+            ),
         ]),
-        EditSection::Permissions => settings_column(vec![access_page(app, crate::app::AccessTarget::Category(id), pal)]),
+        EditSection::Permissions => {
+            settings_column(vec![access_page(app, crate::app::AccessTarget::Category(id), pal)])
+        }
     };
     let page = settings_frame(nav, content, Message::CategoryEditClose, pal);
     if dirty {
-        iced::widget::stack![page, unsaved_bar(app, pal, Message::EditPageReset, Message::EditPageSave, "Careful – you have unsaved changes!")].into()
+        iced::widget::stack![
+            page,
+            unsaved_bar(
+                app,
+                pal,
+                Message::EditPageReset,
+                Message::EditPageSave,
+                "Careful – you have unsaved changes!"
+            )
+        ]
+        .into()
     } else {
         page
     }
 }
 
 /// The navigation of the category page: the folder and its name, its sections, then Delete at the bottom.
-fn category_nav<'a>(name: &str, items: Vec<(&str, Message, bool)>, delete: impl Into<Element<'a, Message>>, pal: Pal) -> Element<'a, Message> {
+fn category_nav<'a>(
+    name: &str,
+    items: Vec<(&str, Message, bool)>,
+    delete: impl Into<Element<'a, Message>>,
+    pal: Pal,
+) -> Element<'a, Message> {
     let header = row![
         icons::icon(icons::FOLDER, 14.0, pal.text_muted),
         text(name.to_uppercase()).size(12).color(pal.text_muted),
@@ -1734,11 +2441,17 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
         column![
             row![
                 icons::icon(icons::LOCK, 16.0, pal.text_strong),
-                text(format!("Private {}", if is_category { "Category" } else { "Channel" })).size(15).color(pal.text_strong).width(Length::Fill),
+                text(format!("Private {}", if is_category { "Category" } else { "Channel" }))
+                    .size(15)
+                    .color(pal.text_strong)
+                    .width(Length::Fill),
                 toggler(private).on_toggle(move |on| Message::AccessDraftSet {
                     target,
                     subject: Subject::Role(EVERYONE_ROLE),
-                    setting: Setting { view: if on { Some(false) } else { None }, ..everyone_setting },
+                    setting: Setting {
+                        view: if on { Some(false) } else { None },
+                        ..everyone_setting
+                    },
                 }),
             ]
             .spacing(10)
@@ -1768,14 +2481,22 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
     }
     let mut access = Column::new().spacing(14);
     if listed.is_empty() {
-        let note = if private { format!("No roles or users can view this {noun} yet.") } else { format!("Everyone can view this {noun}.") };
+        let note = if private {
+            format!("No roles or users can view this {noun} yet.")
+        } else {
+            format!("Everyone can view this {noun}.")
+        };
         access = access.push(muted_text(note, 13.0, pal.text_muted));
     }
     let mut role_rows = Column::new().spacing(10);
     let mut member_rows = Column::new().spacing(10);
     let (mut any_role, mut any_member) = (false, false);
     for (subject, name) in &listed {
-        let remove = Message::AccessDraftSet { target, subject: subject.clone(), setting: Setting::default() };
+        let remove = Message::AccessDraftSet {
+            target,
+            subject: subject.clone(),
+            setting: Setting::default(),
+        };
         let description = match subject {
             Subject::Role(_) => "Server Role".to_string(),
             Subject::Member(id) => member_standing(app, id),
@@ -1783,12 +2504,19 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
         match subject {
             Subject::Role(_) => {
                 let colour = role_colour(app, subject).unwrap_or(pal.text_muted);
-                let dot = container(space()).width(Length::Fixed(12.0)).height(Length::Fixed(12.0)).style(move |_: &Theme| round(colour, 6.0));
+                let dot = container(space())
+                    .width(Length::Fixed(12.0))
+                    .height(Length::Fixed(12.0))
+                    .style(move |_: &Theme| round(colour, 6.0));
                 role_rows = role_rows.push(access_row(dot.into(), name, colour, description, remove, pal));
                 any_role = true;
             }
             Subject::Member(_) => {
-                let initial = name.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_default();
+                let initial = name
+                    .chars()
+                    .next()
+                    .map(|c| c.to_uppercase().to_string())
+                    .unwrap_or_default();
                 let avatar = container(text(initial).size(11).color(pal.text))
                     .width(Length::Fixed(22.0))
                     .height(Length::Fixed(22.0))
@@ -1807,8 +2535,17 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
         access = access.push(subheading("Roles", pal)).push(role_rows);
     }
     let who_head = row![
-        text(format!("Who can access this {noun}?")).size(15).color(pal.text_strong).width(Length::Fill),
-        solid("Add users or roles", Message::AccessAddOpen(target), pal.accent, pal.on_color, None),
+        text(format!("Who can access this {noun}?"))
+            .size(15)
+            .color(pal.text_strong)
+            .width(Length::Fill),
+        solid(
+            "Add users or roles",
+            Message::AccessAddOpen(target),
+            pal.accent,
+            pal.on_color,
+            None
+        ),
     ]
     .spacing(12)
     .align_y(iced::alignment::Vertical::Center);
@@ -1831,7 +2568,12 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
         )
     };
     for (subject, name) in listed.iter().filter(|(s, _)| matches!(s, Subject::Member(_))) {
-        subject_list = subject_list.push(nav_button(name, Message::AccessSubjectPick(subject.clone()), selected == *subject, pal));
+        subject_list = subject_list.push(nav_button(
+            name,
+            Message::AccessSubjectPick(subject.clone()),
+            selected == *subject,
+            pal,
+        ));
     }
     for role in app.server.roles.iter().filter(|r| r.id != EVERYONE_ROLE) {
         subject_list = subject_list.push(role_item(role));
@@ -1868,14 +2610,23 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
         "Lets members delete other members' messages in this channel."
     };
     let settings = column![
-        text(format!("General {} Permissions", if is_category { "Category" } else { "Channel" })).size(15).color(pal.text_strong),
+        text(format!(
+            "General {} Permissions",
+            if is_category { "Category" } else { "Channel" }
+        ))
+        .size(15)
+        .color(pal.text_strong),
         perm_row(
             "View Channels",
             view_hint,
             current.view,
             {
                 let subject = selected.clone();
-                move |v| Message::AccessDraftSet { target, subject: subject.clone(), setting: Setting { view: v, ..current } }
+                move |v| Message::AccessDraftSet {
+                    target,
+                    subject: subject.clone(),
+                    setting: Setting { view: v, ..current },
+                }
             },
             everyone_locked,
             pal,
@@ -1887,7 +2638,11 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
             current.send,
             {
                 let subject = selected.clone();
-                move |v| Message::AccessDraftSet { target, subject: subject.clone(), setting: Setting { send: v, ..current } }
+                move |v| Message::AccessDraftSet {
+                    target,
+                    subject: subject.clone(),
+                    setting: Setting { send: v, ..current },
+                }
             },
             everyone_locked,
             pal,
@@ -1899,7 +2654,14 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
             current.manage_channels,
             {
                 let subject = selected.clone();
-                move |v| Message::AccessDraftSet { target, subject: subject.clone(), setting: Setting { manage_channels: v, ..current } }
+                move |v| Message::AccessDraftSet {
+                    target,
+                    subject: subject.clone(),
+                    setting: Setting {
+                        manage_channels: v,
+                        ..current
+                    },
+                }
             },
             false,
             pal,
@@ -1911,7 +2673,14 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
             current.manage_messages,
             {
                 let subject = selected.clone();
-                move |v| Message::AccessDraftSet { target, subject: subject.clone(), setting: Setting { manage_messages: v, ..current } }
+                move |v| Message::AccessDraftSet {
+                    target,
+                    subject: subject.clone(),
+                    setting: Setting {
+                        manage_messages: v,
+                        ..current
+                    },
+                }
             },
             false,
             pal,
@@ -1936,13 +2705,30 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
 /// so Save applies them.
 fn sync_row<'a>(app: &App, channel: i64, pal: Pal) -> Element<'a, Message> {
     let body: Element<'a, Message> = match app.category_of_channel(channel) {
-        None => muted_text("This channel is not in a category, so there is nothing to sync with.", 13.0, pal.text_muted),
+        None => muted_text(
+            "This channel is not in a category, so there is nothing to sync with.",
+            13.0,
+            pal.text_muted,
+        ),
         Some((category, name)) => {
             let synced = app.channel_synced(channel, category);
-            let status = if synced { format!("Synced with the category \"{name}\"") } else { format!("Not synced with the category \"{name}\"") };
+            let status = if synced {
+                format!("Synced with the category \"{name}\"")
+            } else {
+                format!("Not synced with the category \"{name}\"")
+            };
             row![
-                text(status).size(13).color(if synced { pal.green } else { pal.text_muted }).width(Length::Fill),
-                solid("Sync with category", Message::ChannelSyncWithCategory(channel), pal.accent, pal.on_color, None),
+                text(status)
+                    .size(13)
+                    .color(if synced { pal.green } else { pal.text_muted })
+                    .width(Length::Fill),
+                solid(
+                    "Sync with category",
+                    Message::ChannelSyncWithCategory(channel),
+                    pal.accent,
+                    pal.on_color,
+                    None
+                ),
             ]
             .spacing(12)
             .align_y(iced::alignment::Vertical::Center)
@@ -1958,7 +2744,12 @@ fn sync_row<'a>(app: &App, channel: i64, pal: Pal) -> Element<'a, Message> {
 
 /// Every member of the server as (account id, name), by name.
 pub fn member_entries(app: &App) -> Vec<(String, String)> {
-    let mut members: Vec<(String, String)> = app.server.member_ids.iter().map(|(name, id)| (id.clone(), name.clone())).collect();
+    let mut members: Vec<(String, String)> = app
+        .server
+        .member_ids
+        .iter()
+        .map(|(name, id)| (id.clone(), name.clone()))
+        .collect();
     members.sort_by_key(|(_, name)| name.to_lowercase());
     members
 }
@@ -1982,7 +2773,14 @@ fn subheading<'a>(label: &str, pal: Pal) -> Element<'a, Message> {
 }
 
 /// One row of an access list: its icon, its name, what it allows, and a remove button.
-fn access_row<'a>(leading: Element<'a, Message>, name: &str, colour: Color, description: String, remove: Message, pal: Pal) -> Element<'a, Message> {
+fn access_row<'a>(
+    leading: Element<'a, Message>,
+    name: &str,
+    colour: Color,
+    description: String,
+    remove: Message,
+    pal: Pal,
+) -> Element<'a, Message> {
     row![
         leading,
         text(name.to_string()).size(14).color(colour).width(Length::Fill),
@@ -1991,7 +2789,11 @@ fn access_row<'a>(leading: Element<'a, Message>, name: &str, colour: Color, desc
             .padding(crate::util::pad2(3.0, 4.0))
             .on_press(remove)
             .style(move |_: &Theme, status: button::Status| button::Style {
-                background: Some(Background::Color(if matches!(status, button::Status::Hovered) { pal.hover_bg } else { Color::TRANSPARENT })),
+                background: Some(Background::Color(if matches!(status, button::Status::Hovered) {
+                    pal.hover_bg
+                } else {
+                    Color::TRANSPARENT
+                })),
                 border: border::rounded(4.0),
                 ..button::Style::default()
             }),
@@ -2004,7 +2806,12 @@ fn access_row<'a>(leading: Element<'a, Message>, name: &str, colour: Color, desc
 /// The colour a role or member shows in: a role's own colour, or none for a member.
 pub fn role_colour(app: &App, subject: &common::Subject) -> Option<Color> {
     match subject {
-        common::Subject::Role(id) => app.server.roles.iter().find(|r| r.id == *id).and_then(|r| crate::util::hex_color(&r.color)),
+        common::Subject::Role(id) => app
+            .server
+            .roles
+            .iter()
+            .find(|r| r.id == *id)
+            .and_then(|r| crate::util::hex_color(&r.color)),
         common::Subject::Member(_) => None,
     }
 }
@@ -2020,7 +2827,9 @@ fn perm_row<'a>(
 ) -> Element<'a, Message> {
     row![
         column![
-            text(title.to_string()).size(14).color(if locked { pal.text_muted } else { pal.text }),
+            text(title.to_string())
+                .size(14)
+                .color(if locked { pal.text_muted } else { pal.text }),
             text(hint.to_string()).size(12).color(pal.text_muted),
         ]
         .spacing(4)
@@ -2035,7 +2844,12 @@ fn perm_row<'a>(
 
 /// Deny (✕), inherit (slash) or allow (✓) as three icons in one control. The chosen one is lit.
 /// A locked control shows its setting but cannot be changed.
-fn tristate<'a>(value: Option<bool>, on_pick: impl Fn(Option<bool>) -> Message, locked: bool, pal: Pal) -> Element<'a, Message> {
+fn tristate<'a>(
+    value: Option<bool>,
+    on_pick: impl Fn(Option<bool>) -> Message,
+    locked: bool,
+    pal: Pal,
+) -> Element<'a, Message> {
     let segment = |icon: &'static str, colour: Color, choice: Option<bool>| -> Element<'a, Message> {
         let selected = value == choice;
         let mut control = button(icons::icon(icon, 14.0, if selected { colour } else { pal.text_muted }))
@@ -2052,16 +2866,22 @@ fn tristate<'a>(value: Option<bool>, on_pick: impl Fn(Option<bool>) -> Message, 
                 } else {
                     Color::TRANSPARENT
                 };
-                button::Style { background: Some(Background::Color(bg)), border: border::rounded(4.0), ..button::Style::default() }
+                button::Style {
+                    background: Some(Background::Color(bg)),
+                    border: border::rounded(4.0),
+                    ..button::Style::default()
+                }
             })
             .into()
     };
-    container(row![
-        segment(icons::CLOSE, pal.red, Some(false)),
-        segment(icons::SLASH, pal.text_strong, None),
-        segment(icons::CHECK, pal.green, Some(true)),
-    ]
-    .spacing(2))
+    container(
+        row![
+            segment(icons::CLOSE, pal.red, Some(false)),
+            segment(icons::SLASH, pal.text_strong, None),
+            segment(icons::CHECK, pal.green, Some(true)),
+        ]
+        .spacing(2),
+    )
     .padding(2)
     .style(move |_: &Theme| round(pal.app_bg, 6.0))
     .into()

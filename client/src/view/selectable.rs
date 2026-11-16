@@ -40,6 +40,8 @@ pub struct Unit {
 pub enum Step {
     Press(usize),
     Over(usize),
+    /// The mouse was pressed somewhere else while this block held part of the selection.
+    Outside,
 }
 
 /// Splits every unit into one unit per grapheme cluster, so each can be selected on its own.
@@ -47,7 +49,10 @@ pub fn split(units: Vec<Unit>) -> Vec<Unit> {
     let mut out = Vec::new();
     for unit in units {
         for grapheme in unit.text.graphemes(true) {
-            out.push(Unit { text: grapheme.to_string(), ..unit.clone() });
+            out.push(Unit {
+                text: grapheme.to_string(),
+                ..unit.clone()
+            });
         }
     }
     out
@@ -89,11 +94,23 @@ pub fn selectable<'a, Message: 'a>(
     on_step: impl Fn(Step) -> Message + 'a,
     open: fn(String) -> Message,
 ) -> Element<'a, Message> {
-    Element::new(Selectable { units, size, selection, selected, dragging, on_step: Box::new(on_step), open })
+    Element::new(Selectable {
+        units,
+        size,
+        selection,
+        selected,
+        dragging,
+        on_step: Box::new(on_step),
+        open,
+    })
 }
 
 fn span_of(unit: &Unit) -> Span<'static, String> {
-    let mut font = if unit.code { iced::Font::MONOSPACE } else { iced::Font::DEFAULT };
+    let mut font = if unit.code {
+        iced::Font::MONOSPACE
+    } else {
+        iced::Font::DEFAULT
+    };
     if unit.bold {
         font.weight = iced::font::Weight::Bold;
     }
@@ -183,7 +200,10 @@ impl<Message> Widget<Message, iced::Theme, iced::Renderer> for Selectable<'_, Me
     }
 
     fn size(&self) -> iced::Size<Length> {
-        Size { width: Length::Shrink, height: Length::Shrink }
+        Size {
+            width: Length::Shrink,
+            height: Length::Shrink,
+        }
     }
 
     fn layout(&mut self, tree: &mut Tree, renderer: &iced::Renderer, limits: &layout::Limits) -> layout::Node {
@@ -264,14 +284,24 @@ impl<Message> Widget<Message, iced::Theme, iced::Renderer> for Selectable<'_, Me
                     Size::new(rect.width + 8.0, rect.height + 2.0),
                 );
                 renderer.fill_quad(
-                    Quad { bounds: chip + origin, border: border::rounded(3.0), ..Quad::default() },
+                    Quad {
+                        bounds: chip + origin,
+                        border: border::rounded(3.0),
+                        ..Quad::default()
+                    },
                     background,
                 );
             }
         }
         if let Some(range) = self.selected.clone() {
             for rect in self.regions(state, range) {
-                renderer.fill_quad(Quad { bounds: rect + origin, ..Quad::default() }, self.selection);
+                renderer.fill_quad(
+                    Quad {
+                        bounds: rect + origin,
+                        ..Quad::default()
+                    },
+                    self.selection,
+                );
             }
         }
 
@@ -283,17 +313,42 @@ impl<Message> Widget<Message, iced::Theme, iced::Renderer> for Selectable<'_, Me
             for rect in state.paragraph.span_bounds(index) {
                 let color = unit.color;
                 if unit.underline {
-                    let line = Rectangle::new(Point::new(rect.x, rect.y + rect.height - 2.0), Size::new(rect.width, 1.0));
-                    renderer.fill_quad(Quad { bounds: line + origin, ..Quad::default() }, color);
+                    let line = Rectangle::new(
+                        Point::new(rect.x, rect.y + rect.height - 2.0),
+                        Size::new(rect.width, 1.0),
+                    );
+                    renderer.fill_quad(
+                        Quad {
+                            bounds: line + origin,
+                            ..Quad::default()
+                        },
+                        color,
+                    );
                 }
                 if unit.strike {
-                    let line = Rectangle::new(Point::new(rect.x, rect.y + rect.height * 0.5), Size::new(rect.width, 1.0));
-                    renderer.fill_quad(Quad { bounds: line + origin, ..Quad::default() }, color);
+                    let line = Rectangle::new(
+                        Point::new(rect.x, rect.y + rect.height * 0.5),
+                        Size::new(rect.width, 1.0),
+                    );
+                    renderer.fill_quad(
+                        Quad {
+                            bounds: line + origin,
+                            ..Quad::default()
+                        },
+                        color,
+                    );
                 }
             }
         }
 
-        widget_text::draw(renderer, defaults, layout.bounds(), &state.paragraph, widget_text::Style::default(), viewport);
+        widget_text::draw(
+            renderer,
+            defaults,
+            layout.bounds(),
+            &state.paragraph,
+            widget_text::Style::default(),
+            viewport,
+        );
     }
 
     fn update(
@@ -321,6 +376,8 @@ impl<Message> Widget<Message, iced::Theme, iced::Renderer> for Selectable<'_, Me
                     state.pressed_link = self.units[index].link.as_ref().map(|_| index);
                     shell.publish((self.on_step)(Step::Press(index)));
                     shell.capture_event();
+                } else if self.selected.as_ref().is_some_and(|r| !r.is_empty()) {
+                    shell.publish((self.on_step)(Step::Outside));
                 }
             }
             Event::Mouse(mouse::Event::CursorMoved { .. }) => {
@@ -362,7 +419,10 @@ impl<Message> Widget<Message, iced::Theme, iced::Renderer> for Selectable<'_, Me
         _renderer: &iced::Renderer,
     ) -> mouse::Interaction {
         let state = tree.state.downcast_ref::<State>();
-        match cursor.position_in(layout.bounds()).and_then(|p| state.paragraph.hit_span(p)) {
+        match cursor
+            .position_in(layout.bounds())
+            .and_then(|p| state.paragraph.hit_span(p))
+        {
             Some(index) if self.units[index].link.is_some() => mouse::Interaction::Pointer,
             Some(_) => mouse::Interaction::Text,
             None => mouse::Interaction::None,
@@ -371,51 +431,5 @@ impl<Message> Widget<Message, iced::Theme, iced::Renderer> for Selectable<'_, Me
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn unit(text: &str) -> Unit {
-        Unit {
-            text: text.into(),
-            color: Color::WHITE,
-            bold: false,
-            italic: false,
-            code: false,
-            underline: false,
-            strike: false,
-            background: None,
-            link: None,
-        }
-    }
-
-    #[test]
-    fn units_split_into_grapheme_clusters() {
-        let pieces = split(vec![unit("ab"), unit("e\u{301}x")]);
-        let texts: Vec<&str> = pieces.iter().map(|u| u.text.as_str()).collect();
-        assert_eq!(texts, vec!["a", "b", "e\u{301}", "x"], "an accent stays with its letter");
-    }
-
-    #[test]
-    fn touching_rectangles_on_one_line_merge() {
-        let r = |x: f32| Rectangle::new(Point::new(x, 0.0), Size::new(10.0, 14.0));
-        let merged = merged(vec![r(0.0), r(10.0), r(20.0), Rectangle::new(Point::new(0.0, 30.0), Size::new(5.0, 5.0))]);
-        assert_eq!(merged.len(), 2, "three touching boxes on one line become one, the other line stays apart");
-        assert_eq!(merged[0].width, 30.0);
-    }
-
-    #[test]
-    fn a_selection_covers_the_blocks_between_its_ends() {
-        // From block 1, span 2, to block 3, span 1.
-        let (from, to) = ((1, 2), (3, 1));
-        assert_eq!(range_in_block(from, to, 0, 5), None, "before the selection");
-        assert_eq!(range_in_block(from, to, 1, 5), Some(2..5), "the first block, from its span on");
-        assert_eq!(range_in_block(from, to, 2, 5), Some(0..5), "a block in the middle is all selected");
-        assert_eq!(range_in_block(from, to, 3, 5), Some(0..2), "the last block, up to its span");
-        assert_eq!(range_in_block(from, to, 4, 5), None, "after the selection");
-    }
-
-    #[test]
-    fn a_selection_can_run_backwards() {
-        assert_eq!(range_in_block((2, 0), (1, 3), 1, 5), Some(3..5));
-    }
-}
+#[path = "../tests/view/selectable.rs"]
+mod tests;

@@ -42,7 +42,11 @@ pub fn start() {
     let Some(icon) = icon_pixmap() else {
         return;
     };
-    let tray = Tray { events: tx, icon, shown: true };
+    let tray = Tray {
+        events: tx,
+        icon,
+        shown: true,
+    };
     match tray.spawn() {
         Ok(handle) => *TRAY.lock().unwrap_or_else(|e| e.into_inner()) = Some(handle),
         Err(e) => eprintln!("no system tray icon: {e}"),
@@ -54,30 +58,33 @@ pub fn start() {}
 
 /// The tray's messages, as app messages, for the app's subscription.
 pub fn tray_stream() -> impl Stream<Item = Message> {
-    iced::stream::channel(8, |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
-        let rx = TRAY_EVENTS.lock().unwrap_or_else(|e| e.into_inner()).take();
-        let Some(rx) = rx else {
-            return;
-        };
-        let (tx, mut from_thread) = iced::futures::channel::mpsc::unbounded();
-        std::thread::spawn(move || {
-            while let Ok(event) = rx.recv() {
-                if tx.unbounded_send(event).is_err() {
+    iced::stream::channel(
+        8,
+        |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
+            let rx = TRAY_EVENTS.lock().unwrap_or_else(|e| e.into_inner()).take();
+            let Some(rx) = rx else {
+                return;
+            };
+            let (tx, mut from_thread) = iced::futures::channel::mpsc::unbounded();
+            std::thread::spawn(move || {
+                while let Ok(event) = rx.recv() {
+                    if tx.unbounded_send(event).is_err() {
+                        break;
+                    }
+                }
+            });
+            use iced::futures::StreamExt;
+            while let Some(event) = from_thread.next().await {
+                let message = match event {
+                    TrayEvent::Toggle => Message::TrayToggle,
+                    TrayEvent::Quit => Message::TrayQuit,
+                };
+                if output.send(message).await.is_err() {
                     break;
                 }
             }
-        });
-        use iced::futures::StreamExt;
-        while let Some(event) = from_thread.next().await {
-            let message = match event {
-                TrayEvent::Toggle => Message::TrayToggle,
-                TrayEvent::Quit => Message::TrayQuit,
-            };
-            if output.send(message).await.is_err() {
-                break;
-            }
-        }
-    })
+        },
+    )
 }
 
 #[cfg(target_os = "linux")]
@@ -133,7 +140,9 @@ impl ksni::Tray for Tray {
 /// The app icon as the tray's picture: ARGB32, most significant byte first, as the protocol asks.
 #[cfg(target_os = "linux")]
 fn icon_pixmap() -> Option<Vec<ksni::Icon>> {
-    let img = image::load_from_memory(include_bytes!("../icons/tray.png")).ok()?.to_rgba8();
+    let img = image::load_from_memory(include_bytes!("../icons/tray.png"))
+        .ok()?
+        .to_rgba8();
     let size = 48;
     let img = image::imageops::resize(&img, size, size, image::imageops::FilterType::Lanczos3);
     let mut data = Vec::with_capacity((size * size * 4) as usize);
@@ -141,5 +150,9 @@ fn icon_pixmap() -> Option<Vec<ksni::Icon>> {
         let [r, g, b, a] = px.0;
         data.extend_from_slice(&[a, r, g, b]);
     }
-    Some(vec![ksni::Icon { width: size as i32, height: size as i32, data }])
+    Some(vec![ksni::Icon {
+        width: size as i32,
+        height: size as i32,
+        data,
+    }])
 }
