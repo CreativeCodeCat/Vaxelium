@@ -1488,6 +1488,7 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
     let private_card = container(
         column![
             row![
+                icons::icon(icons::LOCK, 16.0, pal.text_strong),
                 text(format!("Private {}", if is_category { "Category" } else { "Channel" })).size(15).color(pal.text_strong).width(Length::Fill),
                 toggler(private).on_toggle(move |on| Message::AccessDraftSet {
                     target,
@@ -1496,14 +1497,15 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
                     send: everyone_send,
                 }),
             ]
+            .spacing(10)
             .align_y(iced::alignment::Vertical::Center),
             muted_text(private_note, 12.0, pal.text_muted),
         ]
-        .spacing(6),
+        .spacing(8),
     )
     .padding(crate::util::pad2(14.0, 16.0))
     .width(Length::Fill)
-    .style(move |_: &Theme| round(pal.rail_bg, 8.0));
+    .style(move |_: &Theme| round(pal.sidebar_bg, 8.0));
 
     // Roles and members with any setting here are listed; the rest can be added.
     let members = member_entries(app);
@@ -1520,31 +1522,45 @@ fn access_page<'a>(app: &'a App, target: crate::app::AccessTarget, pal: Pal) -> 
             listed.push((subject, name.clone()));
         }
     }
-    let mut access = Column::new().spacing(10);
+    let mut access = Column::new().spacing(14);
     if listed.is_empty() {
         let note = if private { format!("No roles or users can view this {noun} yet.") } else { format!("Everyone can view this {noun}.") };
         access = access.push(muted_text(note, 13.0, pal.text_muted));
     }
+    let mut role_rows = Column::new().spacing(10);
+    let mut member_rows = Column::new().spacing(10);
+    let (mut any_role, mut any_member) = (false, false);
     for (subject, name) in &listed {
-        let (view, send) = setting(subject);
-        let colour = role_colour(app, subject).unwrap_or(pal.text);
-        let remove = subject.clone();
-        access = access.push(
-            row![
-                text(name.clone()).size(14).color(colour).width(Length::Fill),
-                muted_text(describe_access(view, send), 12.0, pal.text_muted),
-                button(icons::icon(icons::CLOSE, 14.0, pal.text_muted))
-                    .padding(crate::util::pad2(3.0, 4.0))
-                    .on_press(Message::AccessDraftSet { target, subject: remove, view: None, send: None })
-                    .style(move |_: &Theme, status: button::Status| button::Style {
-                        background: Some(Background::Color(if matches!(status, button::Status::Hovered) { pal.hover_bg } else { Color::TRANSPARENT })),
-                        border: border::rounded(4.0),
-                        ..button::Style::default()
-                    }),
-            ]
-            .spacing(12)
-            .align_y(iced::alignment::Vertical::Center),
-        );
+        let remove = Message::AccessDraftSet { target, subject: subject.clone(), view: None, send: None };
+        let description = match subject {
+            Subject::Role(_) => "Server Role".to_string(),
+            Subject::Member(id) => member_standing(app, id),
+        };
+        match subject {
+            Subject::Role(_) => {
+                let colour = role_colour(app, subject).unwrap_or(pal.text_muted);
+                let dot = container(space()).width(Length::Fixed(12.0)).height(Length::Fixed(12.0)).style(move |_: &Theme| round(colour, 6.0));
+                role_rows = role_rows.push(access_row(dot.into(), name, colour, description, remove, pal));
+                any_role = true;
+            }
+            Subject::Member(_) => {
+                let initial = name.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_default();
+                let avatar = container(text(initial).size(11).color(pal.text))
+                    .width(Length::Fixed(22.0))
+                    .height(Length::Fixed(22.0))
+                    .align_x(iced::alignment::Horizontal::Center)
+                    .align_y(iced::alignment::Vertical::Center)
+                    .style(move |_: &Theme| round(pal.hover_bg, 11.0));
+                member_rows = member_rows.push(access_row(avatar.into(), name, pal.text, description, remove, pal));
+                any_member = true;
+            }
+        }
+    }
+    if any_role {
+        access = access.push(subheading("Roles", pal)).push(role_rows);
+    }
+    if any_member {
+        access = access.push(subheading("Members", pal)).push(member_rows);
     }
     let who_head = row![
         text(format!("Who can access this {noun}?")).size(15).color(pal.text_strong).width(Length::Fill),
@@ -1659,23 +1675,50 @@ pub fn member_entries(app: &App) -> Vec<(String, String)> {
     members
 }
 
+/// What a member is on the server, for the access lists: the owner, else their highest role, else Member.
+fn member_standing(app: &App, member: &str) -> String {
+    if app.server.owner_id.as_deref() == Some(member) {
+        return "Server Owner".to_string();
+    }
+    let held = app.server.member_roles.get(member);
+    app.server
+        .roles
+        .iter()
+        .find(|r| r.id != EVERYONE_ROLE && held.is_some_and(|h| h.contains(&r.id)))
+        .map_or_else(|| "Member".to_string(), |r| r.name.clone())
+}
+
+/// A small heading over one of the access lists.
+fn subheading<'a>(label: &str, pal: Pal) -> Element<'a, Message> {
+    text(label.to_uppercase()).size(12).color(pal.text_muted).into()
+}
+
+/// One row of an access list: its icon, its name, what it allows, and a remove button.
+fn access_row<'a>(leading: Element<'a, Message>, name: &str, colour: Color, description: String, remove: Message, pal: Pal) -> Element<'a, Message> {
+    row![
+        leading,
+        text(name.to_string()).size(14).color(colour).width(Length::Fill),
+        muted_text(description, 12.0, pal.text_muted),
+        button(icons::icon(icons::CLOSE, 14.0, pal.text_muted))
+            .padding(crate::util::pad2(3.0, 4.0))
+            .on_press(remove)
+            .style(move |_: &Theme, status: button::Status| button::Style {
+                background: Some(Background::Color(if matches!(status, button::Status::Hovered) { pal.hover_bg } else { Color::TRANSPARENT })),
+                border: border::rounded(4.0),
+                ..button::Style::default()
+            }),
+    ]
+    .spacing(10)
+    .align_y(iced::alignment::Vertical::Center)
+    .into()
+}
+
 /// The colour a role or member shows in: a role's own colour, or none for a member.
 pub fn role_colour(app: &App, subject: &common::Subject) -> Option<Color> {
     match subject {
         common::Subject::Role(id) => app.server.roles.iter().find(|r| r.id == *id).and_then(|r| crate::util::hex_color(&r.color)),
         common::Subject::Member(_) => None,
     }
-}
-
-/// A role's category setting in words, for the access list.
-fn describe_access(view: Option<bool>, send: Option<bool>) -> String {
-    let part = |label: &str, value: Option<bool>| match value {
-        Some(true) => Some(format!("{label} allowed")),
-        Some(false) => Some(format!("{label} denied")),
-        None => None,
-    };
-    let parts: Vec<String> = [part("view", view), part("send", send)].into_iter().flatten().collect();
-    if parts.is_empty() { "inherits".to_string() } else { parts.join(" · ") }
 }
 
 /// One permission of the advanced list: its name and what it does, with its ✕ / slash / ✓ control.
