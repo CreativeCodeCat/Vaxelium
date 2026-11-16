@@ -38,6 +38,7 @@ impl App {
                     self.login.error = None;
                     self.remember_session_now();
                     self.dm_tick();
+                    return self.open_page_server();
                 }
                 Err(e) => {
                     self.login.discord_waiting = false;
@@ -168,6 +169,7 @@ impl App {
                     }) {
                         return self.select_server(index);
                     }
+                    return self.open_page_server();
                 } else {
                     self.prefs.session = None;
                     self.login.error = r.error;
