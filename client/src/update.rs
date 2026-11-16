@@ -46,6 +46,98 @@ impl App {
                 }
             },
             Message::DiscordLogin => return self.discord_login_submit(),
+            Message::DiscordConnect => {
+                if self.account.connect_busy {
+                    return Task::none();
+                }
+                self.account.connect_busy = true;
+                self.account.discord_error = None;
+                let backend = self.backend.clone();
+                return Task::perform(offload(move || backend.link_discord()), Message::DiscordConnected);
+            }
+            Message::DiscordConnected(result) => {
+                self.account.connect_busy = false;
+                match result {
+                    Ok(name) => {
+                        self.account.discord = Some(name);
+                        self.account.can_unlink_discord = self.account.has_password;
+                    }
+                    Err(e) => self.account.discord_error = Some(e.message),
+                }
+            }
+            Message::PasswordOpen => {
+                self.account.password_open = true;
+                self.account.password_input.clear();
+                self.account.password_error = None;
+                return operation::focus("acc-password");
+            }
+            Message::PasswordInput(v) => self.account.password_input = v,
+            Message::PasswordCancel => {
+                if !self.account.password_busy {
+                    self.account.password_open = false;
+                    self.account.password_input.clear();
+                    self.account.password_error = None;
+                }
+            }
+            Message::PasswordSubmit => {
+                if self.account.password_busy {
+                    return Task::none();
+                }
+                self.account.password_busy = true;
+                self.account.password_error = None;
+                let backend = self.backend.clone();
+                let password = self.account.password_input.clone();
+                return Task::perform(offload(move || backend.set_password(password)), Message::PasswordSet);
+            }
+            Message::PasswordSet(result) => {
+                self.account.password_busy = false;
+                match result {
+                    Ok(()) => {
+                        self.account.password_open = false;
+                        self.account.password_input.clear();
+                        self.account.has_password = true;
+                        self.account.can_unlink_discord = self.account.discord.is_some();
+                    }
+                    Err(e) => self.account.password_error = Some(e.message),
+                }
+            }
+            Message::AccountDeleteOpen => {
+                self.account.delete_open = true;
+                self.account.delete_input.clear();
+                self.account.delete_error = None;
+                return operation::focus("acc-delete-password");
+            }
+            Message::AccountDeleteInput(v) => self.account.delete_input = v,
+            Message::AccountDeleteCancel => {
+                if !self.account.delete_busy {
+                    self.account.delete_open = false;
+                    self.account.delete_input.clear();
+                    self.account.delete_error = None;
+                }
+            }
+            Message::AccountDeleteSubmit => {
+                if self.account.delete_busy {
+                    return Task::none();
+                }
+                self.account.delete_busy = true;
+                self.account.delete_error = None;
+                let backend = self.backend.clone();
+                let password = self.account.delete_input.clone();
+                return Task::perform(offload(move || backend.delete_account(password)), Message::AccountDeleted);
+            }
+            Message::AccountDeleted(result) => {
+                self.account.delete_busy = false;
+                match result {
+                    // The account is gone, so this computer logs out too.
+                    Ok(()) => {
+                        self.account.delete_open = false;
+                        self.account.delete_input.clear();
+                        return self.logout();
+                    }
+                    Err(e) => self.account.delete_error = Some(e.message),
+                }
+            }
+
             Message::Remember(on) => {
                 self.remember = on;
                 self.remember_session_now();
@@ -571,6 +663,7 @@ impl App {
                     self.account.bio = p.bio;
                     self.account.banner = p.banner;
                     self.account.avatar = p.avatar;
+                    self.account.has_password = p.has_password;
                     self.account.email_error = None;
                     self.auth_down = false;
                     self.auth_banner_closed = false;
