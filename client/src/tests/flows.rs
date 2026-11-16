@@ -56,6 +56,7 @@ fn chat(id: i64, channel_id: i64, author: &str, text: &str, ts: u64) -> ChatMess
         edited: false,
         reactions: Vec::new(),
         reply: None,
+        pinned: false,
     }
 }
 
@@ -1444,4 +1445,101 @@ fn a_member_without_manage_channels_gets_no_drop_targets_and_is_told_why() {
     );
     let _ = app.update(Message::MouseReleased);
     assert!(app.status.contains("Manage channels"), "status: {}", app.status);
+}
+
+#[test]
+fn pins_panel_follows_the_server() {
+    let mut app = app();
+    welcome(&mut app);
+    let _ = app.update(net(ServerMsg::Joined {
+        channel: chan(1, "general"),
+        history: vec![chat(3, 1, "bob", "keep this", 1_700_000_200)],
+    }));
+    let _ = app.update(Message::PinsToggle);
+    assert!(app.pins_open);
+    assert!(app.pins.is_none(), "loading until the server answers");
+
+    // A pin marks the message, and the list arrives from the server.
+    let _ = app.update(net(ServerMsg::MessagePinned {
+        channel_id: 1,
+        id: 3,
+        pinned: true,
+    }));
+    let pinned = |app: &App| app.find_message(3).unwrap().pinned;
+    assert!(pinned(&app));
+    let mut kept = chat(3, 1, "bob", "keep this", 1_700_000_200);
+    kept.pinned = true;
+    let _ = app.update(net(ServerMsg::Pins {
+        channel_id: 1,
+        messages: vec![kept],
+    }));
+    assert_eq!(app.pins.as_ref().unwrap().1.len(), 1);
+
+    // A list for another channel is not shown here.
+    let _ = app.update(net(ServerMsg::Pins {
+        channel_id: 2,
+        messages: Vec::new(),
+    }));
+    assert_eq!(app.pins.as_ref().unwrap().0, 1);
+
+    let _ = app.update(net(ServerMsg::MessagePinned {
+        channel_id: 1,
+        id: 3,
+        pinned: false,
+    }));
+    assert!(!pinned(&app));
+
+    // Changing channel closes the panel.
+    let _ = app.update(net(ServerMsg::Joined {
+        channel: chan(2, "random"),
+        history: Vec::new(),
+    }));
+    assert!(!app.pins_open && app.pins.is_none());
+}
+
+#[test]
+fn pin_permission() {
+    let mut app = app();
+    welcome(&mut app);
+    let role = |id: i64, permissions: u32| common::RoleInfo {
+        id,
+        name: format!("r{id}"),
+        color: String::new(),
+        permissions,
+        position: id,
+        mentionable: false,
+        hoisted: false,
+    };
+    let _ = app.update(net(ServerMsg::Roles {
+        roles: vec![
+            role(5, common::perm::PIN_MESSAGES),
+            role(6, common::perm::MANAGE_MESSAGES),
+        ],
+    }));
+    let member = |name: &str, roles: Vec<i64>| UserStatus {
+        name: name.into(),
+        id: format!("id-{name}"),
+        online: true,
+        owner: false,
+        roles,
+        joined: 0,
+        status: Default::default(),
+        badges: vec![],
+    };
+    let _ = app.update(net(ServerMsg::Presence {
+        users: vec![
+            member("pinner", vec![5]),
+            member("mod", vec![6]),
+            member("plain", vec![]),
+        ],
+    }));
+    let _ = app.update(net(ServerMsg::Joined {
+        channel: chan(1, "general"),
+        history: vec![chat(3, 1, "bob", "hi", 1_700_000_200)],
+    }));
+    let m = app.find_message(3).unwrap();
+    for (who, may) in [("id-pinner", true), ("id-mod", true), ("id-plain", false)] {
+        app.user_id = who.into();
+        assert_eq!(app.can_pin(&m), may, "{who}");
+    }
 }

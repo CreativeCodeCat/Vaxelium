@@ -72,6 +72,7 @@ fn chat_app() -> App {
             edited: id == 2,
             reactions: Vec::new(),
             reply: None,
+            pinned: false,
         })
     };
     let now = crate::util::now();
@@ -356,6 +357,7 @@ fn markdown_message_screen() {
             edited: false,
             reactions: Vec::new(),
             reply: None,
+            pinned: false,
         })],
     );
     save_at(&app, "markdown-message", 1100.0, 900.0);
@@ -386,6 +388,7 @@ fn math_message_screen() {
             edited: false,
             reactions: Vec::new(),
             reply: None,
+            pinned: false,
         })],
     );
     save_at(&app, "math-message", 1100.0, 800.0);
@@ -409,6 +412,7 @@ fn math_layout_screen() {
             edited: false,
             reactions: Vec::new(),
             reply: None,
+            pinned: false,
         })],
     );
     save_at(&app, "math-layout", 1100.0, 800.0);
@@ -431,6 +435,7 @@ fn dragging_across_message_text_selects_it() {
             edited: false,
             reactions: Vec::new(),
             reply: None,
+            pinned: false,
         })],
     );
     // The pointer moves as a real drag does: press here, then move and release there. The messages the
@@ -456,6 +461,7 @@ fn click_away_clears_selection() {
             edited: false,
             reactions: Vec::new(),
             reply: None,
+            pinned: false,
         })],
     );
     drag(&mut app, &[(440.0, 240.0), (560.0, 240.0)]);
@@ -492,6 +498,7 @@ fn clicking_a_link_in_a_message_still_opens_it() {
             edited: false,
             reactions: Vec::new(),
             reply: None,
+            pinned: false,
         })],
     );
     let mut ui = simulate(&app);
@@ -524,6 +531,7 @@ fn dragging_over_several_lines_selects_them() {
             edited: false,
             reactions: Vec::new(),
             reply: None,
+            pinned: false,
         })],
     );
     drag(&mut app, &[(440.0, 240.0), (700.0, 275.0)]);
@@ -547,6 +555,7 @@ fn dragging_across_markdown_blocks_selects_them() {
             edited: false,
             reactions: Vec::new(),
             reply: None,
+            pinned: false,
         })],
     );
     drag(&mut app, &[(440.0, 240.0), (520.0, 312.0)]);
@@ -571,6 +580,7 @@ fn html_elements_message_screen() {
             edited: false,
             reactions: Vec::new(),
             reply: None,
+            pinned: false,
         })],
     );
     save_at(&app, "html-elements", 1100.0, 700.0);
@@ -594,6 +604,7 @@ fn clicking_a_details_summary_opens_it() {
             edited: false,
             reactions: Vec::new(),
             reply: None,
+            pinned: false,
         })],
     );
     // A click on the summary, which sits at the top of the message. A button needs the press and the
@@ -631,6 +642,7 @@ fn small_caps_screen() {
             edited: false,
             reactions: Vec::new(),
             reply: None,
+            pinned: false,
         })],
     );
     save_at(&app, "small-caps", 1100.0, 700.0);
@@ -1438,6 +1450,7 @@ fn latex_sample_screen() {
             edited: false,
             reactions: Vec::new(),
             reply: None,
+            pinned: false,
         })],
     );
     save_at(&app, "latex-sample", 1100.0, 1500.0);
@@ -1457,6 +1470,7 @@ fn two_messages(app: &mut App) {
             edited: false,
             reactions: Vec::new(),
             reply: None,
+            pinned: false,
         })
     };
     app.messages.insert(
@@ -1560,4 +1574,39 @@ fn reply_follows_original() {
         "a deleted original is no longer shown"
     );
     save_at(&app, "reply-deleted", 1100.0, 700.0);
+}
+
+#[test]
+fn pins_screen() {
+    let mut app = chat_app();
+    two_messages(&mut app);
+    let mut pinned = Vec::new();
+    for e in app.messages.get_mut(&1).unwrap().iter_mut() {
+        if let Entry::Chat(m) = e {
+            if m.id == 20 {
+                m.pinned = true;
+                pinned.push(m.clone());
+            }
+        }
+    }
+    app.pins_open = true;
+    app.pins = Some((1, pinned));
+    save_at(&app, "pins", 1100.0, 700.0);
+
+    // A click inside the dropdown keeps it open; one outside closes it.
+    drag(&mut app, &[(700.0, 100.0)]);
+    assert!(app.pins_open, "a click inside keeps it open");
+    drag(&mut app, &[(300.0, 500.0)]);
+    assert!(!app.pins_open, "a click outside closes it");
+}
+
+#[test]
+fn pins_empty_screen() {
+    let mut app = chat_app();
+    two_messages(&mut app);
+    app.pins_open = true;
+    app.pins = Some((1, Vec::new()));
+    save_at(&app, "pins-empty", 1100.0, 700.0);
+    let _ = app.update(Message::Escape);
+    assert!(!app.pins_open, "Escape closes it");
 }

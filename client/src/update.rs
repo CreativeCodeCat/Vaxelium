@@ -529,6 +529,24 @@ impl App {
             Message::ReplyCancel => self.replying_to = None,
             Message::JumpTo(id) => return self.jump_to(id),
             Message::JumpFlashEnd => self.jump_flash = None,
+            Message::PinsToggle => {
+                self.pins_open = !self.pins_open;
+                if self.pins_open {
+                    self.pins = None;
+                    let channel = self.server.channel_id;
+                    let _ = self.backend.send_main(ClientMsg::ListPins { channel });
+                }
+            }
+            Message::Pin(id, pinned) => {
+                self.menu = None;
+                // An unpinned message leaves the open list at once, without waiting for the server.
+                if !pinned {
+                    if let Some((_, pins)) = self.pins.as_mut() {
+                        pins.retain(|m| m.id != id);
+                    }
+                }
+                self.message_action(id, ClientMsg::Pin { id, pinned });
+            }
             Message::SearchClear => {
                 self.search.clear();
                 self.search_open = false;
@@ -1394,6 +1412,8 @@ impl App {
             self.search_open = false;
         } else if self.card.is_some() {
             self.card = None;
+        } else if self.pins_open {
+            self.pins_open = false;
         } else if self.menu.is_some() || self.picker.is_some() {
             self.menu = None;
             self.picker = None;

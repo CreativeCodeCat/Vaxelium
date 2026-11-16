@@ -293,6 +293,9 @@ pub fn view(app: &App) -> Element<'_, Message> {
     if let Some(picker) = popups::picker_layer(app, pal) {
         layers.push(picker);
     }
+    if let Some(pins) = chat::pins_layer(app, pal) {
+        layers.push(pins);
+    }
     if let Some(filters) = chat::search_filters_layer(app, pal) {
         layers.push(filters);
     }
