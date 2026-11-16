@@ -227,6 +227,21 @@ fn sidebar(app: &App, pal: Pal) -> Element<'_, Message> {
             }
             list.push(channel_row(app, pal, c));
         }
+        // While a channel is dragged, a strip under the category's channels adds it to the end of this category.
+        if dragging_channel {
+            let strip_over = app.dnd.as_ref().and_then(|d| d.over) == Some(target);
+            let strip = container(text("Drop here to add to the end").size(11).color(pal.text_muted))
+                .padding(crate::util::pad2(2.0, 6.0))
+                .width(Length::Fill)
+                .height(Length::Fixed(22.0))
+                .style(move |_: &Theme| round(if strip_over { pal.selected_bg } else { Color::TRANSPARENT }, 4.0));
+            list.push(
+                mouse_area(strip)
+                    .on_enter(Message::DndOver(Some(target)))
+                    .on_exit(Message::DndOver(None))
+                    .into(),
+            );
+        }
     }
     // While a category is dragged, this zone after the last one moves it to the end.
     let dragging_category = matches!(app.dnd.as_ref().map(|d| (d.moved, d.item)), Some((true, crate::app::DragItem::Category(_))));

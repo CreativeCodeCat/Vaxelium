@@ -285,6 +285,9 @@ fn deleting_a_channel_asks_first_and_removes_it_when_the_server_says_so() {
 fn a_category_dropped_on_the_end_zone_moves_to_the_end() {
     use crate::app::{DragItem, DropTarget};
     let mut app = app();
+    // The owner may move channels and categories.
+    app.user_id = "u1".into();
+    app.server.owner_id = Some("u1".into());
     let _ = app.update(net(ServerMsg::Categories {
         categories: vec![
             common::CategoryInfo { id: 1, name: "One".into(), channels: Vec::new() },
@@ -609,4 +612,23 @@ fn escape_over_unsaved_settings_flashes_instead_of_closing() {
     let _ = app.on_escape();
     assert!(matches!(app.page, crate::app::Page::User));
     assert!(app.unsaved_flash_on());
+}
+
+#[test]
+fn a_member_without_manage_channels_gets_no_drop_targets_and_is_told_why() {
+    use crate::app::{DragItem, DropTarget};
+    let mut app = app();
+    app.user_id = "u2".into();
+    app.server.owner_id = Some("u1".into());
+    let _ = app.update(net(ServerMsg::Categories {
+        categories: vec![common::CategoryInfo { id: 1, name: "One".into(), channels: Vec::new() }],
+        uncategorized: Vec::new(),
+    }));
+    let _ = app.update(Message::CursorMoved(Point::new(100.0, 100.0)));
+    let _ = app.update(Message::DndPress(DragItem::Category(1)));
+    let _ = app.update(Message::CursorMoved(Point::new(100.0, 200.0)));
+    let _ = app.update(Message::DndOver(Some(DropTarget::End)));
+    assert_eq!(app.dnd.as_ref().and_then(|d| d.over), None, "no drop target without the permission");
+    let _ = app.update(Message::MouseReleased);
+    assert!(app.status.contains("Manage channels"), "status: {}", app.status);
 }
