@@ -6,15 +6,15 @@ servers, and a desktop GUI client (built with Iced, in Rust).
 ## Layout
 
 ```
-common/   shared wire protocol (auth and chat messages, newline-delimited JSON)   [submodule]
-auth/     auth service: owns all accounts and login sessions (SQLite + Argon2)   [submodule]
-server/   chat server: channels, messages, presence (SQLite); serves the web client (web/)   [submodule]
+common/   shared wire protocol (auth and chat messages, newline-delimited JSON)
+auth/     auth service: owns all accounts and login sessions (SQLite + Argon2)
+server/   chat server: channels, messages, presence (SQLite); serves the web client (web/)
 scripts/  build-web.sh builds the web client
-client/   desktop GUI client (Iced): Rust in src/, fonts, icons and emoji artwork in ui/   [submodule]
+client/   desktop and web GUI client (Iced), a separate private repository cloned here (see below)
 ```
 
-Each crate is its own repository, linked here as a git submodule. Clone with
-submodules, or the crates are missing:
+The crates are their own repositories, linked here as git submodules. Clone with
+submodules:
 
 ```
 git clone --recursive git@github.com:Vaxelium/Vaxelium.git
@@ -22,6 +22,10 @@ git clone --recursive git@github.com:Vaxelium/Vaxelium.git
 
 If you already cloned without it, run `git submodule update --init --recursive`.
 Each crate also builds on its own from its repository.
+
+The client is private, so it isn't part of this repository. To build the web client,
+clone the client repository into `client/` here (it's git-ignored). `scripts/build-web.sh`
+then builds it from there.
 
 The crates' latest code is on each repository's main branch:
 
@@ -55,7 +59,7 @@ Start three things, each in its own terminal.
 3. The GUI client. On Linux it needs WebKitGTK 4.1 (`webkit2gtk-4.1`) installed:
 
    ```sh
-   cargo run -p client
+   (cd client && cargo run)
    ```
 
 Each chat server also serves a web client: the desktop client compiled for the browser, so it looks
