@@ -4,9 +4,6 @@
 [submodule "auth"]
 	path = auth
 	url = git@github.com:Vaxelium/auth.git
-[submodule "client"]
-	path = client
-	url = git@github.com:Vaxelium/client.git
 [submodule "server"]
 	path = server
 	url = git@github.com:Vaxelium/server.git

@@ -6,10 +6,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 out=server/web/dist
-wasm=target/wasm32-unknown-unknown/web/client.wasm
+wasm=client/target/wasm32-unknown-unknown/web/client.wasm
 bindgen=$(command -v wasm-bindgen || echo "$HOME/.cargo/bin/wasm-bindgen")
 
-cargo build -p client --profile web --target wasm32-unknown-unknown
+# The client is a separate repository, cloned into client/.
+if [ ! -f client/Cargo.toml ]; then
+    echo "The client is not here. Clone its repository into client/ first." >&2
+    exit 1
+fi
+(cd client && cargo build --profile web --target wasm32-unknown-unknown)
 rm -rf "$out"
 mkdir -p "$out"
 "$bindgen" --target web --no-typescript --out-dir "$out" --out-name client "$wasm"

@@ -3,3 +3,5 @@
 .env
 *.key
 /client/gen
+# The client is a separate private repository, cloned here for the web build.
+/client
