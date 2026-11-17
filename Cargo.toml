@@ -2,10 +2,6 @@
 members = ["common", "auth", "server"]
 resolver = "2"
 
-[workspace.package]
-version = "0.1.0"
-edition = "2021"
-
 # The web client's build (scripts/build-web.sh): optimised for a small download rather than speed.
 [profile.web]
 inherits = "release"
