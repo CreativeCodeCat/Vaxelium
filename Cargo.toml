@@ -12,3 +12,8 @@ inherits = "release"
 opt-level = "z"
 lto = true
 codegen-units = 1
+
+# The crates fetch common from GitHub when they are built on their own. Inside this workspace they
+# use the local folder, so changes to common are tested together with the crates that use it.
+[patch."https://github.com/Vaxelium/common"]
+common = { path = "common" }
