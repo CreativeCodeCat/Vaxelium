@@ -1,6 +1,6 @@
 # Vaxelium
 
-A small Discord-style chat system written in Rust: an auth service, chat
+A small chat system written in Rust: an auth service, chat
 servers, and a desktop GUI client (built with Iced, in Rust).
 
 ## Layout
@@ -103,7 +103,7 @@ Your login lasts until you log out, so after a restart you log in again.
 
 ## Using the client
 
-The layout follows Discord: a server rail on the far left, the channel
+The layout is a server rail on the far left, the channel
 sidebar with your user bar at the bottom, the channel header on top, and the
 online member list on the right.
 
