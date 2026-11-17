@@ -155,3 +155,12 @@ connection must be `connect`, carrying a session token from the auth service:
 The server answers with `welcome`, or with `error` and closes the connection.
 After `welcome` it streams `message` and `system` events for the channel the
 client is in, plus `joined` (with up to 200 messages of history).
+
+## Licence
+
+The auth service, the chat server and the shared protocol (`auth/`, `server/`,
+`common/`, and the scripts and docs in this repository) are under the GNU GPL v3. See
+[LICENSE](LICENSE).
+
+The client (`client/`) is under the PolyForm Noncommercial License 1.0.0. See
+[its LICENSE](https://github.com/Vaxelium/client/blob/main/LICENSE).
