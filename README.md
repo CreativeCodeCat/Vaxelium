@@ -162,5 +162,4 @@ The auth service, the chat server and the shared protocol (`auth/`, `server/`,
 `common/`, and the scripts and docs in this repository) are under the GNU GPL v3. See
 [LICENSE](LICENSE).
 
-The client (`client/`) is under the PolyForm Noncommercial License 1.0.0. See
-[its LICENSE](https://github.com/Vaxelium/client/blob/main/LICENSE).
+The client (`client/`) is under the MIT licence. See [its LICENSE](https://github.com/Vaxelium/client/blob/main/LICENSE).
