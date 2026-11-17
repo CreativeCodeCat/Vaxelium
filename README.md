@@ -21,8 +21,7 @@ git clone --recursive git@github.com:Vaxelium/Vaxelium.git
 ```
 
 If you already cloned without it, run `git submodule update --init --recursive`.
-Each crate's own repository builds only from this workspace, because the crates
-depend on each other by relative path (`../common`).
+Each crate also builds on its own from its repository.
 
 One account works on every chat server. The chat servers do not store
 accounts. They ask the auth service who a session token belongs to.
