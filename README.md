@@ -6,12 +6,23 @@ servers, and a desktop GUI client (built with Iced, in Rust).
 ## Layout
 
 ```
-common/   shared wire protocol (auth and chat messages, newline-delimited JSON)
-auth/     auth service: owns all accounts and login sessions (SQLite + Argon2)
-server/   chat server: channels, messages, presence (SQLite); serves the web client (web/)
+common/   shared wire protocol (auth and chat messages, newline-delimited JSON)   [submodule]
+auth/     auth service: owns all accounts and login sessions (SQLite + Argon2)   [submodule]
+server/   chat server: channels, messages, presence (SQLite); serves the web client (web/)   [submodule]
 scripts/  build-web.sh builds the web client
-client/   desktop GUI client (Iced): Rust in src/, fonts, icons and emoji artwork in ui/
+client/   desktop GUI client (Iced): Rust in src/, fonts, icons and emoji artwork in ui/   [submodule]
 ```
+
+Each crate is its own repository, linked here as a git submodule. Clone with
+submodules, or the crates are missing:
+
+```
+git clone --recursive git@github.com:Vaxelium/Vaxelium.git
+```
+
+If you already cloned without it, run `git submodule update --init --recursive`.
+Each crate's own repository builds only from this workspace, because the crates
+depend on each other by relative path (`../common`).
 
 One account works on every chat server. The chat servers do not store
 accounts. They ask the auth service who a session token belongs to.
