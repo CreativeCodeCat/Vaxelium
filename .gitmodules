@@ -7,3 +7,6 @@
 [submodule "server"]
 	path = server
 	url = git@github.com:Vaxelium/server.git
+[submodule "dm"]
+	path = dm
+	url = git@github.com:Vaxelium/dm.git
