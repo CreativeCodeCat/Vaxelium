@@ -26,7 +26,8 @@ Features to consider, roughly in order of how much they add.
 - [ ] Invite links: create, expire after a time or a number of uses, and revoke.
 - [ ] Per-server nicknames.
 - [ ] Welcome or rules screen for new members.
-- [ ] Member join and leave messages in a chosen channel.
+- [x] Member join messages in a chosen channel, with a welcome card.
+- [ ] Member leave messages in the same channel.
 - [ ] Announcement channels that only some roles can post in.
 
 ## Notifications
