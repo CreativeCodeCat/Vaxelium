@@ -1,11 +1,15 @@
 //! Builds the web client: the desktop client compiled to WebAssembly, with the files the chat server
 //! serves from `server/web/dist`. Needs the wasm32 target, and `wasm-bindgen` at the version in Cargo.lock
 //! (`cargo install wasm-bindgen-cli`). `wasm-opt` (binaryen) makes the WebAssembly smaller when it is
-//! installed. Compressed copies are made with `gzip`, which the chat server sends to browsers that accept them.
+//! installed. Compressed copies (`.gz`) are made too, which the chat server sends to browsers that accept them.
 
 use std::ffi::OsString;
-use std::fs;
+use std::fs::{self, File};
+use std::io::Write;
 use std::path::{Path, PathBuf};
+
+use flate2::write::GzEncoder;
+use flate2::Compression;
 
 use crate::run;
 
@@ -57,8 +61,9 @@ pub fn build(root: &Path) -> Result<(), String> {
     }
 
     fs::copy(root.join("server/web/index.html"), out.join("index.html")).map_err(|e| e.to_string())?;
-    // Compressed copies, which the server sends to browsers that accept them.
-    run(&out, "gzip", ["-k", "-f", "-9", "client_bg.wasm", "client.js"])?;
+    // Compressed copies, which the server sends to browsers that accept them. The originals are kept.
+    gzip_keep(&bg)?;
+    gzip_keep(&out.join("client.js"))?;
     // Emoji artwork is fetched as it is needed, so it is served as files rather than built in.
     copy_dir(&client.join("ui/emoji"), &out.join("emoji"))?;
 
@@ -69,6 +74,17 @@ pub fn build(root: &Path) -> Result<(), String> {
         human_size(&bg),
         human_size(&gz)
     );
+    Ok(())
+}
+
+/// Writes `<file>.gz` next to the file, at the highest compression, replacing an earlier copy.
+fn gzip_keep(path: &Path) -> Result<(), String> {
+    let data = fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let gz_path = PathBuf::from(format!("{}.gz", path.display()));
+    let file = File::create(&gz_path).map_err(|e| format!("{}: {e}", gz_path.display()))?;
+    let mut encoder = GzEncoder::new(file, Compression::best());
+    encoder.write_all(&data).map_err(|e| e.to_string())?;
+    encoder.finish().map_err(|e| e.to_string())?;
     Ok(())
 }
 
