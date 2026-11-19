@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
-# Development helpers, run with `cargo xtask dev`. No dependencies: it only starts other programs.
+# Development helpers, run with `cargo xtask <task>`. Starts other programs, and compresses the web client.
 [dependencies]
+flate2 = "1"
