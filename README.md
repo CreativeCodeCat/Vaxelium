@@ -9,7 +9,7 @@ servers, and a desktop GUI client (built with Iced, in Rust).
 common/   shared wire protocol (auth and chat messages, newline-delimited JSON)
 auth/     auth service: owns all accounts and login sessions (SQLite + Argon2)
 server/   chat server: channels, messages, presence (SQLite); serves the web client (web/)
-scripts/  build-web.sh builds the web client
+xtask/    development tasks: `cargo xtask dev` runs everything locally, `cargo xtask web` builds the web client
 client/   desktop and web GUI client (Iced), a separate private repository cloned here (see below)
 ```
 
@@ -24,7 +24,7 @@ If you already cloned without it, run `git submodule update --init --recursive`.
 Each crate also builds on its own from its repository.
 
 The client is private, so it isn't part of this repository. To build the web client,
-clone the client repository into `client/` here (it's git-ignored). `scripts/build-web.sh`
+clone the client repository into `client/` here (it's git-ignored). `cargo xtask web`
 then builds it from there.
 
 The crates' latest code is on each repository's main branch:
@@ -69,7 +69,7 @@ and works the same. Build it once (and again after changing the client), then op
 ```sh
 sudo pacman -S rust-wasm binaryen                            # on Arch; elsewhere: rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.130 --locked    # the version in Cargo.lock
-scripts/build-web.sh
+cargo xtask web
 ```
 
 By default the web client is on the first port past the server (or past a group of servers started

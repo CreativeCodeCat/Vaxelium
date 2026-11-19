@@ -1,9 +1,14 @@
 //! Development helpers, run as `cargo xtask <task>`.
 //!
+//! `cargo xtask web` builds the web client on its own.
+//!
 //! `cargo xtask dev` asks before each step: it pulls the common crate, builds the auth, direct message
 //! and chat server services, the client and the web client, starts the services in order, then runs the client. Declining
 //! a step stops it, and the services already started are stopped. Their logs are in `target/dev-logs/`.
 
+mod web;
+
+use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::io::{self, BufRead, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpStream};
@@ -20,7 +25,8 @@ fn main() {
     let task = std::env::args().nth(1).unwrap_or_default();
     let result = match task.as_str() {
         "dev" => dev(),
-        _ => Err("usage: cargo xtask dev".to_string()),
+        "web" => web::build(&root()),
+        _ => Err("usage: cargo xtask dev | cargo xtask web".to_string()),
     };
     if let Err(e) = result {
         eprintln!("{e}");
@@ -108,16 +114,22 @@ fn confirm(question: &str) -> Result<(), String> {
 }
 
 /// Runs a program in a folder and fails if it does not succeed.
-fn run(dir: &Path, program: &str, args: &[&str]) -> Result<(), String> {
-    let status = Command::new(program)
-        .args(args)
+pub(crate) fn run<I, S>(dir: &Path, program: impl AsRef<OsStr>, args: I) -> Result<(), String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let program = program.as_ref().to_owned();
+    let args: Vec<_> = args.into_iter().map(|a| a.as_ref().to_owned()).collect();
+    let status = Command::new(&program)
+        .args(&args)
         .current_dir(dir)
         .status()
-        .map_err(|e| format!("could not run {program}: {e}"))?;
+        .map_err(|e| format!("could not run {}: {e}", program.to_string_lossy()))?;
     if status.success() {
         Ok(())
     } else {
-        Err(format!("{program} {} failed ({status})", args.join(" ")))
+        Err(format!("{} failed ({status})", program.to_string_lossy()))
     }
 }
 
@@ -136,8 +148,8 @@ fn dev() -> Result<(), String> {
     confirm("Build the client?")?;
     run(&root.join("client"), "cargo", &["build"])?;
 
-    confirm("Build the web client (scripts/build-web.sh)?")?;
-    run(&root, "bash", &["scripts/build-web.sh"])?;
+    confirm("Build the web client?")?;
+    web::build(&root)?;
 
     confirm("Start auth on 127.0.0.1:7900?")?;
     services.start("auth", AUTH_PORT)?;
