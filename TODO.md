@@ -15,7 +15,7 @@ Features to consider, roughly in order of how much they add.
 
 ## Moderation
 
-- [ ] Kick and ban members, with an optional reason and a ban list to undo bans.
+- [x] Kick and ban members, with an optional reason and a ban list to undo bans.
 - [ ] Timeouts: stop a member from talking for a set time.
 - [ ] Slow mode per channel: a delay between each member's messages.
 - [ ] Audit log: who changed roles, channels, permissions and members, and when.
