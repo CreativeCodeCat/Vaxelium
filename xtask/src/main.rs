@@ -1,7 +1,7 @@
 //! Development helpers, run as `cargo xtask <task>`.
 //!
 //! `cargo xtask dev` asks before each step: it pulls the common crate, builds the auth, direct message
-//! and chat server services and the client, starts the services in order, then runs the client. Declining
+//! and chat server services, the client and the web client, starts the services in order, then runs the client. Declining
 //! a step stops it, and the services already started are stopped. Their logs are in `target/dev-logs/`.
 
 use std::fs::{self, File};
@@ -135,6 +135,9 @@ fn dev() -> Result<(), String> {
 
     confirm("Build the client?")?;
     run(&root.join("client"), "cargo", &["build"])?;
+
+    confirm("Build the web client (scripts/build-web.sh)?")?;
+    run(&root, "bash", &["scripts/build-web.sh"])?;
 
     confirm("Start auth on 127.0.0.1:7900?")?;
     services.start("auth", AUTH_PORT)?;
