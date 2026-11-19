@@ -2,7 +2,7 @@
 members = ["common", "auth", "dm", "server", "xtask"]
 resolver = "2"
 
-# The web client's build (scripts/build-web.sh): optimised for a small download rather than speed.
+# The web client's build (cargo xtask web): optimised for a small download rather than speed.
 [profile.web]
 inherits = "release"
 opt-level = "z"
