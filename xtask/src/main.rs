@@ -5,6 +5,7 @@
 //! `cargo xtask dev` asks before each step: it pulls the common crate, builds the auth, direct message
 //! and chat server services, the client and the web client, starts the services in order, then runs the client. Declining
 //! a step stops it, and the services already started are stopped. Their logs are in `target/dev-logs/`.
+//! Each step defaults to yes, so pressing Enter goes ahead. The web client defaults to no. Saying no to the web client skips it and carries on. `cargo xtask dev --skip-web` skips it without asking.
 
 mod web;
 
@@ -22,11 +23,14 @@ const DM_PORT: u16 = 7910;
 const SERVER_PORT: u16 = 7878;
 
 fn main() {
-    let task = std::env::args().nth(1).unwrap_or_default();
-    let result = match task.as_str() {
-        "dev" => dev(),
-        "web" => web::build(&root()),
-        _ => Err("usage: cargo xtask dev | cargo xtask web".to_string()),
+    let mut args = std::env::args().skip(1);
+    let task = args.next().unwrap_or_default();
+    let flags: Vec<String> = args.collect();
+    let result = match (task.as_str(), flags.as_slice()) {
+        ("dev", []) => dev(false),
+        ("dev", [flag]) if flag == "--skip-web" => dev(true),
+        ("web", []) => web::build(&root()),
+        _ => Err("usage: cargo xtask dev [--skip-web] | cargo xtask web".to_string()),
     };
     if let Err(e) = result {
         eprintln!("{e}");
@@ -101,15 +105,26 @@ impl Services {
     }
 }
 
-/// Asks before a step. Anything but yes stops the task.
-fn confirm(question: &str) -> Result<(), String> {
-    print!("{question} [y/N] ");
+/// Asks a yes or no question. An empty answer takes the default; anything else that is not yes is no.
+fn ask(question: &str, default: bool) -> Result<bool, String> {
+    let hint = if default { "[Y/n]" } else { "[y/N]" };
+    print!("{question} {hint} ");
     io::stdout().flush().map_err(|e| e.to_string())?;
     let mut answer = String::new();
     io::stdin().lock().read_line(&mut answer).map_err(|e| e.to_string())?;
-    match answer.trim().to_lowercase().as_str() {
-        "y" | "yes" => Ok(()),
-        _ => Err("Stopped. Nothing else was started.".to_string()),
+    Ok(match answer.trim().to_lowercase().as_str() {
+        "" => default,
+        "y" | "yes" => true,
+        _ => false,
+    })
+}
+
+/// Asks before a step, yes by default. Anything but yes stops the task.
+fn confirm(question: &str) -> Result<(), String> {
+    if ask(question, true)? {
+        Ok(())
+    } else {
+        Err("Stopped. Nothing else was started.".to_string())
     }
 }
 
@@ -133,7 +148,7 @@ where
     }
 }
 
-fn dev() -> Result<(), String> {
+fn dev(skip_web: bool) -> Result<(), String> {
     let root = root();
     let logs = root.join("target/dev-logs");
     fs::create_dir_all(&logs).map_err(|e| e.to_string())?;
@@ -148,8 +163,14 @@ fn dev() -> Result<(), String> {
     confirm("Build the client?")?;
     run(&root.join("client"), "cargo", &["build"])?;
 
-    confirm("Build the web client?")?;
-    web::build(&root)?;
+    // Saying no to the web client skips it and carries on; it is not needed to run the client.
+    if skip_web {
+        println!("Skipping the web client (--skip-web).");
+    } else if ask("Build the web client?", false)? {
+        web::build(&root)?;
+    } else {
+        println!("Skipping the web client.");
+    }
 
     confirm("Start auth on 127.0.0.1:7900?")?;
     services.start("auth", AUTH_PORT)?;
